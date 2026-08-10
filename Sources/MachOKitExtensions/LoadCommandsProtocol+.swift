@@ -1,0 +1,68 @@
+import Foundation
+import MachOKit
+
+extension LoadCommandsProtocol {
+    public var text: SegmentCommand? {
+        infos(of: LoadCommand.segment)
+            .first {
+                $0.segname == SEG_TEXT
+            }
+    }
+
+    public var text64: SegmentCommand64? {
+        infos(of: LoadCommand.segment64)
+            .first {
+                $0.segname == SEG_TEXT
+            }
+    }
+
+    public var data: SegmentCommand? {
+        infos(of: LoadCommand.segment)
+            .first {
+                $0.segname == SEG_DATA
+            }
+    }
+
+    public var data64: SegmentCommand64? {
+        infos(of: LoadCommand.segment64)
+            .first {
+                $0.segname == SEG_DATA
+            }
+    }
+
+    public var dataConst: SegmentCommand? {
+        infos(of: LoadCommand.segment)
+            .first {
+                $0.segname == "__DATA_CONST"
+            }
+    }
+
+    public var dataConst64: SegmentCommand64? {
+        infos(of: LoadCommand.segment64)
+            .first {
+                $0.segname == "__DATA_CONST"
+            }
+    }
+
+    public var auth64: SegmentCommand64? {
+        infos(of: LoadCommand.segment64)
+            .first {
+                $0.segname == "__AUTH"
+            }
+    }
+
+    public var authConst64: SegmentCommand64? {
+        infos(of: LoadCommand.segment64)
+            .first {
+                $0.segname == "__AUTH_CONST"
+            }
+    }
+
+    /// The `LC_BUILD_VERSION` load command, if present — the binary's target
+    /// platform and SDK. Used as a fallback (after `LC_UUID`) to disambiguate
+    /// same-install-path images built for different OS versions in
+    /// ``MachOTargetIdentifier``.
+    public var buildVersionCommand: BuildVersionCommand? {
+        info(of: LoadCommand.buildVersion)
+    }
+}
