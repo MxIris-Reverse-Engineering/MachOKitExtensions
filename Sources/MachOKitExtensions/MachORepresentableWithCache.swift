@@ -97,12 +97,12 @@ extension MachOImage: MachORepresentableWithCache, @unchecked @retroactive Senda
     }
 
     public var cache: DyldCacheLoaded? {
-        guard let currentCache = DyldCacheLoaded.current else { return nil }
-
-        if Int(bitPattern: ptr) - currentCache.mainCacheHeader.sharedRegionStart.cast() >= 0 {
-            return currentCache
-        }
-        return nil
+        // The cache builder flags every image it links into the cache. The load
+        // address is no evidence either way: an image outside the cache that is
+        // loaded once the process has mapped enough memory sits above
+        // `sharedRegionStart` too.
+        guard header.isInDyldCache else { return nil }
+        return DyldCacheLoaded.current
     }
 
     public var startOffset: Int {
