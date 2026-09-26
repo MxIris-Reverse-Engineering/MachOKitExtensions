@@ -10,3 +10,4 @@ DerivedData/
 .swiftpm
 .omc
 .claude
+.worktrees/
