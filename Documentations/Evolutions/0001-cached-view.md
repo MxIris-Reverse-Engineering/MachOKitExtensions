@@ -1,6 +1,6 @@
 # 0001 - 用 cached 视图承载 MachOKit fork 的性能改动
 
-- **状态**: In Progress
+- **状态**: Implemented
 - **创建日期**: 2026-09-29
 - **最后更新**: 2026-09-29
 
@@ -39,3 +39,4 @@ MachOKit fork 在上游文件里有三处纯性能改动：`MachOFile` 的 chain
 | 2026-09-29 | 版本号定为 1.0.0 而非 0.2.0 | SwiftPM 对 `from: "0.1.2"` 的解释是 `0.1.2..<1.0.0`，发 0.2.0 会让已发布的 MachOSwiftSection 在下次解析依赖时拿到它并编译失败 |
 | 2026-09-29 | 测试样本用 `/usr/bin/curl` 而非 `/bin/ls` | `/bin/ls` 的 x86_64 切片仍用 `LC_DYLD_INFO_ONLY`，覆盖不到 x86_64 的 chained fixups 格式 |
 | 2026-09-29 | 测试除对 fork 的 MachOKit 外，还对 `MachOFile.swift` 恢复成上游原样的 MachOKit 跑了一遍，全部一致 | fork 的缓存实现不能作为独立参照。注意样本里不一定有原始值为 0 的槽位，`layout` 字节判断与上游读文件判断的等价性只验证了非零一侧 |
+| 2026-09-29 | In Progress → Implemented | MachOKitExtensions 1.0.0、MachOObjCSection 0.8.107、MachOKit 0.53.101 已发布，MachOSwiftSection 的改动已合入 `next`（随它下一个版本发布）；三个 bug 修复已向上游提交 p-x9/MachOKit#330、#331、#332。配套文档：不另写使用指南或实现说明——唯一不显眼的约定「缓存跟随 `MachOFile` 实例，新建实例从空缓存开始」已写在 `cached` 的文档注释里；没有引入需要登记的新术语 |
