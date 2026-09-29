@@ -13,11 +13,13 @@ extension MachORepresentableWithCache {
     ///
     /// [xnu implementation](https://github.com/apple-oss-distributions/xnu/blob/8d741a5de7ff4191bf97d57b9f54c2f6d4a15585/osfmk/mach/arm/vm_param.h#L126)
     public var vmaddrMask: UInt64? {
+        // CPU_TYPE_I386 and CPU_TYPE_X86 share raw value 7. MachOKit decodes it
+        // as `.x86` before 0.53 and as `.i386` from 0.53 on, where `.x86` no
+        // longer exists, so match the raw value to work with both.
+        if header.cpu.typeRawValue == CPUType.i386.rawValue {
+            return 0xFFFF_FFFF
+        }
         switch header.cpuType {
-        case .x86:
-            return 0xFFFF_FFFF
-        case .i386:
-            return 0xFFFF_FFFF
         case .x86_64:
             return 0x0000_7FFF_FFFF_FFFF
         case .arm:
