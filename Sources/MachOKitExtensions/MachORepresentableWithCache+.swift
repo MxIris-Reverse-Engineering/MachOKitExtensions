@@ -62,7 +62,7 @@ extension MachORepresentableWithCache {
     public func stripPointerTags(of ptr: UnsafeRawPointer) throws -> UnsafeRawPointer {
         let address: UInt64 = .init(UInt(bitPattern: ptr))
         let strippedPtr: UInt64 = stripPointerTags(of: address)
-        return try UnsafeRawPointer(bitPattern: UInt(strippedPtr))
+        return try UnsafeRawPointer(nonZeroBitPattern: UInt(strippedPtr))
     }
 }
 
@@ -104,6 +104,6 @@ public func stripPointerTags(of rawVMAddr: UInt64) -> UInt64 {
 
 extension UnsafeRawPointer {
     public func stripPointerTags() throws -> UnsafeRawPointer {
-        try .init(bitPattern: UInt(MachOKitExtensions.stripPointerTags(of: UInt64(UInt(bitPattern: self)))))
+        try .init(nonZeroBitPattern: UInt(MachOKitExtensions.stripPointerTags(of: UInt64(UInt(bitPattern: self)))))
     }
 }

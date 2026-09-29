@@ -23,7 +23,7 @@ extension LocatableLayoutWrapper {
 
     public var asPointer: UnsafeRawPointer {
         get throws {
-            return try .init(bitPattern: offset)
+            return try .init(nonZeroBitPattern: offset)
         }
     }
 

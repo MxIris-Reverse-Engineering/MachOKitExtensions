@@ -29,7 +29,7 @@ Extracting the target into its own package breaks that cycle: both packages now 
 ## Usage
 
 ```swift
-.package(url: "https://github.com/MxIris-Reverse-Engineering/MachOKitExtensions", from: "0.1.0")
+.package(url: "https://github.com/MxIris-Reverse-Engineering/MachOKitExtensions", from: "1.0.0")
 ```
 
 ```swift

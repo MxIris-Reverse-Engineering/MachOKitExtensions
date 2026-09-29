@@ -11,51 +11,24 @@ import MachOKit
 //    }
 // }
 
+/// Thrown when a pointer is built from an address of zero.
+struct NullPointerError: Error {}
+
+// Deliberately internal. A public throwing `init(bitPattern:)` would shadow the
+// standard library's failable one in every module that imports this package.
 extension UnsafeRawPointer {
-    public enum Error: Swift.Error {
-        case initFailed
-    }
-
-    /*@inlinable*/
-    public init(bitPattern: UInt) throws {
-        if let ptr = Self(bitPattern: bitPattern) {
-            self = ptr
-        } else {
-            throw Error.initFailed
+    init(nonZeroBitPattern bitPattern: UInt) throws {
+        guard let pointer = Self(bitPattern: bitPattern) else {
+            throw NullPointerError()
         }
+        self = pointer
     }
 
-    /*@inlinable*/
-    public init(bitPattern: Int) throws {
-        if let ptr = Self(bitPattern: bitPattern) {
-            self = ptr
-        } else {
-            throw Error.initFailed
+    init(nonZeroBitPattern bitPattern: Int) throws {
+        guard let pointer = Self(bitPattern: bitPattern) else {
+            throw NullPointerError()
         }
-    }
-}
-
-extension UnsafePointer {
-    public enum Error: Swift.Error {
-        case initFailed
-    }
-
-    /*@inlinable*/
-    public init(bitPattern: UInt) throws {
-        if let ptr = Self(bitPattern: bitPattern) {
-            self = ptr
-        } else {
-            throw Error.initFailed
-        }
-    }
-
-    /*@inlinable*/
-    public init(bitPattern: Int) throws {
-        if let ptr = Self(bitPattern: bitPattern) {
-            self = ptr
-        } else {
-            throw Error.initFailed
-        }
+        self = pointer
     }
 }
 
