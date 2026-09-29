@@ -79,7 +79,7 @@ extension MachOFile {
             return nil
         }
 
-        if let resolved = resolveOptionalRebase(at: offset) {
+        if let resolved = cached.resolveOptionalRebase(at: offset) {
             _resolveRebaseCache[fileOffset] = resolved
             return resolved
         }
@@ -118,8 +118,9 @@ extension MachOFile {
         }
 
         let result: String?
-        if let fixup = dyldChainedFixups {
-            guard let resolved = resolveBind(at: offset) else { return nil }
+        let cached = self.cached
+        if let fixup = cached.dyldChainedFixups {
+            guard let resolved = cached.resolveBind(at: offset) else { return nil }
             result = fixup.symbolName(for: resolved.0.info.nameOffset)
         } else {
             // Legacy binaries (deployment target < macOS 12 / iOS 16, e.g.
@@ -246,8 +247,9 @@ extension MachOFile {
         // Same source split as `resolveBind(fileOffset:)`: chained fixups
         // when present, else the LC_DYLD_INFO(_ONLY) opcode-stream index —
         // the two public APIs must answer identically for the same slot.
-        if dyldChainedFixups != nil {
-            return resolveBind(at: numericCast(offset)) != nil
+        let cached = self.cached
+        if cached.dyldChainedFixups != nil {
+            return cached.resolveBind(at: numericCast(offset)) != nil
         }
         return dyldInfoBindSymbolNamesByFileOffset[numericCast(offset)] != nil
     }

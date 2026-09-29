@@ -93,5 +93,12 @@ let package = Package(
                 .product(name: "AssociatedObject", package: "AssociatedObject"),
             ]
         ),
+        .testTarget(
+            name: "MachOKitExtensionsTests",
+            dependencies: [
+                "MachOKitExtensions",
+                "MachOKit",
+            ]
+        ),
     ]
 )

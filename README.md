@@ -22,6 +22,7 @@ Extracting the target into its own package breaks that cycle: both packages now 
 | Pointer tagging | `stripPointerTags(of:)` and the architecture-specific `vmaddrMask` |
 | Dyld shared cache | `cache(for:)`, `cacheAndFileOffset(for:)`, `cacheAndFileOffset(fromStart:)`, `machOFile(by:)` |
 | Bind / rebase | `resolveRebase(fileOffset:)`, `resolveBind(fileOffset:)`, `isBind(fileOffset:)` |
+| Cached views | `machOFile.cached` memoizes chained fixups behind the same `resolveRebase(at:)` / `resolveOptionalRebase(at:)` / `resolveBind(at:)` API; `DyldCacheLoaded.cachedCurrent`; `cache.cached.headerInfo(at:in:)` |
 | Load commands | Typed accessors for `__TEXT`, `__DATA`, `__DATA_CONST`, `__AUTH`, `__AUTH_CONST`, build version |
 | Protocols | `MachORepresentableWithCache`, `LocatableLayoutWrapper`, `MachOTargetIdentifier` |
 

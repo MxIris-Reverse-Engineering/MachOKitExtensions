@@ -102,7 +102,7 @@ extension MachOImage: MachORepresentableWithCache, @unchecked @retroactive Senda
         // loaded once the process has mapped enough memory sits above
         // `sharedRegionStart` too.
         guard header.isInDyldCache else { return nil }
-        return DyldCacheLoaded.current
+        return DyldCacheLoaded.cachedCurrent
     }
 
     public var startOffset: Int {
