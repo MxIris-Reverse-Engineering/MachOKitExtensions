@@ -17,20 +17,31 @@ public enum MachOTargetIdentifier: Hashable {
     case image(UnsafeRawPointer)
     case file(String)
     /// A file-backed image keyed additionally by its `LC_UUID`. The same install
-    /// path can back *different* binaries — the SwiftUI image extracted from two
-    /// dyld shared caches, or two simulator runtimes, all live at
-    /// `/System/.../SwiftUI` — so keying on the path alone collides in
-    /// `SharedCache`-backed per-image caches (the symbol index, …), letting the
-    /// second-indexed binary read the first's data. The linker-assigned UUID is
-    /// unique per build, so it keeps the keys apart. Preferred over
-    /// ``versionedFile`` because two consecutive OS builds can share the same
-    /// platform and SDK.
+    /// path can back *different* binaries — the SwiftUI image of two simulator
+    /// runtimes lives at `/System/.../SwiftUI` in both — so keying on the path
+    /// alone collides in `SharedCache`-backed per-image caches (the symbol
+    /// index, …), letting the second-indexed binary read the first's data. The
+    /// linker-assigned UUID is unique per build, so it keeps the keys apart.
+    /// Preferred over ``versionedFile`` because two consecutive OS builds can
+    /// share the same platform and SDK. An image read from a dyld shared cache
+    /// is keyed by ``dyldCacheImage`` instead.
     case uuidFile(path: String, uuid: UUID)
     /// A file-backed image keyed additionally by its `LC_BUILD_VERSION`
     /// (platform + SDK). Fallback for binaries that have no `LC_UUID` load
     /// command; weaker than ``uuidFile`` since two OS builds can report the same
     /// platform and SDK.
     case versionedFile(path: String, platform: UInt32, sdk: UInt32)
+    /// An image read from a dyld shared cache, keyed additionally by the UUID
+    /// of the cache it was read from. `LC_UUID` cannot tell two caches' copies
+    /// of one build apart — SwiftUI is the same binary, UUID included, in the
+    /// macOS 13.5 and 13.6 caches — yet each cache places it at its own
+    /// addresses, and every offset read through the image belongs to that
+    /// cache. Keyed by ``uuidFile``, the two copies shared their per-image
+    /// caches, and the copy read second followed the first one's class object
+    /// offsets into its own cache. `cacheUUID` is the main cache's, so an image
+    /// keeps one identity whether its cache was opened as the main file alone
+    /// or with every subcache.
+    case dyldCacheImage(path: String, uuid: UUID?, cacheUUID: UUID)
 }
 
 extension MachOFile {
@@ -63,13 +74,19 @@ extension MachOFile: MachORepresentableWithCache, @unchecked @retroactive Sendab
     }
 
     /// Reads the load commands **once** and derives the cache identity from the
-    /// strongest discriminator available: `LC_UUID` (unique per build), then
-    /// `LC_BUILD_VERSION` (platform + SDK), then the bare install path. The
-    /// result is memoized in ``cachedIdentifier`` because ``identifier`` is read
-    /// on every `SharedCache` lookup and `loadCommands` performs file I/O.
+    /// strongest discriminator available: for an image read from a dyld shared
+    /// cache, the cache it was read from plus its `LC_UUID`; otherwise
+    /// `LC_UUID` (unique per build), then `LC_BUILD_VERSION` (platform + SDK),
+    /// then the bare install path. The result is memoized in
+    /// ``cachedIdentifier`` because ``identifier`` is read on every
+    /// `SharedCache` lookup and `loadCommands` performs file I/O.
     private func makeIdentifier() -> MachOTargetIdentifier {
         let loadCommands = loadCommands
-        if let uuid = loadCommands.info(of: LoadCommand.uuid)?.uuid {
+        let uuid = loadCommands.info(of: LoadCommand.uuid)?.uuid
+        if let cache {
+            return .dyldCacheImage(path: imagePath, uuid: uuid, cacheUUID: cache.mainCacheHeader.uuid)
+        }
+        if let uuid {
             return .uuidFile(path: imagePath, uuid: uuid)
         }
         if let buildVersionCommand = loadCommands.buildVersionCommand {
