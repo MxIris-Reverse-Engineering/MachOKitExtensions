@@ -77,7 +77,10 @@ let package = Package(
             ),
             remote: .package(
                 url: "https://github.com/MxIris-Reverse-Engineering/MachOKit",
-                from: "0.51.101"
+                // 0.52.0 is the first release with the `_cachedFullCache` SPI,
+                // which hands a cache's sub-caches over without opening the
+                // whole cache.
+                from: "0.52.0"
             )
         ),
         .package(

@@ -170,12 +170,9 @@ extension DyldCache {
         // directly (`…/dyld_shared_cache_arm64e.03`), silently skipping every
         // sibling — so an image mapped in another sub-cache came back `nil`,
         // or lost to a worse-ranked namesake.
-        if let subCaches = mainCache.subCaches {
-            for subCacheEntry in subCaches {
-                guard let subCache = try? subCacheEntry.subcache(for: mainCache) else { continue }
-                if scanReachedBestMatch(in: subCache) {
-                    return rankedMatch?.machOFile
-                }
+        for subCache in mainCache.subCacheFiles {
+            if scanReachedBestMatch(in: subCache) {
+                return rankedMatch?.machOFile
             }
         }
         return rankedMatch?.machOFile
