@@ -79,8 +79,10 @@ let package = Package(
                 url: "https://github.com/MxIris-Reverse-Engineering/MachOKit",
                 // 0.52.0 is the first release with the `_cachedFullCache` SPI,
                 // which hands a cache's sub-caches over without opening the
-                // whole cache.
-                from: "0.52.0"
+                // whole cache. 0.54.100 is the fork's release over upstream
+                // 0.54.0, which MachOObjCSection and MachOSwiftSection
+                // require as well.
+                from: "0.54.100"
             )
         ),
         .package(
