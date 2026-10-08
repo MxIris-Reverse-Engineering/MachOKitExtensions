@@ -122,7 +122,7 @@ extension MachOFile {
             // the iOS 15.5 simulator frameworks) carry no chained fixups;
             // their bind slots are described only by the LC_DYLD_INFO(_ONLY)
             // opcode streams.
-            result = dyldInfoBindSymbolNamesByFileOffset[offset]
+            result = dyldInfoBindsByFileOffset[offset]?.symbolName
         }
         if let result {
             _resolveBindCache[offset] = result
@@ -130,30 +130,92 @@ extension MachOFile {
         return result
     }
 
-    @AssociatedObject(.retain(.nonatomic))
-    private var _dyldInfoBindSymbolNamesByFileOffset: [UInt64: String]? = nil
+    /// Resolves a bind that dyld satisfies from this image itself.
+    ///
+    /// A dylib linked `-interposable` reaches its own exported symbols the way
+    /// it reaches another library's: through a bind to `BIND_SPECIAL_DYLIB_SELF`
+    /// rather than a rebase. Apple builds the frameworks of a simulator runtime
+    /// this way, so a pointer to an exported class, metaclass or ivar offset
+    /// of such a file holds a bind even though its target is in the file. This
+    /// resolves it to the export it names, as dyld does at load time.
+    ///
+    /// - Parameter fileOffset: The offset of the slot from the Mach-O header.
+    /// - Returns: The bound symbol's offset from the image's load address plus
+    ///   the bind's addend — the convention `cached.resolveRebase(at:)`
+    ///   answers in — or `nil` when the slot holds no bind, binds into another
+    ///   image, or names a symbol this image does not export.
+    public func resolveSelfBind(fileOffset: Int) -> UInt64? {
+        guard !isLoadedFromDyldCache else { return nil }
 
-    private var dyldInfoBindSymbolNamesByFileOffset: [UInt64: String] {
-        if let indexed = _dyldInfoBindSymbolNamesByFileOffset {
+        let offset: UInt64 = numericCast(fileOffset)
+        let symbolName: String
+        let addend: Int
+        let cached = self.cached
+        if let fixup = cached.dyldChainedFixups {
+            guard let (chainedImport, pointerAddend) = cached.resolveBind(at: offset),
+                  chainedImport.info.libraryOrdinalType == .dylib_self,
+                  let name = fixup.symbolName(for: chainedImport.info.nameOffset) else {
+                return nil
+            }
+            symbolName = name
+            addend = Int(truncatingIfNeeded: pointerAddend) &+ chainedImport.info.addend
+        } else {
+            guard let bind = dyldInfoBindsByFileOffset[offset],
+                  bind.libraryOrdinal == Int(BindSpecial.dylib_self.rawValue) else {
+                return nil
+            }
+            symbolName = bind.symbolName
+            addend = bind.addend
+        }
+
+        // A re-export names a symbol of another image and carries no offset.
+        guard let exportedSymbol = cached.exportTrie?.search(by: symbolName),
+              !exportedSymbol.flags.contains(.reexport),
+              let symbolOffset = exportedSymbol.offset else {
+            return nil
+        }
+        return UInt64(bitPattern: Int64(symbolOffset &+ addend))
+    }
+
+    /// One slot an LC_DYLD_INFO(_ONLY) bind stream binds.
+    private struct DyldInfoBind {
+        let symbolName: String
+        /// The library ordinal in force for the slot: a dependency's index
+        /// from 1, or one of the `BIND_SPECIAL_DYLIB_*` values from 0 down.
+        /// `nil` for a weak bind, which dyld satisfies by name from whichever
+        /// image defines the symbol first.
+        let libraryOrdinal: Int?
+        let addend: Int
+    }
+
+    @AssociatedObject(.retain(.nonatomic))
+    private var _dyldInfoBindsByFileOffset: [UInt64: DyldInfoBind]? = nil
+
+    private var dyldInfoBindsByFileOffset: [UInt64: DyldInfoBind] {
+        if let indexed = _dyldInfoBindsByFileOffset {
             return indexed
         }
-        let indexed = makeDyldInfoBindSymbolNamesByFileOffset()
-        _dyldInfoBindSymbolNamesByFileOffset = indexed
+        let indexed = makeDyldInfoBindsByFileOffset()
+        _dyldInfoBindsByFileOffset = indexed
         return indexed
     }
 
     // Interprets the LC_DYLD_INFO(_ONLY) bind opcode streams (the dyld
-    // state machine over segment index / segment offset / symbol name) into
-    // a file-offset → symbol-name index, so `resolveBind(fileOffset:)` can
-    // answer for pre-chained-fixups binaries exactly like it does for
-    // chained ones.
-    private func makeDyldInfoBindSymbolNamesByFileOffset() -> [UInt64: String] {
+    // state machine over segment index / segment offset / symbol name /
+    // library ordinal / addend) into a file-offset → bind index, so
+    // `resolveBind(fileOffset:)` and `resolveSelfBind(fileOffset:)` can answer
+    // for pre-chained-fixups binaries exactly like they do for chained ones.
+    private func makeDyldInfoBindsByFileOffset() -> [UInt64: DyldInfoBind] {
         guard is64Bit else { return [:] }
         let segmentFileOffsets = segments.map { UInt64($0.fileOffset) }
         let segmentFileSizes = segments.map { UInt64($0.fileSize) }
         let pointerSize: UInt = 8
-        var symbolNamesByFileOffset: [UInt64: String] = [:]
-        for operations in [bindOperations, weakBindOperations].compactMap({ $0 }) {
+        var bindsByFileOffset: [UInt64: DyldInfoBind] = [:]
+        let streams: [(operations: BindOperations, isWeak: Bool)] = [
+            bindOperations.map { ($0, false) },
+            weakBindOperations.map { ($0, true) },
+        ].compactMap { $0 }
+        for (operations, isWeak) in streams {
             // The opcode stream is binary-supplied input (this library
             // analyzes arbitrary third-party files): the segment offset and
             // the repeat count arrive as raw unvalidated ulebs, so every
@@ -167,6 +229,8 @@ extension MachOFile {
             var segmentIndex = 0
             var segmentOffset: UInt = 0
             var symbolName: String?
+            var libraryOrdinal = 0
+            var addend = 0
             func currentSlotIsWithinSegment() -> Bool {
                 guard segmentFileOffsets.indices.contains(segmentIndex) else { return false }
                 let segmentFileSize = segmentFileSizes[segmentIndex]
@@ -175,12 +239,22 @@ extension MachOFile {
             }
             func recordCurrentSlot() {
                 guard currentSlotIsWithinSegment(), let symbolName else { return }
-                symbolNamesByFileOffset[segmentFileOffsets[segmentIndex] &+ UInt64(segmentOffset)] = symbolName
+                bindsByFileOffset[segmentFileOffsets[segmentIndex] &+ UInt64(segmentOffset)] = DyldInfoBind(
+                    symbolName: symbolName,
+                    libraryOrdinal: isWeak ? nil : libraryOrdinal,
+                    addend: addend
+                )
             }
             operationLoop: for operation in operations {
                 switch operation {
                 case .set_symbol_trailing_flags_imm(_, let symbol):
                     symbolName = symbol
+                case .set_dylib_ordinal_imm(let ordinal), .set_dylib_ordinal_uleb(let ordinal):
+                    libraryOrdinal = ordinal
+                case .set_dylib_special_imm(let special):
+                    libraryOrdinal = Int(special.rawValue)
+                case .set_addend_sleb(let value):
+                    addend = value
                 case .set_segment_and_offset_uleb(let segment, let offset):
                     segmentIndex = Int(segment)
                     segmentOffset = offset
@@ -208,12 +282,12 @@ extension MachOFile {
                     // targets differently; indexing it here would claim
                     // wrong offsets.
                     break operationLoop
-                case .done, .set_dylib_ordinal_imm, .set_dylib_ordinal_uleb, .set_dylib_special_imm, .set_type_imm, .set_addend_sleb:
+                case .done, .set_type_imm:
                     break
                 }
             }
         }
-        return symbolNamesByFileOffset
+        return bindsByFileOffset
     }
 
     // Determines whether the specified file offset within the MachO file represents a bind operation.
@@ -246,7 +320,7 @@ extension MachOFile {
         if cached.dyldChainedFixups != nil {
             return cached.resolveBind(at: numericCast(offset)) != nil
         }
-        return dyldInfoBindSymbolNamesByFileOffset[numericCast(offset)] != nil
+        return dyldInfoBindsByFileOffset[numericCast(offset)] != nil
     }
 
     public func resolveCacheStartOffsetIfNeeded(

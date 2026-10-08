@@ -15,6 +15,10 @@ final class MachOCacheStorage<Base: MachORepresentable>: @unchecked Sendable {
     var chainedImports: CacheSlot<[DyldChainedImport]> = .notComputed
     var fixupPointersByOffset: CacheSlot<[Int: DyldChainedFixupPointer]> = .notComputed
 
+    // MARK: - Exports
+
+    var exportTrie: CacheSlot<Base.ExportTrie?> = .notComputed
+
     // MARK: - Dyld cache files
 
     var subCacheTable: CacheSlot<DyldCacheSubCacheTable?> = .notComputed

@@ -21,8 +21,8 @@ Extracting the target into its own package breaks that cycle: both packages now 
 | Address arithmetic | `address(forOffset:)`, `addressString(forOffset:)`, `resolveOffset(at:)` |
 | Pointer tagging | `stripPointerTags(of:)` and the architecture-specific `vmaddrMask` |
 | Dyld shared cache | `cache(for:)`, `cacheAndFileOffset(for:)`, `cacheAndFileOffset(fromStart:)`, `machOFile(by:)` |
-| Bind / rebase | `resolveRebase(fileOffset:)`, `resolveBind(fileOffset:)`, `isBind(fileOffset:)` |
-| Cached views | `machOFile.cached` memoizes chained fixups behind the same `resolveRebase(at:)` / `resolveOptionalRebase(at:)` / `resolveBind(at:)` API; `DyldCacheLoaded.cachedCurrent`; `FullDyldCache.cachedHost`; `cache.cached.headerInfo(at:in:)` |
+| Bind / rebase | `resolveRebase(fileOffset:)`, `resolveBind(fileOffset:)`, `isBind(fileOffset:)`, and `resolveSelfBind(fileOffset:)` for a bind the image satisfies from its own exports (what `-interposable` links a pointer to an exported symbol as, the frameworks of a simulator runtime among them) |
+| Cached views | `machOFile.cached` memoizes chained fixups behind the same `resolveRebase(at:)` / `resolveOptionalRebase(at:)` / `resolveBind(at:)` API, and the export trie as `exportTrie`; `DyldCacheLoaded.cachedCurrent`; `FullDyldCache.cachedHost`; `cache.cached.headerInfo(at:in:)` |
 | Load commands | Typed accessors for `__TEXT`, `__DATA`, `__DATA_CONST`, `__AUTH`, `__AUTH_CONST`, build version |
 | Protocols | `MachORepresentableWithCache`, `LocatableLayoutWrapper`, `MachOTargetIdentifier` |
 
