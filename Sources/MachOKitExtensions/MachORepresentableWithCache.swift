@@ -147,9 +147,3 @@ extension MachORepresentableWithCache {
         String(address(forOffset: offset), radix: 16, uppercase: true)
     }
 }
-
-extension MachORepresentable {
-    public var asMachOImage: MachOImage? {
-        self as? MachOImage
-    }
-}

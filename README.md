@@ -25,6 +25,7 @@ Extracting the target into its own package breaks that cycle: both packages now 
 | Cached views | `machOFile.cached` memoizes chained fixups behind the same `resolveRebase(at:)` / `resolveOptionalRebase(at:)` / `resolveBind(at:)` API, and the export trie as `exportTrie`; `DyldCacheLoaded.cachedCurrent`; `FullDyldCache.cachedHost`; `cache.cached.headerInfo(at:in:)` |
 | Load commands | Typed accessors for `__TEXT`, `__DATA`, `__DATA_CONST`, `__AUTH`, `__AUTH_CONST`, build version |
 | Protocols | `MachORepresentableWithCache`, `LocatableLayoutWrapper`, `MachOTargetIdentifier` |
+| Reader wrappers | `MachOReaderWrapper` for a type of your own that holds a reader and forwards every read to it; `asMachOImage`, `asMachOFile` and `underlyingReader` answer for the reader beneath any layer of wrapping |
 
 ## Usage
 
@@ -39,6 +40,24 @@ import MachOKitExtensions
 let machOFile: MachOFile = // …
 // Turn a file offset into the address it will have once loaded.
 let address = machOFile.addressString(forOffset: 0x1000)
+```
+
+A type of your own that holds a reader and forwards every read to it declares what it wraps,
+so that whatever is worked out per reader kind — absolute pointers for an image mapped into
+this process, a file's own offset accounting — is worked out for the reader beneath it:
+
+```swift
+struct ImageDocument: MachORepresentableWithCache {
+    let machOImage: MachOImage
+    // …every requirement forwarded to `machOImage`, `identifier` included…
+}
+
+extension ImageDocument: MachOReaderWrapper {
+    var base: MachOImage { machOImage }
+}
+
+let document = ImageDocument(machOImage: machOImage)
+document.asMachOImage   // the image beneath, not nil
 ```
 
 ## Platforms
