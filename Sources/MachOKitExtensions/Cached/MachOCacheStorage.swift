@@ -23,6 +23,16 @@ final class MachOCacheStorage<Base: MachORepresentable>: @unchecked Sendable {
 
     var subCacheTable: CacheSlot<DyldCacheSubCacheTable?> = .notComputed
 
+    // MARK: - Resolved fixups
+
+    /// What `MachOFile.resolveRebase(fileOffset:)` resolved, by the slot's
+    /// file offset.
+    var resolvedRebaseTargetsByFileOffset: [Int: UInt64] = [:]
+
+    /// What `MachOFile.resolveBind(fileOffset:)` resolved, by the slot's
+    /// file offset.
+    var resolvedBindSymbolNamesByFileOffset: [UInt64: String] = [:]
+
     // MARK: - Memoization
 
     /// Returns the value cached at `keyPath`, computing and storing it on first
@@ -53,5 +63,31 @@ final class MachOCacheStorage<Base: MachORepresentable>: @unchecked Sendable {
         }
         self[keyPath: keyPath] = .computed(computedValue)
         return computedValue
+    }
+
+    /// The entry the dictionary at `keyPath` holds for `key`, if any.
+    func memoizedEntry<Key: Hashable, Value>(
+        in keyPath: ReferenceWritableKeyPath<MachOCacheStorage, [Key: Value]>,
+        for key: Key
+    ) -> Value? {
+        lock.lock()
+        defer { lock.unlock() }
+        return self[keyPath: keyPath][key]
+    }
+
+    /// Records `value` for `key` in the dictionary at `keyPath`.
+    ///
+    /// The dictionary lives in this storage and grows in place. Held in an
+    /// associated object instead, each new entry read the dictionary out and
+    /// stored a copy back, so resolving a file's slots one after another took
+    /// time quadratic in their number.
+    func memoize<Key: Hashable, Value>(
+        _ value: Value,
+        for key: Key,
+        in keyPath: ReferenceWritableKeyPath<MachOCacheStorage, [Key: Value]>
+    ) {
+        lock.lock()
+        defer { lock.unlock() }
+        self[keyPath: keyPath][key] = value
     }
 }

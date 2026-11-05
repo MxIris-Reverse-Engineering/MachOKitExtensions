@@ -53,20 +53,20 @@ extension MachOFile {
     //   - fileOffset: The offset in the file where the rebase operation occurs.
     //   - machO: The `MachOFile` object representing the MachO file to resolve rebases from.
     // - Returns: The resolved rebase value as a `UInt64`, or `nil` if the rebase cannot be resolved.
-
-    @AssociatedObject(.retain(.nonatomic))
-    private var _resolveRebaseCache: [Int: UInt64] = [:]
-
+    //
+    // A resolved slot is remembered in the file's cache storage, which grows
+    // in place and is safe to share between threads.
     public func resolveRebase(fileOffset: Int) -> UInt64? {
         let offset: UInt64 = numericCast(fileOffset)
+        let cached = self.cached
 
-        if let cached = _resolveRebaseCache[fileOffset] {
-            return cached
+        if let memoized = cached.storage.memoizedEntry(in: \.resolvedRebaseTargetsByFileOffset, for: fileOffset) {
+            return memoized
         }
 
         if let (cache, _offset) = resolveCacheStartOffsetIfNeeded(offset: offset), let resolved = cache.resolveOptionalRebase(at: _offset) {
             let result = resolved - cache.mainCacheHeader.sharedRegionStart
-            _resolveRebaseCache[fileOffset] = result
+            cached.storage.memoize(result, for: fileOffset, in: \.resolvedRebaseTargetsByFileOffset)
             return result
         }
 
@@ -75,7 +75,7 @@ extension MachOFile {
         }
 
         if let resolved = cached.resolveOptionalRebase(at: offset) {
-            _resolveRebaseCache[fileOffset] = resolved
+            cached.storage.memoize(resolved, for: fileOffset, in: \.resolvedRebaseTargetsByFileOffset)
             return resolved
         }
         return nil
@@ -99,21 +99,20 @@ extension MachOFile {
     //   - fileOffset: An `Int` value representing the offset in the file where the bind operation occurs.
     //   - machO: The `MachOFile` object representing the MachO file to analyze.
     // - Returns: The resolved symbol name as a `String`, or `nil` if the bind operation cannot be resolved.
-
-    @AssociatedObject(.retain(.nonatomic))
-    private var _resolveBindCache: [UInt64: String] = [:]
-
+    //
+    // A resolved slot is remembered in the file's cache storage, which grows
+    // in place and is safe to share between threads.
     public func resolveBind(fileOffset: Int) -> String? {
         guard !isLoadedFromDyldCache else { return nil }
 
         let offset: UInt64 = numericCast(fileOffset)
+        let cached = self.cached
 
-        if let cached = _resolveBindCache[offset] {
-            return cached
+        if let memoized = cached.storage.memoizedEntry(in: \.resolvedBindSymbolNamesByFileOffset, for: offset) {
+            return memoized
         }
 
         let result: String?
-        let cached = self.cached
         if let fixup = cached.dyldChainedFixups {
             guard let resolved = cached.resolveBind(at: offset) else { return nil }
             result = fixup.symbolName(for: resolved.0.info.nameOffset)
@@ -125,7 +124,7 @@ extension MachOFile {
             result = dyldInfoBindsByFileOffset[offset]?.symbolName
         }
         if let result {
-            _resolveBindCache[offset] = result
+            cached.storage.memoize(result, for: offset, in: \.resolvedBindSymbolNamesByFileOffset)
         }
         return result
     }
