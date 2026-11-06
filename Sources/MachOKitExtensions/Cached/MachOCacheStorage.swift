@@ -23,11 +23,6 @@ final class MachOCacheStorage<Base: MachORepresentable>: @unchecked Sendable {
 
     var subCacheTable: CacheSlot<DyldCacheSubCacheTable?> = .notComputed
 
-    // MARK: - Identity
-
-    /// `MachOFile.identifier`.
-    var identifier: CacheSlot<MachOTargetIdentifier> = .notComputed
-
     // MARK: - Legacy binds
 
     /// The slots `MachOFile`'s LC_DYLD_INFO(_ONLY) bind streams bind, by file
