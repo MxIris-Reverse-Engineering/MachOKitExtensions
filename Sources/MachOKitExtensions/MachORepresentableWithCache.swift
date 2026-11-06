@@ -1,6 +1,5 @@
 import Foundation
 import MachOKit
-import AssociatedObject
 
 public protocol MachORepresentableWithCache: MachORepresentable, Sendable {
     associatedtype Cache: DyldCacheRepresentable
@@ -61,25 +60,20 @@ extension MachOImage {
 }
 
 extension MachOFile: MachORepresentableWithCache, @unchecked @retroactive Sendable {
-    @AssociatedObject(.retain(.nonatomic))
-    private var cachedIdentifier: MachOTargetIdentifier?
-
+    /// Computed once per `MachOFile` instance and kept in its cache storage,
+    /// so threads that read a fresh file together all get the value the first
+    /// of them stored.
     public var identifier: MachOTargetIdentifier {
-        if let cachedIdentifier {
-            return cachedIdentifier
-        }
-        let computedIdentifier = makeIdentifier()
-        cachedIdentifier = computedIdentifier
-        return computedIdentifier
+        cached.storage.memoized(\.identifier) { makeIdentifier() }
     }
 
     /// Reads the load commands **once** and derives the cache identity from the
     /// strongest discriminator available: for an image read from a dyld shared
     /// cache, the cache it was read from plus its `LC_UUID`; otherwise
     /// `LC_UUID` (unique per build), then `LC_BUILD_VERSION` (platform + SDK),
-    /// then the bare install path. The result is memoized in
-    /// ``cachedIdentifier`` because ``identifier`` is read on every
-    /// `SharedCache` lookup and `loadCommands` performs file I/O.
+    /// then the bare install path. The result is memoized in the file's cache
+    /// storage because ``identifier`` is read on every `SharedCache` lookup and
+    /// `loadCommands` performs file I/O.
     private func makeIdentifier() -> MachOTargetIdentifier {
         let loadCommands = loadCommands
         let uuid = loadCommands.info(of: LoadCommand.uuid)?.uuid

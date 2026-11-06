@@ -23,6 +23,17 @@ final class MachOCacheStorage<Base: MachORepresentable>: @unchecked Sendable {
 
     var subCacheTable: CacheSlot<DyldCacheSubCacheTable?> = .notComputed
 
+    // MARK: - Identity
+
+    /// `MachOFile.identifier`.
+    var identifier: CacheSlot<MachOTargetIdentifier> = .notComputed
+
+    // MARK: - Legacy binds
+
+    /// The slots `MachOFile`'s LC_DYLD_INFO(_ONLY) bind streams bind, by file
+    /// offset.
+    var dyldInfoBindsByFileOffset: CacheSlot<[UInt64: MachOFile.DyldInfoBind]> = .notComputed
+
     // MARK: - Resolved fixups
 
     /// What `MachOFile.resolveRebase(fileOffset:)` resolved, by the slot's

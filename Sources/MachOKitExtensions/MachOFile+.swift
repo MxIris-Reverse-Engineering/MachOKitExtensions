@@ -1,6 +1,5 @@
 import Foundation
 import MachOKit
-import AssociatedObject
 
 extension MachOFile {
     public func cache(for address: UInt64) -> DyldCache? {
@@ -177,7 +176,7 @@ extension MachOFile {
     }
 
     /// One slot an LC_DYLD_INFO(_ONLY) bind stream binds.
-    private struct DyldInfoBind {
+    struct DyldInfoBind {
         let symbolName: String
         /// The library ordinal in force for the slot: a dependency's index
         /// from 1, or one of the `BIND_SPECIAL_DYLIB_*` values from 0 down.
@@ -187,16 +186,11 @@ extension MachOFile {
         let addend: Int
     }
 
-    @AssociatedObject(.retain(.nonatomic))
-    private var _dyldInfoBindsByFileOffset: [UInt64: DyldInfoBind]? = nil
-
+    // Built once per `MachOFile` instance and kept in its cache storage, so
+    // threads that look up binds in a fresh file together all read the index
+    // the first of them stored.
     private var dyldInfoBindsByFileOffset: [UInt64: DyldInfoBind] {
-        if let indexed = _dyldInfoBindsByFileOffset {
-            return indexed
-        }
-        let indexed = makeDyldInfoBindsByFileOffset()
-        _dyldInfoBindsByFileOffset = indexed
-        return indexed
+        cached.storage.memoized(\.dyldInfoBindsByFileOffset) { makeDyldInfoBindsByFileOffset() }
     }
 
     // Interprets the LC_DYLD_INFO(_ONLY) bind opcode streams (the dyld
