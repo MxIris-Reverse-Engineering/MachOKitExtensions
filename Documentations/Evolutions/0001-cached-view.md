@@ -2,7 +2,7 @@
 
 - **状态**: Implemented
 - **创建日期**: 2026-09-29
-- **最后更新**: 2026-11-05
+- **最后更新**: 2026-11-06
 
 ## 摘要
 
@@ -21,7 +21,7 @@ MachOKit fork 在上游文件里有三处纯性能改动：`MachOFile` 的 chain
 - **撞名的扩展移出本包**：`UnsafeRawPointer` / `UnsafePointer` 的公开抛错版 `init(bitPattern:)` 会遮住标准库的可失败版本，依赖本包的模块里凡是写 `UnsafeRawPointer(bitPattern:)!` 的地方都编译不过。它们移到唯一的使用方 MachOSwiftSection（`package` 访问级别），本包内部改用 internal 的 `init(nonZeroBitPattern:)`。这是破坏性改动，因此本次发 **1.0.0**：下游对 0.x 写的 `from:` 覆盖到 `1.0.0` 之前，旧版下游不会被悄悄升级到缺了这两个初始化方法的版本。
 - **MachOObjCSection**：要改的调用都在它的核心 target 里，该 target 因此新增对 MachOKitExtensions 的依赖。`cachedCurrent` 在非 Darwin 平台返回 `nil`，与 MachOObjCSection 给 Linux 补的 `DyldCacheLoaded.current` 替身一致。MachOKitUI 只在构建导入列表时调一次 `DyldCacheLoaded.current`，不改。
 - **测试**：新增 `MachOKitExtensionsTests` 测试 target（swift-testing）。以 MachOKit 的同名方法为参照，在 `/usr/bin/curl`（x86_64 与 arm64e 切片都用 chained fixups）和 Freeform 各切片上比对 rebase、bind 槽位及其后一字节的结果；另测并发首算和 `DyldCacheLoaded` 两个接口。
-- **不在本次范围**：旧分支里的符号 memoize、按名字索引、`closestSymbol` 等算法拷贝（上游之后已重写，拷贝已过时）；`MachOImage` 的 cached 视图；失效（invalidate）接口；现有 `_resolveRebaseCache` 等 `.nonatomic` 缓存的线程安全问题（2026-11-05 随这两个缓存移进 cached 存储一并解决，见决策日志）。
+- **不在本次范围**：旧分支里的符号 memoize、按名字索引、`closestSymbol` 等算法拷贝（上游之后已重写，拷贝已过时）；`MachOImage` 的 cached 视图；失效（invalidate）接口；现有 `_resolveRebaseCache` 等 `.nonatomic` 缓存的线程安全问题（2026-11-05 随 rebase / bind 两个缓存移进 cached 存储解决了这两个；剩下的 `identifier` 与 LC_DYLD_INFO bind 索引于 2026-11-06 同样移入，本包从此没有 `.nonatomic` 关联对象缓存，见决策日志）。
 - **落地顺序**：本仓库发版 → MachOSwiftSection 接手抛错版初始化方法、MachOObjCSection 改用新接口，各自发版 → MachOKit 删掉三处性能改动并发版。三个 bug 的上游 PR 并行准备，提交前由用户确认。
 
 ## 决策日志
@@ -41,3 +41,4 @@ MachOKit fork 在上游文件里有三处纯性能改动：`MachOFile` 的 chain
 | 2026-09-29 | 测试除对 fork 的 MachOKit 外，还对 `MachOFile.swift` 恢复成上游原样的 MachOKit 跑了一遍，全部一致 | fork 的缓存实现不能作为独立参照。注意样本里不一定有原始值为 0 的槽位，`layout` 字节判断与上游读文件判断的等价性只验证了非零一侧 |
 | 2026-09-29 | In Progress → Implemented | MachOKitExtensions 1.0.0、MachOObjCSection 0.8.107、MachOKit 0.53.101 已发布，MachOSwiftSection 的改动已合入 `next`（随它下一个版本发布）；三个 bug 修复已向上游提交 p-x9/MachOKit#330、#331、#332。配套文档：不另写使用指南或实现说明——唯一不显眼的约定「缓存跟随 `MachOFile` 实例，新建实例从空缓存开始」已写在 `cached` 的文档注释里；没有引入需要登记的新术语 |
 | 2026-11-05 | `resolveRebase(fileOffset:)` 与 `resolveBind(fileOffset:)` 解析过的槽位改记在 cached 存储里（`MachOCacheStorage` 的两张字典，锁内原地插入），去掉两个关联对象缓存 | 关联对象里的字典每记一条都要读出、插入、写回，写时复制让整份字典拷贝一次，逐个解析一个文件的槽位耗时随槽位数平方增长：测试夹具 5 万个 bind 槽位，最后 2000 个比最先 2000 个慢约 50 倍，改后约 1.2 倍。顺带解决本提案「不在本次范围」里 `.nonatomic` 缓存的线程安全问题。回归测试 `FixupResolutionMemoTests`；rebase 那条要配不再反复重开独立文件的 MachOKit 才能显出差别，否则每次解析两次重开文件的开销盖过了拷贝 |
+| 2026-11-06 | `MachOFile.identifier` 与 LC_DYLD_INFO bind 索引（`resolveBind` / `resolveSelfBind` / `isBind` 在没有 chained fixups 的文件上查的那张表）改记在 cached 存储的两个 `CacheSlot` 里，经 `memoized` 计算，去掉最后两个 `.retain(.nonatomic)` 关联对象 | 两者都是先读、没有就算、再写，读写之间不加锁。多个线程同时首读一个新 `MachOFile` 时各自算一份、各自写入，而 objc 的 nonatomic 关联对象 getter 返回值时不 retain，读者手里的值可能刚被另一个线程的写入释放，即 use-after-free：arm64e 上停在 `swift_getObjectType` 的 isa 检查（SIGTRAP），有时在 `objc_retain` 里 SIGSEGV。MachOSwiftSection 每次查 `SharedCache` 都经 `SharedCacheKey.init` 读 `identifier`，它的并发测试 `concurrentInterningSharesOneWinner` 因此几秒内必崩。`memoized` 让先写入的值胜出、此后不再替换，与 `MachOFile+Cached.swift` 创建存储的做法一致；读取改为经存储的锁。全包再无同类缓存。回归测试 `ConcurrentFirstReadTests`：子进程里按核心数开 4 到 16 个 `Thread`（M3 Ultra 上 16 个），每轮对一个新文件同时首读，共 2000 轮；修复前两条各跑 10 次全红（identifier 1.2 秒内、bind 索引 1.5 秒内崩溃），修复后 10 次全绿。MachOSwiftSection 那条测试以 5000 次重复各跑 10 次：对 1.3.1 全红，对修复后全绿 |
