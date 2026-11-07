@@ -2,7 +2,7 @@
 
 - **状态**: Implemented
 - **创建日期**: 2026-09-29
-- **最后更新**: 2026-11-06
+- **最后更新**: 2026-11-08
 
 ## 摘要
 
@@ -14,7 +14,7 @@ MachOKit fork 在上游文件里有三处纯性能改动：`MachOFile` 的 chain
   - `MachOFile.cached: MachOCached<MachOFile>`，提供 `dyldChainedFixups`、`fixupPointers`、`fixupPointer(at:)`、`resolveRebase(at:)`、`resolveOptionalRebase(at:)`、`resolveBind(at:)`。
   - `DyldCacheLoaded.cachedCurrent`：进程内只构造一次的 `DyldCacheLoaded.current`。
   - `DyldCacheLoaded.cached: DyldCacheLoadedCached`，提供 `headerInfo(at:in:)`，对 `ObjCHeaderOptimizationROProtocol` 泛型，替代 fork 的 `headerInfo(at:in:)`。
-- **缓存挂载**：`MachOFile` 是 class，用 `@AssociatedObject(.retain(.atomic))` 挂存储，首次创建由锁保护；存储不持有 `MachOFile`，避免循环引用。`DyldCacheLoaded` 是 struct，存储放在按 `ptr` 索引的全局表里；已加载的 shared cache 在进程内不会被卸载，所以不做淘汰。
+- **缓存挂载**：`MachOFile` 是 class，用 `@AssociatedObject(.retain(.atomic))` 挂存储，首次创建由锁保护；存储不持有 `MachOFile`，避免循环引用。`DyldCacheLoaded` 是 struct，存储放在按 `ptr` 索引的全局表里；已加载的 shared cache 在进程内不会被卸载，所以不做淘汰。子 cache 表（2026-10-06 加入，记录各子 cache 映射哪段地址）是例外：读自同一份 dyld cache 的文件共用一张，登记在按主文件路径与 UUID 索引的全局表里，全局表只弱引用它，见决策日志 2026-11-08。
 - **并发**：沿用旧 `feature/cached-view` 分支的 `NSLock` + `CacheSlot` 做法，重计算在锁外进行，两个线程同时首算时先写入的结果胜出。
 - **`resolveOptionalRebase` 的零值判断**：MachOKit 读槽位原始值用的 `fileHandle` 不是 public。改为检查解码后 rebase 内容的 `layout` 字节是否全零，它就是槽位的原始比特。
 - **内部切换**：`resolveRebase(fileOffset:)`、`resolveBind(fileOffset:)`、`isBind(_:)` 走 `cached`；`MachOImage.cache` 改用 `DyldCacheLoaded.cachedCurrent`。MachOSwiftSection 经由这些接口，无需改动。
@@ -42,3 +42,4 @@ MachOKit fork 在上游文件里有三处纯性能改动：`MachOFile` 的 chain
 | 2026-09-29 | In Progress → Implemented | MachOKitExtensions 1.0.0、MachOObjCSection 0.8.107、MachOKit 0.53.101 已发布，MachOSwiftSection 的改动已合入 `next`（随它下一个版本发布）；三个 bug 修复已向上游提交 p-x9/MachOKit#330、#331、#332。配套文档：不另写使用指南或实现说明——唯一不显眼的约定「缓存跟随 `MachOFile` 实例，新建实例从空缓存开始」已写在 `cached` 的文档注释里；没有引入需要登记的新术语 |
 | 2026-11-05 | `resolveRebase(fileOffset:)` 与 `resolveBind(fileOffset:)` 解析过的槽位改记在 cached 存储里（`MachOCacheStorage` 的两张字典，锁内原地插入），去掉两个关联对象缓存 | 关联对象里的字典每记一条都要读出、插入、写回，写时复制让整份字典拷贝一次，逐个解析一个文件的槽位耗时随槽位数平方增长：测试夹具 5 万个 bind 槽位，最后 2000 个比最先 2000 个慢约 50 倍，改后约 1.2 倍。顺带解决本提案「不在本次范围」里 `.nonatomic` 缓存的线程安全问题。回归测试 `FixupResolutionMemoTests`；rebase 那条要配不再反复重开独立文件的 MachOKit 才能显出差别，否则每次解析两次重开文件的开销盖过了拷贝 |
 | 2026-11-06 | 修掉最后两个先读后写、不加锁的 `.retain(.nonatomic)` 关联对象缓存：LC_DYLD_INFO bind 索引（`resolveBind` / `resolveSelfBind` / `isBind` 在没有 chained fixups 的文件上查的那张表）改记在 cached 存储的 `CacheSlot` 里、经 `memoized` 计算；`MachOFile.identifier` 留在关联对象里，第一次读时在锁里只写一次、从不替换 | 两者都是先读、没有就算、再写，读写之间不加锁。多个线程同时首读一个新 `MachOFile` 时各自算一份、各自写入，而 objc 的 nonatomic 关联对象 getter 返回值时不 retain，读者手里的值可能刚被另一个线程的写入释放，即 use-after-free：arm64e 上停在 `swift_getObjectType` 的 isa 检查（SIGTRAP），有时在 `objc_retain` 里 SIGSEGV。MachOSwiftSection 每次查 `SharedCache` 都经 `SharedCacheKey.init` 读 `identifier`，它的并发测试 `concurrentInterningSharesOneWinner` 因此几秒内必崩。bind 索引用 `memoized`：先写入的值胜出、此后不再替换，与 `MachOFile+Cached.swift` 创建存储的做法一致。`identifier` 不走 `memoized`：那样每次读都要经 `cached` 取存储（`.atomic` 关联对象，每次 retain 加 autorelease）再拿一次锁，而它是每次 `SharedCache` 查找都读的热路径，大栈执行器的任务里 autorelease 要到任务结束才清。只写一次、从不替换以后，nonatomic getter 不 retain 也安全——值在文件存活期间不会被释放——读取与修复前一样是一次不加锁的关联对象查找（MachOSwiftSection 07993a5f 的映射也是这个做法）。全包再无同类缓存。回归测试 `ConcurrentFirstReadTests`：子进程里按核心数开 4 到 16 个 `Thread`（M3 Ultra 上 16 个），每轮对一个新文件同时首读，共 2000 轮；修复前两条各跑 10 次全红（identifier 1.2 秒内、bind 索引 1.5 秒内崩溃），修复后 10 次全绿。MachOSwiftSection 那条测试以 5000 次重复各跑 10 次：对 1.3.1 全红，对修复后全绿 |
+| 2026-11-08 | 子 cache 表改为同一份 dyld cache 共用一张：`MachOCached.subCacheTable` 经 `DyldCacheSubCacheTable.table(for:)` 在全局表里按主文件的路径与 header UUID 查找，没有才建；全局表只弱引用，由用到它的文件的 cached 存储持有，最后一个这样的文件释放时随之释放 | 2026-10-06（a545061）起子 cache 表挂在每个 `MachOFile` 自己的 cached 存储上，同一份 cache 的每个镜像各建一张。经 `FullDyldCache` 打开时，建表从 `fullCache.subCaches` 取子 cache，而 MachOKit 的这个属性每次读都给每个子 cache 新建一个 `DyldCache`，于是每个镜像各留一套（macOS 27.2 的 cache 有 81 个子 cache 文件）；只开主文件时，每张表也各自打开查找落到的子 cache 文件。RuntimeViewer 离线读一个与本机 cache 配对的文件夹时实测 1,867 张表、165,689 个 `DyldCache`，约 250 MB，约占那个进程的三成。按路径与 UUID 认 cache，两种打开方式读出的文件也共用一张；同一路径换了一份 cache 时 UUID 不同，不会错用旧表。全局表不强引用，是因为它会让读过的每份 cache 的子 cache 文件一直开到进程结束，依次读许多份 cache 的进程就会耗尽文件描述符。回归测试在 `DyldCacheSubCacheLookupTests`：`filesOfOneCacheShareOneSubCache` 修复前两种打开方式都红，修复后绿；`subCacheIsReleasedWithTheLastFile` 在子进程里跑（同一进程里别的测试正读着同一份 cache），把全局表临时改成强引用时变红 |
