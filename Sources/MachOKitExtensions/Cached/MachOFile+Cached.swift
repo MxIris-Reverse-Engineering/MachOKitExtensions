@@ -7,7 +7,10 @@ extension MachOFile {
     /// results.
     ///
     /// The cache is attached to this `MachOFile` instance and released with
-    /// it; a new `MachOFile` for the same file starts with an empty cache.
+    /// it; a new `MachOFile` for the same file starts with an empty cache. The
+    /// one exception is where the sub-caches of a dyld cache map their
+    /// addresses: every file read from that cache shares it, so the sub-caches
+    /// `cacheAndFileOffset(for:)` lands in are shared too.
     public var cached: MachOCached<MachOFile> {
         MachOCached(base: self, storage: cacheStorage)
     }

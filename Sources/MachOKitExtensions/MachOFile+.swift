@@ -8,11 +8,13 @@ extension MachOFile {
 
     /// Convert an address that is not slided into the actual cache it contains and the file offset in it.
     ///
-    /// A sub-cache comes back as the same `DyldCache` instance on every call
-    /// on this file, so whatever a caller keeps per cache instance survives
-    /// from one lookup to the next. From a cache opened from its main file
-    /// alone, a sub-cache file a lookup has landed in stays open for as long
-    /// as this file does.
+    /// A sub-cache other than the one holding this file and the main cache
+    /// comes back as the same `DyldCache` instance for every file read from
+    /// the same cache, so whatever a caller keeps per cache instance survives
+    /// from one lookup to the next and from one image to the next. From a
+    /// cache opened from its main file alone, a sub-cache file a lookup has
+    /// landed in stays open for as long as some file read from that cache is
+    /// alive.
     /// - Parameter address: address (unslid)
     /// - Returns: cache and file offset
     public func cacheAndFileOffset(for address: UInt64) -> (DyldCache, UInt64)? {

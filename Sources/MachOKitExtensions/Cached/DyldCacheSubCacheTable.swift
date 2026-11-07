@@ -12,6 +12,12 @@ import Foundation
 /// each sub-cache file to read its mappings, and closes it again: only the
 /// sub-caches a lookup lands in stay open, instead of all 80 files of a macOS 27
 /// cache for every image read from it.
+///
+/// Every file read from one cache shares one table, through ``table(for:)``.
+/// `FullDyldCache.subCaches` builds a new `DyldCache` for every sub-cache each
+/// time it is read, so a table per file held a copy of all of them per image:
+/// 1,867 images read from the macOS 27 cache kept 165,689 `DyldCache` objects,
+/// about 250 MB.
 final class DyldCacheSubCacheTable: @unchecked Sendable {
     private struct MappedRange {
         let address: UInt64
@@ -103,5 +109,76 @@ final class DyldCacheSubCacheTable: @unchecked Sendable {
         }
         subCaches[subCacheIndex] = openedSubCache
         return openedSubCache
+    }
+}
+
+extension DyldCacheSubCacheTable {
+    /// The table of the cache whose main file `mainCache` is, shared by every
+    /// file read from that cache for as long as one of them keeps it.
+    ///
+    /// The first file to ask builds it from what its own main cache can hand
+    /// over: the sub-caches of its `FullDyldCache`, or the main file alone.
+    /// Either serves every other file of the cache, since both read the same
+    /// bytes.
+    static func table(for mainCache: DyldCache) -> DyldCacheSubCacheTable {
+        registry.table(for: mainCache)
+    }
+
+    private static let registry = Registry()
+
+    /// A dyld cache as its main file identifies it: the file's path and the
+    /// UUID its header records, so a cache rebuilt at the same path is another
+    /// cache.
+    private struct CacheIdentity: Hashable {
+        let mainCachePath: String
+        let uuid: UUID
+
+        init(mainCache: DyldCache) {
+            self.mainCachePath = mainCache.url.standardizedFileURL.path
+            self.uuid = mainCache.header.uuid
+        }
+    }
+
+    /// The table of every cache some file still keeps one for.
+    ///
+    /// Tables are held weakly: the files that use a table keep it alive, and
+    /// with it the cache's sub-caches and their open files. Held here, they
+    /// would keep the sub-cache files of every cache a process ever read open
+    /// for the rest of the process.
+    private final class Registry: @unchecked Sendable {
+        private struct Entry {
+            weak var table: DyldCacheSubCacheTable?
+        }
+
+        private let lock = NSLock()
+        private var entriesByCacheIdentity: [CacheIdentity: Entry] = [:]
+
+        func table(for mainCache: DyldCache) -> DyldCacheSubCacheTable {
+            let cacheIdentity = CacheIdentity(mainCache: mainCache)
+            lock.lock()
+            if let table = entriesByCacheIdentity[cacheIdentity]?.table {
+                lock.unlock()
+                return table
+            }
+            lock.unlock()
+
+            // Built outside the lock: from the main file alone it opens every
+            // sub-cache file to read its mappings, and lookups in other caches
+            // need not wait for that. When two threads race, the first table
+            // stored is the one both return.
+            let builtTable = DyldCacheSubCacheTable(mainCache: mainCache)
+
+            lock.lock()
+            defer { lock.unlock() }
+            if let table = entriesByCacheIdentity[cacheIdentity]?.table {
+                return table
+            }
+            // Entries whose table is gone are dropped as new ones arrive, so
+            // the registry grows with the caches in use at once, not with every
+            // cache the process has read.
+            entriesByCacheIdentity = entriesByCacheIdentity.filter { $0.value.table != nil }
+            entriesByCacheIdentity[cacheIdentity] = Entry(table: builtTable)
+            return builtTable
+        }
     }
 }

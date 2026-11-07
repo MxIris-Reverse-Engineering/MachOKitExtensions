@@ -2,18 +2,21 @@ import MachOKit
 
 extension MachOCached where Base == MachOFile {
     /// Where the sub-caches of the dyld cache this file was read from map
-    /// their addresses, built on first use; `nil` for a file not read from a
-    /// dyld cache.
+    /// their addresses; `nil` for a file not read from a dyld cache.
     ///
     /// Building the sub-caches per address lookup made every read of another
     /// image's bytes start from a fresh cache: through `FullDyldCache` that
     /// meant assembling all of its sub-caches again, from the main file alone
     /// it meant opening the file again, and either way whatever a reader kept
     /// on the instance it got last time was gone.
+    ///
+    /// The table is the one every file read from the same cache shares
+    /// (`DyldCacheSubCacheTable.table(for:)`); this file looks it up once and
+    /// keeps it, which keeps it alive for as long as this file is.
     var subCacheTable: DyldCacheSubCacheTable? {
         storage.memoized(\.subCacheTable) {
             guard let mainCache = base.cache?.mainCache else { return nil }
-            return DyldCacheSubCacheTable(mainCache: mainCache)
+            return DyldCacheSubCacheTable.table(for: mainCache)
         }
     }
 }
