@@ -14,17 +14,19 @@ import MachOKit
 /// Thrown when a pointer is built from an address of zero.
 struct NullPointerError: Error {}
 
-// Deliberately internal. A public throwing `init(bitPattern:)` would shadow the
-// standard library's failable one in every module that imports this package.
+// Deliberately not public. A public throwing `init(bitPattern:)` would shadow
+// the standard library's failable one in every module that imports this
+// package. `package` lets MachOReading, in this package too, build its
+// in-process addresses with it.
 extension UnsafeRawPointer {
-    init(nonZeroBitPattern bitPattern: UInt) throws {
+    package init(nonZeroBitPattern bitPattern: UInt) throws {
         guard let pointer = Self(bitPattern: bitPattern) else {
             throw NullPointerError()
         }
         self = pointer
     }
 
-    init(nonZeroBitPattern bitPattern: Int) throws {
+    package init(nonZeroBitPattern bitPattern: Int) throws {
         guard let pointer = Self(bitPattern: bitPattern) else {
             throw NullPointerError()
         }

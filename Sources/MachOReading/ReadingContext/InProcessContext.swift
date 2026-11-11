@@ -1,6 +1,10 @@
 import MachOKit
 import MachOKitExtensions
-import Utilities
+
+// The address mask comes from `MachOImage.current()`, which MachOKit only
+// declares where dyld is, and a process off Darwin has no Mach-O images of
+// its own to read.
+#if canImport(Darwin)
 
 /// A reading context for direct in-process memory access.
 ///
@@ -59,12 +63,12 @@ public struct InProcessContext: ReadingContext, Sendable {
     /// fit in 47 bits, an iPhone's in 36, and an arm64e signature starts
     /// right above them. Code that reads pointers out of this process's
     /// memory strips them with this mask rather than a constant of its own.
-    package static let addressMask = UInt(truncatingIfNeeded: MachOImage.current().vmaddrMask ?? .max)
+    public static let addressMask = UInt(truncatingIfNeeded: MachOImage.current().vmaddrMask ?? .max)
 
     /// `address` without its tag bits; throws for an address that is only tag
     /// bits, the way a null pointer throws.
     private func strippingTags(from address: Address) throws -> Address {
-        try UnsafeRawPointer(bitPattern: UInt(bitPattern: address) & Self.addressMask)
+        try UnsafeRawPointer(nonZeroBitPattern: UInt(bitPattern: address) & Self.addressMask)
     }
 
     public func readElement<T>(at ptr: Address) throws -> T {
@@ -99,12 +103,12 @@ public struct InProcessContext: ReadingContext, Sendable {
 
     public func addressFromOffset(_ offset: Int) throws -> Address {
         // For InProcess context, the offset is a pointer bit pattern
-        try UnsafeRawPointer(bitPattern: offset)
+        try UnsafeRawPointer(nonZeroBitPattern: offset)
     }
 
     public func addressFromVirtualAddress(_ virtualAddress: UInt64) throws -> Address {
         // For InProcess context, the virtual address is a pointer bit pattern.
-        try UnsafeRawPointer(bitPattern: UInt(truncatingIfNeeded: virtualAddress) & Self.addressMask)
+        try UnsafeRawPointer(nonZeroBitPattern: UInt(truncatingIfNeeded: virtualAddress) & Self.addressMask)
     }
 
     public func offsetFromAddress(_ address: Address) throws -> Int {
@@ -131,3 +135,5 @@ extension InProcessContext {
 extension ReadingContext where Self == InProcessContext {
     public static var inProcess: Self { .shared }
 }
+
+#endif

@@ -1,9 +1,5 @@
 import MachOKit
 import MachOKitExtensions
-// `box` used to arrive implicitly through the in-package MachOKitExtensions target.
-// MachOKitExtensions is now a separate package that deliberately avoids the
-// Apple-only FrameworkToolbox, so this import has to be spelled out here.
-import FoundationToolbox
 
 /// Extends `UnsafeRawPointer` to conform to `Readable`, enabling direct memory reading.
 ///
@@ -63,7 +59,7 @@ extension UnsafeRawPointer: Readable {
 
     public func readWrapperElement<Element>() throws -> Element where Element: LocatableLayoutWrapper {
         let layout: Element.Layout = assumingMemoryBound(to: Element.Layout.self).pointee
-        return .init(layout: layout, offset: box.bitPattern.int)
+        return .init(layout: layout, offset: Int(bitPattern: self))
     }
 
     public func readElements<Element>(to: Element.Type = Element.self, numberOfElements: Int) throws -> [Element] {
@@ -71,7 +67,7 @@ extension UnsafeRawPointer: Readable {
     }
 
     public func readWrapperElements<Element>(to: Element.Type = Element.self, numberOfElements: Int) throws -> [Element] where Element: LocatableLayoutWrapper {
-        var currentOffset = box.bitPattern.int
+        var currentOffset = Int(bitPattern: self)
         let elements = MemorySequence<Element.Layout>(basePointer: assumingMemoryBound(to: Element.Layout.self), numberOfElements: numberOfElements).map { (layout: Element.Layout) -> Element in
             let element = Element(layout: layout, offset: currentOffset)
             currentOffset += Element.layoutSize

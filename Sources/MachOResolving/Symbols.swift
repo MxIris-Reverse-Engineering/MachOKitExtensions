@@ -9,7 +9,7 @@ public struct Symbols: Sendable {
 
     private var _storage: [Symbol] = []
 
-    package init(offset: Int, symbols: [Symbol]) {
+    public init(offset: Int, symbols: [Symbol]) {
         self.offset = offset
         self._storage = symbols
     }

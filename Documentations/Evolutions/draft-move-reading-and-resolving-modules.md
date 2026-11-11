@@ -248,8 +248,8 @@ remote: .package(
 
 1. **前置**：swift-decompiler 迁掉 7 行废弃写法（属于 0057 的下游迁移）。**已完成**：编译器报出的是两个文件里的 13 处，比按文本搜到的多 3 处 `dumpName(using:in:)`；迁完后没有读取写法的废弃警告，732 个测试通过。
 2. **MachOSwiftSection**：按 0057 删除废弃写法，合入 `next`。
-3. **本包，提交一**：把两个模块的文件原样复制到 `Sources/MachOReading`、`Sources/MachOResolving`，暂不在 `Package.swift` 声明，构建不受影响。复制后与 MachOSwiftSection `next` 上的原文件做 `diff -r`，应完全一致。
-4. **本包，提交二**：声明 target、product 与 FileIO 依赖，做「代码改动」一节的修改；`swift build` 通过。
+3. **本包，提交一**：把两个模块的文件原样复制到 `Sources/MachOReading`、`Sources/MachOResolving`，暂不在 `Package.swift` 声明，构建不受影响。复制后与 MachOSwiftSection `next` 上的原文件做 `diff -r`，应完全一致。**已完成**：复制的是 MachOSwiftSection 功能分支上删去废弃写法之后的版本，`diff -r` 一致。
+4. **本包，提交二**：声明 target、product 与 FileIO 依赖，做「代码改动」一节的修改；`swift build` 通过。**已完成**：本地依赖与纯远端依赖（MachOKit 0.55.102、swift-fileio 0.15.1）下都编译通过。
 5. **本包，提交三**：单字母泛型参数改为全名，不改任何调用方写法；`swift build` 通过。
 6. **本包，测试与文档**：建 `MachOReadingTests`（两个测试），跑本包全部测试；搬实现说明，改 README 与索引。
 7. **MachOSwiftSection 功能分支**（本地依赖指向本包的功能分支）：删两个 target、改依赖、删 `ConcurrentFileMappingTests.swift`、改文档。跑全部测试（不含 `IntegrationTests`），再做渲染 A/B：以切换前的 `next` 为基线，三条读取路径的输出逐字节一致。
@@ -280,3 +280,5 @@ remote: .package(
 | 2026-11-11 | MachOSwiftSection 的功能分支从 `origin/next` 切 | 本地 `next` 比远端多 15 个提交：另一个功能（`feature/observable-macro`）在本地合入、还没推送，等用户验收。从本地 `next` 切会把它带进本分支并随推送公开；它不碰这次要改的文件，所以从已发布的 `origin/next` 切。 |
 | 2026-11-11 | swift-decompiler 用本地依赖验证 | 只用远端依赖时，它跟踪的 MachOSwiftSection `next` 编不过：`next` 用了 swift-demangling 尚未发版的 `DemangleOptions.useExistentialAny`。这是基线上已有的问题，与本提案无关；按 worktree 规则补齐本地依赖链接后验证。 |
 | 2026-11-11 | 读取层以 `next` 为准，与调研时看的 0.24.0 不同 | 调研时读的是 MachOSwiftSection 的 `main`（0.24.0）。`next` 上 0088（machofile-performance）已让 `MachOFile` 的读取直接用 MachOKit 打开文件时做好的映射（MachOKit 0.55.102 起的 `fileBytes`，SPI Support）：带 `@Mutex` 的 `MachOFile+.swift`、`DyldCache+.swift` 与 `FileIO+.swift` 都已删除，`ConcurrentFileMappingTests` 也已删除，换成 `FileMappingTests`。所以「锁换成 `NSLock`」不再需要；本包对 MachOKit 的下限要提到 0.55.102；测试改为搬 `FileMappingTests` 里只测读取层的三个，读整个 cache 的 Swift 镜像、检查描述符上限的那个依赖 MachOSwiftSection，留在原处。 |
+| 2026-11-11 | `InProcessContext.addressMask` 也改为 `public` | `next` 上 CrossReferenceAnalysis 用它剥本进程指针的标签位（`StoredPointer.swift`），`AddressMaskScanTests` 还要求剥标签只用它、不写常量。它原是 `package`，跨包后 MachOSwiftSection 看不到，所以和 `Symbols.init` 一样提为公开。 |
+| 2026-11-11 | 去掉 `FileHandle` 遵循 `MachONamespacing` 上的 `@retroactive` | `MachONamespacing` 声明在本包，搬进来后遵循方与协议同包，编译器要求去掉。 |

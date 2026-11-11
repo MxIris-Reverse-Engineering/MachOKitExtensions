@@ -2,7 +2,7 @@ import Foundation
 import MachOKit
 import MachOKitExtensions
 
-extension FileHandle: @retroactive MachONamespacing {}
+extension FileHandle: MachONamespacing {}
 
 extension MachONamespace where Base: FileHandle {
     func readDataSequence<Element>(
