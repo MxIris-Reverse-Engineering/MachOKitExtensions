@@ -250,13 +250,13 @@ remote: .package(
 ## 落地步骤
 
 1. **前置**：swift-decompiler 迁掉 7 行废弃写法（属于 0057 的下游迁移）。**已完成**：编译器报出的是两个文件里的 13 处，比按文本搜到的多 3 处 `dumpName(using:in:)`；迁完后没有读取写法的废弃警告，732 个测试通过。
-2. **MachOSwiftSection**：按 0057 删除废弃写法，合入 `next`。
+2. **MachOSwiftSection**：按 0057 删除废弃写法，合入 `next`。**已完成删除**（在功能分支上；合入 `next` 留到切换当天）：344 个转发、`AsyncResolvable` 与 `implementationAddress(in: machO)` 旧名；覆盖率登记表去掉 15 个键，基线用 Xcode 26.6 编的样本重新生成。全量测试 2840 个里只有基线上同样失败的 `readersOfOneCacheFileShareOneMapping`（见决策日志）。
 3. **本包，提交一**：把两个模块的文件原样复制到 `Sources/MachOReading`、`Sources/MachOResolving`，暂不在 `Package.swift` 声明，构建不受影响。复制后与 MachOSwiftSection `next` 上的原文件做 `diff -r`，应完全一致。**已完成**：复制的是 MachOSwiftSection 功能分支上删去废弃写法之后的版本，`diff -r` 一致。
 4. **本包，提交二**：声明 target、product 与 FileIO 依赖，做「代码改动」一节的修改；`swift build` 通过。**已完成**：本地依赖与纯远端依赖（MachOKit 0.55.102、swift-fileio 0.15.1）下都编译通过。
 5. **本包，提交三**：单字母泛型参数改为全名，不改任何调用方写法；`swift build` 通过。**已完成**：顺带把两处单字母参数名 `i` 与 `InProcessContext` 的参数名 `ptr` 改成全名，同样只是内部名字。
 6. **本包，测试与文档**：建 `MachOReadingTests`（两个测试），跑本包全部测试；搬实现说明，改 README 与索引。**已完成**：`MachOReadingTests` 的 5 个测试与原有的 30 个全部通过；实现说明见 `Internal/ReadingContextAbstraction.md`。
 7. **MachOSwiftSection 功能分支**（本地依赖指向本包的功能分支）：删两个 target、改依赖、删 `ConcurrentFileMappingTests.swift`、改文档。跑全部测试（不含 `IntegrationTests`），再做渲染 A/B：以切换前的 `next` 为基线，三条读取路径的输出逐字节一致。
-8. **MachOObjCSection**：放宽版本范围，打 tag。
+8. **MachOObjCSection**：放宽版本范围，打 tag。**范围已放宽**（功能分支，本地依赖下编译通过）；打 tag 属于发版，留到收尾。
 9. **切换当天**：本包合入 `main` 并打 2.0.0；MachOSwiftSection 把下限改为远端 2.0.0 与第 8 步的 tag，合入 `next`；本提案在本包落地编号，MachOSwiftSection 的提案索引加跨仓库行。
 10. **MachOSwiftSection 发版**（原定 0.25.0），Changelog 写明搬迁。
 11. **后续**：MachOKitUI 的提案。
@@ -285,3 +285,7 @@ remote: .package(
 | 2026-11-11 | 读取层以 `next` 为准，与调研时看的 0.24.0 不同 | 调研时读的是 MachOSwiftSection 的 `main`（0.24.0）。`next` 上 0088（machofile-performance）已让 `MachOFile` 的读取直接用 MachOKit 打开文件时做好的映射（MachOKit 0.55.102 起的 `fileBytes`，SPI Support）：带 `@Mutex` 的 `MachOFile+.swift`、`DyldCache+.swift` 与 `FileIO+.swift` 都已删除，`ConcurrentFileMappingTests` 也已删除，换成 `FileMappingTests`。所以「锁换成 `NSLock`」不再需要；本包对 MachOKit 的下限要提到 0.55.102；测试改为搬 `FileMappingTests` 里只测读取层的三个，读整个 cache 的 Swift 镜像、检查描述符上限的那个依赖 MachOSwiftSection，留在原处。 |
 | 2026-11-11 | `InProcessContext.addressMask` 也改为 `public` | `next` 上 CrossReferenceAnalysis 用它剥本进程指针的标签位（`StoredPointer.swift`），`AddressMaskScanTests` 还要求剥标签只用它、不写常量。它原是 `package`，跨包后 MachOSwiftSection 看不到，所以和 `Symbols.init` 一样提为公开。 |
 | 2026-11-11 | 去掉 `FileHandle` 遵循 `MachONamespacing` 上的 `@retroactive` | `MachONamespacing` 声明在本包，搬进来后遵循方与协议同包，编译器要求去掉。 |
+| 2026-11-11 | 删除废弃写法时多删两个登记键与两个测试 | `MetadataWrapper.metadata` 与 `TargetGenericContext.uniqueCurrentRequirementsInProcess` 是名字独一份的指针版写法，删后连键一起消失，MachOSwiftSection 的覆盖率不变式报为多余登记。按它的要求从登记表删去，并删掉对着这两个键的测试：它们测的是替代写法的本进程路径，`asMetadata` 另有自己的测试，顶层类型的 `uniqueCurrentRequirements` 也不读内存。详细记在 0057 的决策日志。 |
+| 2026-11-11 | `readersOfOneCacheFileShareOneMapping` 的失败归为基线已有 | MachOSwiftSection 的全量测试里它失败了（跨文件读取拿到的 sub-cache 实例与本次打开的映射不是同一份，跑了 216 秒）；同一批测试在 `origin/next` 的基线检出上也同样失败，所以不是本提案引入的。单独在本包的测试里它通过；用「先打开一次本机 cache 并让它的子 cache 表常驻」的探针也复现不了，原因没查清，列为后续项。 |
+| 2026-11-11 | MachOSwiftSection 不再依赖 swift-fileio，`ObjCClass64` 遵循 `Resolvable` 补 `@retroactive` | swift-fileio 原本只有 MachOReading 用，模块搬走后它在 MachOSwiftSection 里没有用处。`ClassHierarchyDumper` 让 MachOObjCSection 的 `ObjCClass64` 遵循 `Resolvable`，协议搬到本包后双方都来自别的包，编译器提示补上 `@retroactive`。 |
+| 2026-11-11 | 本地联调要用名字正好是 `MachOKitExtensions` 的真实目录 | SwiftPM 会把本地依赖的路径解析成真实路径，并以真实目录名作为包的身份：直接指向本包的功能 worktree（目录名带后缀）时，`package: "MachOKitExtensions"` 对不上。验证 MachOSwiftSection 时，在 agent 自己的目录里放了从本包与 MachOObjCSection 功能分支导出的同名快照，并临时（不提交）把 MachOSwiftSection 的两条本地依赖指向它们；共享的 `.worktrees/` 链接一律没动。这一条也写进了 MachOSwiftSection 的 `AGENTS.md`。 |
