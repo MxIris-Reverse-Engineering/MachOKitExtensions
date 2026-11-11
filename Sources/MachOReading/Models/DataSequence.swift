@@ -1,8 +1,6 @@
 import Foundation
 
-package struct DataSequence<T>: Sequence {
-    package typealias Element = T
-
+package struct DataSequence<Element>: Sequence {
     private let data: Data
     private let entrySize: Int
     private let numberOfElements: Int
@@ -36,8 +34,6 @@ package struct DataSequence<T>: Sequence {
 
 extension DataSequence {
     package struct Iterator: IteratorProtocol {
-        public typealias Element = T
-
         private let data: Data
         private let entrySize: Int
         private let numberOfElements: Int
@@ -78,8 +74,8 @@ extension DataSequence: Collection {
     package var startIndex: Index { 0 }
     package var endIndex: Index { numberOfElements }
 
-    package func index(after i: Int) -> Int {
-        i + 1
+    package func index(after position: Int) -> Int {
+        position + 1
     }
 
     package subscript(position: Int) -> Element {

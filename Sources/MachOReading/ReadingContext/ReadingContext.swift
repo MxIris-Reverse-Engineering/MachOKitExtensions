@@ -136,7 +136,7 @@ public protocol ReadingContext<Runtime, Address>: Sendable {
     /// - Parameter address: The address to read from
     /// - Returns: The element read from memory/file
     /// - Throws: If reading fails
-    func readElement<T>(at address: Address) throws -> T
+    func readElement<Element>(at address: Address) throws -> Element
 
     /// Reads multiple elements starting from the given address.
     ///
@@ -148,7 +148,7 @@ public protocol ReadingContext<Runtime, Address>: Sendable {
     ///   - numberOfElements: The number of elements to read
     /// - Returns: An array of elements read sequentially
     /// - Throws: If reading fails
-    func readElements<T>(at address: Address, numberOfElements: Int) throws -> [T]
+    func readElements<Element>(at address: Address, numberOfElements: Int) throws -> [Element]
 
     /// Reads a layout wrapper element from the given address.
     ///
@@ -158,7 +158,7 @@ public protocol ReadingContext<Runtime, Address>: Sendable {
     /// - Parameter address: The address to read from
     /// - Returns: The wrapper element with location information
     /// - Throws: If reading fails
-    func readWrapperElement<T: LocatableLayoutWrapper>(at address: Address) throws -> T
+    func readWrapperElement<Element: LocatableLayoutWrapper>(at address: Address) throws -> Element
 
     /// Reads multiple layout wrapper elements starting from the given address.
     ///
@@ -170,7 +170,7 @@ public protocol ReadingContext<Runtime, Address>: Sendable {
     ///   - numberOfElements: The number of elements to read
     /// - Returns: An array of wrapper elements with location information
     /// - Throws: If reading fails
-    func readWrapperElements<T: LocatableLayoutWrapper>(at address: Address, numberOfElements: Int) throws -> [T]
+    func readWrapperElements<Element: LocatableLayoutWrapper>(at address: Address, numberOfElements: Int) throws -> [Element]
 
     /// Reads a null-terminated C string from the given address.
     ///
@@ -192,14 +192,14 @@ public protocol ReadingContext<Runtime, Address>: Sendable {
 
     /// Advances an address by the size of the given type.
     ///
-    /// This is equivalent to `advanceAddress(address, by: MemoryLayout<T>.size)`
+    /// This is equivalent to `advanceAddress(address, by: MemoryLayout<Element>.size)`
     /// and is useful when iterating through arrays of elements.
     ///
     /// - Parameters:
     ///   - address: The base address
     ///   - type: The type whose size determines the advancement
     /// - Returns: The address advanced by the type's size
-    func advanceAddress<T>(_ address: Address, of type: T.Type) -> Address
+    func advanceAddress<Element>(_ address: Address, of type: Element.Type) -> Address
 
     /// Converts an integer offset (typically a pointer bit pattern) to this context's address type.
     ///

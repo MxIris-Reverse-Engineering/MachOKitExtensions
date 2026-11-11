@@ -1,12 +1,10 @@
-package struct MemorySequence<T>: Sequence {
-    public typealias Element = T
-
+package struct MemorySequence<Element>: Sequence {
     private let basePointer: UnsafeRawPointer
     private let entrySize: Int
     private let numberOfElements: Int
 
     package init(
-        basePointer: UnsafePointer<T>,
+        basePointer: UnsafePointer<Element>,
         numberOfElements: Int
     ) {
         self.basePointer = .init(basePointer)
@@ -15,7 +13,7 @@ package struct MemorySequence<T>: Sequence {
     }
 
     package init(
-        basePointer: UnsafePointer<T>,
+        basePointer: UnsafePointer<Element>,
         entrySize: Int,
         numberOfElements: Int
     ) {
@@ -35,8 +33,6 @@ package struct MemorySequence<T>: Sequence {
 
 extension MemorySequence {
     package struct Iterator: IteratorProtocol {
-        public typealias Element = T
-
         private let basePointer: UnsafeRawPointer
         private let entrySize: Int
         private let numberOfElements: Int
@@ -69,8 +65,8 @@ extension MemorySequence: Collection {
     package var startIndex: Index { 0 }
     package var endIndex: Index { numberOfElements }
 
-    package func index(after i: Int) -> Int {
-        i + 1
+    package func index(after position: Int) -> Int {
+        position + 1
     }
 
     package subscript(position: Int) -> Element {

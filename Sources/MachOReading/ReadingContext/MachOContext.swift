@@ -42,19 +42,19 @@ public struct MachOContext<MachO: MachORepresentableWithCache & Readable>: Readi
         self.machO = machO
     }
 
-    public func readElement<T>(at offset: Int) throws -> T {
+    public func readElement<Element>(at offset: Int) throws -> Element {
         try machO.readElement(offset: offset)
     }
 
-    public func readElements<T>(at address: Int, numberOfElements: Int) throws -> [T] {
+    public func readElements<Element>(at address: Int, numberOfElements: Int) throws -> [Element] {
         try machO.readElements(offset: address, numberOfElements: numberOfElements)
     }
 
-    public func readWrapperElement<T: LocatableLayoutWrapper>(at offset: Int) throws -> T {
+    public func readWrapperElement<Element: LocatableLayoutWrapper>(at offset: Int) throws -> Element {
         try machO.readWrapperElement(offset: offset)
     }
 
-    public func readWrapperElements<T>(at address: Int, numberOfElements: Int) throws -> [T] where T: LocatableLayoutWrapper {
+    public func readWrapperElements<Element>(at address: Int, numberOfElements: Int) throws -> [Element] where Element: LocatableLayoutWrapper {
         try machO.readWrapperElements(offset: address, numberOfElements: numberOfElements)
     }
 
@@ -66,7 +66,7 @@ public struct MachOContext<MachO: MachORepresentableWithCache & Readable>: Readi
         offset + delta
     }
 
-    public func advanceAddress<T>(_ address: Int, of type: T.Type) -> Int {
+    public func advanceAddress<Element>(_ address: Int, of type: Element.Type) -> Int {
         address.offseting(of: type)
     }
 

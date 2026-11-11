@@ -250,7 +250,7 @@ remote: .package(
 2. **MachOSwiftSection**：按 0057 删除废弃写法，合入 `next`。
 3. **本包，提交一**：把两个模块的文件原样复制到 `Sources/MachOReading`、`Sources/MachOResolving`，暂不在 `Package.swift` 声明，构建不受影响。复制后与 MachOSwiftSection `next` 上的原文件做 `diff -r`，应完全一致。**已完成**：复制的是 MachOSwiftSection 功能分支上删去废弃写法之后的版本，`diff -r` 一致。
 4. **本包，提交二**：声明 target、product 与 FileIO 依赖，做「代码改动」一节的修改；`swift build` 通过。**已完成**：本地依赖与纯远端依赖（MachOKit 0.55.102、swift-fileio 0.15.1）下都编译通过。
-5. **本包，提交三**：单字母泛型参数改为全名，不改任何调用方写法；`swift build` 通过。
+5. **本包，提交三**：单字母泛型参数改为全名，不改任何调用方写法；`swift build` 通过。**已完成**：顺带把两处单字母参数名 `i` 与 `InProcessContext` 的参数名 `ptr` 改成全名，同样只是内部名字。
 6. **本包，测试与文档**：建 `MachOReadingTests`（两个测试），跑本包全部测试；搬实现说明，改 README 与索引。
 7. **MachOSwiftSection 功能分支**（本地依赖指向本包的功能分支）：删两个 target、改依赖、删 `ConcurrentFileMappingTests.swift`、改文档。跑全部测试（不含 `IntegrationTests`），再做渲染 A/B：以切换前的 `next` 为基线，三条读取路径的输出逐字节一致。
 8. **MachOObjCSection**：放宽版本范围，打 tag。

@@ -71,24 +71,24 @@ public struct InProcessContext: ReadingContext, Sendable {
         try UnsafeRawPointer(nonZeroBitPattern: UInt(bitPattern: address) & Self.addressMask)
     }
 
-    public func readElement<T>(at ptr: Address) throws -> T {
-        try strippingTags(from: ptr).readElement()
+    public func readElement<Element>(at pointer: Address) throws -> Element {
+        try strippingTags(from: pointer).readElement()
     }
 
-    public func readElements<T>(at ptr: Address, numberOfElements: Int) throws -> [T] {
-        try strippingTags(from: ptr).readElements(numberOfElements: numberOfElements)
+    public func readElements<Element>(at pointer: Address, numberOfElements: Int) throws -> [Element] {
+        try strippingTags(from: pointer).readElements(numberOfElements: numberOfElements)
     }
 
-    public func readWrapperElement<T: LocatableLayoutWrapper>(at ptr: Address) throws -> T {
-        try strippingTags(from: ptr).readWrapperElement()
+    public func readWrapperElement<Element: LocatableLayoutWrapper>(at pointer: Address) throws -> Element {
+        try strippingTags(from: pointer).readWrapperElement()
     }
 
-    public func readWrapperElements<T>(at ptr: Address, numberOfElements: Int) throws -> [T] where T : LocatableLayoutWrapper {
-        try strippingTags(from: ptr).readWrapperElements(numberOfElements: numberOfElements)
+    public func readWrapperElements<Element>(at pointer: Address, numberOfElements: Int) throws -> [Element] where Element: LocatableLayoutWrapper {
+        try strippingTags(from: pointer).readWrapperElements(numberOfElements: numberOfElements)
     }
 
-    public func readString(at ptr: Address) throws -> String {
-        try strippingTags(from: ptr).readString()
+    public func readString(at pointer: Address) throws -> String {
+        try strippingTags(from: pointer).readString()
     }
 
     /// Advances from the untagged address: a tagged base plus a delta is not
@@ -97,8 +97,8 @@ public struct InProcessContext: ReadingContext, Sendable {
         ((try? strippingTags(from: address)) ?? address).advanced(by: delta)
     }
 
-    public func advanceAddress<T>(_ address: Address, of type: T.Type) -> Address {
-        advanceAddress(address, by: MemoryLayout<T>.size)
+    public func advanceAddress<Element>(_ address: Address, of type: Element.Type) -> Address {
+        advanceAddress(address, by: MemoryLayout<Element>.size)
     }
 
     public func addressFromOffset(_ offset: Int) throws -> Address {

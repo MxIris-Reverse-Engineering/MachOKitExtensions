@@ -22,8 +22,8 @@ extension Symbols: RandomAccessCollection {
 
     public var endIndex: Int { _storage.endIndex }
 
-    public func index(after i: Int) -> Int {
-        _storage.index(after: i)
+    public func index(after position: Int) -> Int {
+        _storage.index(after: position)
     }
 }
 
