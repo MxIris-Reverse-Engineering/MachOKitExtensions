@@ -14,7 +14,20 @@ arithmetic, cache resolution and load-command helpers that the Swift side took f
 Extracting the target into its own package breaks that cycle: both packages now depend on
 `MachOKitExtensions`, and neither depends on the other.
 
-## What it provides
+Since 2.0.0 the package also carries MachOSwiftSection's reading layer, `MachOReading` and
+`MachOResolving`, as products of their own, so that a package can read typed values out of a
+Mach-O without depending on MachOSwiftSection. MachOKitUI with its `SwiftSection` trait off is the
+first such package.
+
+## Products
+
+| Product | What it is |
+|---|---|
+| `MachOKitExtensions` | The extensions on MachOKit's types listed below |
+| `MachOReading` | Reading typed values out of a file, a loaded image or this process's memory: `Readable` (conformed to by `MachOFile`, `MachOImage` and `UnsafeRawPointer`), and `ReadingContext` with `MachOContext` (addresses are offsets in a file or image) and `InProcessContext` (addresses are pointers in this process; Darwin only) |
+| `MachOResolving` | `Resolvable`, a value read at an address, and `SymbolOrElement`, which names the symbol dyld binds at an address instead of reading what is not there; the `Symbol` and `Symbols` value types |
+
+## What the MachOKitExtensions module provides
 
 | Area | Highlights |
 |---|---|
@@ -30,7 +43,12 @@ Extracting the target into its own package breaks that cycle: both packages now 
 ## Usage
 
 ```swift
-.package(url: "https://github.com/MxIris-Reverse-Engineering/MachOKitExtensions", from: "1.0.0")
+.package(url: "https://github.com/MxIris-Reverse-Engineering/MachOKitExtensions", from: "2.0.0")
+```
+
+```swift
+.product(name: "MachOKitExtensions", package: "MachOKitExtensions"),
+.product(name: "MachOReading", package: "MachOKitExtensions"),
 ```
 
 ```swift
@@ -41,6 +59,27 @@ let machOFile: MachOFile = // …
 // Turn a file offset into the address it will have once loaded.
 let address = machOFile.addressString(forOffset: 0x1000)
 ```
+
+One reading function serves a file, a loaded image and this process alike, because it takes a
+`ReadingContext` rather than a particular reader:
+
+```swift
+import MachOKit
+import MachOReading
+
+func magic<Context: ReadingContext>(at address: Context.Address, in context: Context) throws -> UInt32 {
+    try context.readElement(at: address)
+}
+
+let fromFile = try magic(at: 0, in: machOFile.context)
+let fromImage = try magic(at: 0, in: machOImage.context)
+```
+
+2.0.0 adds the `MachOReading` and `MachOResolving` products and changes nothing in the
+`MachOKitExtensions` module. It is a major version because MachOSwiftSection 0.24 and earlier
+declare modules of those same names, and SwiftPM refuses a package graph with two modules of one
+name: a `from: "1.x"` requirement keeps such a MachOSwiftSection from ever resolving together
+with this release.
 
 A type of your own that holds a reader and forwards every read to it declares what it wraps,
 so that whatever is worked out per reader kind — absolute pointers for an image mapped into
@@ -66,9 +105,11 @@ macOS 10.15+, iOS 13+, watchOS 6+, tvOS 13+, visionOS 1+, and Linux.
 
 Linux support matters here because MachOObjCSection supports Linux, and it would have regressed
 had this package pulled in Apple-only dependencies. The package therefore depends only on
-MachOKit and [AssociatedObject](https://github.com/p-x9/AssociatedObject) — the latter routes
-through [swift-object-association](https://github.com/p-x9/swift-object-association) on
-non-Objective-C platforms.
+MachOKit, [AssociatedObject](https://github.com/p-x9/AssociatedObject) — which routes through
+[swift-object-association](https://github.com/p-x9/swift-object-association) on
+non-Objective-C platforms — and, for `MachOReading`, [swift-fileio](https://github.com/p-x9/swift-fileio),
+which MachOKit depends on already. `InProcessContext` reads this process's own Mach-O images, so
+it exists on Darwin only.
 
 ## License
 

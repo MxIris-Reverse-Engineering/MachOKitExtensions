@@ -145,5 +145,13 @@ let package = Package(
                 "MachOKit",
             ]
         ),
+        .testTarget(
+            name: "MachOReadingTests",
+            dependencies: [
+                "MachOReading",
+                "MachOKitExtensions",
+                "MachOKit",
+            ]
+        ),
     ]
 )

@@ -22,6 +22,8 @@
 
 ## 前期调研
 
+下面「要搬的代码」一段是调研时 MachOSwiftSection 0.24.0 的情况；实际搬的 `next` 已有变化，见决策日志 2026-11-11「读取层以 `next` 为准」。
+
 **要搬的代码**
 
 - MachOSwiftSection 的 `Sources/MachO/MachOReading`（14 个文件）与 `Sources/MachO/MachOResolving`（6 个文件），共约 2,100 行，在其 `Package.swift:367-386` 声明。`MachOReading` 依赖 MachOKit、本包、`Utilities`（MachOSwiftSection 内部 target）与 FileIO；`MachOResolving` 依赖 MachOKit、本包与 `MachOReading`。
@@ -95,7 +97,8 @@ products: [
     .library(name: "MachOResolving", targets: ["MachOResolving"]),
 ],
 dependencies: [
-    // MachOKit and AssociatedObject unchanged.
+    // MachOKit: `from: "0.55.102"`, the first release with `fileBytes`.
+    // AssociatedObject unchanged.
     .package(url: "https://github.com/p-x9/swift-fileio.git", from: "0.13.0"),
 ],
 targets: [
@@ -105,7 +108,6 @@ targets: [
         dependencies: [
             "MachOKit",
             "MachOKitExtensions",
-            .product(name: "AssociatedObject", package: "AssociatedObject"),
             .product(name: "FileIO", package: "swift-fileio"),
         ]
     ),
@@ -121,7 +123,7 @@ targets: [
         name: "MachOReadingTests",
         dependencies: [
             "MachOReading",
-            "MachOResolving",
+            "MachOKitExtensions",
             "MachOKit",
         ]
     ),
@@ -138,9 +140,10 @@ FileIO 的下限与 MachOKit 一致，不额外收窄。源码沿用 SwiftPM 的
 
 | 文件 | 改动 |
 |---|---|
-| `MachOReading/Extensions/MachOFile+.swift`、`DyldCache+.swift` | `@Mutex` 静态属性换成 `NSLock`，锁内的双重检查保持原样；去掉 `import FoundationToolbox` |
+| `Package.swift` | 两个 target 与同名 product；swift-fileio 依赖；MachOKit 下限从 0.54.101 提到 0.55.102（`fileBytes`） |
+| `MachOReading/Extensions/FileHandle+.swift` | `FileHandle` 遵循 `MachONamespacing` 去掉 `@retroactive`：协议在本包声明 |
 | `MachOReading/Readable/UnsafeRawPointer+Readable.swift` | `box.bitPattern.int` 换成 `Int(bitPattern: self)`；去掉 `import FoundationToolbox` |
-| `MachOReading/ReadingContext/InProcessContext.swift` | 整个文件包进 `#if canImport(Darwin)`；`try UnsafeRawPointer(bitPattern:)` 换成 `try UnsafeRawPointer(nonZeroBitPattern:)`；去掉 `import Utilities` |
+| `MachOReading/ReadingContext/InProcessContext.swift` | 整个文件包进 `#if canImport(Darwin)`；`try UnsafeRawPointer(bitPattern:)` 换成 `try UnsafeRawPointer(nonZeroBitPattern:)`；去掉 `import Utilities`；`addressMask` 从 `package` 改为 `public` |
 | `MachOKitExtensions/UnsafeRawPointer+.swift` | `init(nonZeroBitPattern:)` 的两个重载从 internal 提为 `package`，仍不对外公开 |
 | `MachOResolving/Symbols.swift` | `init(offset:symbols:)` 从 `package` 改为 `public` |
 | `MachOResolving/Resolvable.swift` | `asMachOWrapper(in:)` 里的 `machO.ptr.bitPattern.uint` 换成 `UInt(bitPattern: machO.ptr)`，访问级别保持 `package` |
@@ -168,7 +171,7 @@ static let MachOKitExtensions = Package.Dependency.package(
 
 - 删掉 `Target.MachOReading`、`Target.MachOResolving` 的定义；所有 `.target(.MachOReading)` / `.target(.MachOResolving)` 换成本包的 product（`MachOResolving`、`MachOSymbols`、`MachOPointers`、`MachOBase` 等，实现时以 `grep` 为准）。
 - MachOObjCSection 的下限提到放宽了范围的那个 tag：否则图里的旧版 MachOObjCSection 要求本包低于 2.0.0，与 MachOSwiftSection 的 2.0.0 以上冲突，整张图解不出来。
-- 源码不动；`Tests/MachOSwiftSectionTests/ConcurrentFileMappingTests.swift` 删除（搬到本包）。`ReaderKindCastScanTests` 不变，它本来就只扫 MachOSwiftSection 自己的 `Sources/`。
+- 源码不动；`Tests/MachOSwiftSectionTests/FileMappingTests.swift` 只留在描述符上限内读 400 个 Swift 镜像的那个测试，其余三个搬到本包。`ReaderKindCastScanTests` 不变，它本来就只扫 MachOSwiftSection 自己的 `Sources/`。
 
 ### MachOObjCSection 的改动
 
@@ -187,8 +190,8 @@ remote: .package(
 
 新 test target `MachOReadingTests`：
 
-- `ConcurrentFileMappingTests`：从 MachOSwiftSection 搬来，`MachOFile` 一例的样本从 `SymbolTestsCore` 换成 `/usr/bin/curl`，dyld cache 一例不变。
-- `ReaderKindCastScanTests`：照 MachOSwiftSection 的写法，扫本包的 `Sources/MachOReading` 与 `Sources/MachOResolving`。`Sources/MachOKitExtensions/MachOReaderWrapper.swift` 里的 `asMachOImage` 等取法本身就要做类型转换，不在扫描范围内。
+- `FileMappingTests`：从 MachOSwiftSection 的同名测试搬来只测读取层的三个——同一个 cache 文件的各个读者共用一份映射、打开后被删除的文件照样读得到、越界读取抛错。本机 cache 的路径改用 MachOKit 的 `DyldCache.host`，整个文件包在 `#if canImport(Darwin)` 里，与本包已有的测试一致。
+- `ReaderKindCastScanTests`：照 MachOSwiftSection 的写法，扫本包的 `Sources/MachOReading` 与 `Sources/MachOResolving`，另加一条：一个文件都没扫到时测试失败，免得路径写错后扫描悄悄通过。`Sources/MachOKitExtensions/MachOReaderWrapper.swift` 里的 `asMachOImage` 等取法本身就要做类型转换，不在扫描范围内。
 
 本包已有的 `MachOKitExtensionsTests` 不变。
 
@@ -196,7 +199,7 @@ remote: .package(
 
 - 本包新建 `Documentations/Internal/ReadingContextAbstraction.md`：从 MachOSwiftSection 的同名文档搬来读取层本身的部分（协议层次、`MachOContext`、`InProcessContext`、缓存范围、`Resolvable`、包装读取器），开头指回本提案，登记进 `Documentations/README.md`。
 - MachOSwiftSection 的 `Documentations/Internal/ReadingContextAbstraction.md` 只留 ABI 层怎么用它（`RelativePointerProtocol` 的接入、模型覆盖、单一实现、缓存范围在上层的用法），开头链接到本包那份。
-- 本包 README：「What it provides」表加两行；Usage 改成 `from: "2.0.0"` 并说明三个 product；Platforms 一段补上 FileIO 依赖与「`InProcessContext` 只在 Darwin 上有」。
+- 本包 README：新增「Products」一节说明三个 product；Usage 改成 `from: "2.0.0"`，补一个经 `ReadingContext` 读取的例子，并说明为什么只新增也要升大版本；Platforms 一段补上 FileIO 依赖与「`InProcessContext` 只在 Darwin 上有」。
 - MachOSwiftSection：`AGENTS.md` 的模块层次图与模块说明（这两个模块改为外部依赖）、`Documentations/README.md`、`Glossary.md` 相关词条的链接、`Internal/Modules/README.md`、提案索引的跨仓库行；发版的 Changelog 写明搬迁。
 
 ## 替代方案考量
@@ -251,7 +254,7 @@ remote: .package(
 3. **本包，提交一**：把两个模块的文件原样复制到 `Sources/MachOReading`、`Sources/MachOResolving`，暂不在 `Package.swift` 声明，构建不受影响。复制后与 MachOSwiftSection `next` 上的原文件做 `diff -r`，应完全一致。**已完成**：复制的是 MachOSwiftSection 功能分支上删去废弃写法之后的版本，`diff -r` 一致。
 4. **本包，提交二**：声明 target、product 与 FileIO 依赖，做「代码改动」一节的修改；`swift build` 通过。**已完成**：本地依赖与纯远端依赖（MachOKit 0.55.102、swift-fileio 0.15.1）下都编译通过。
 5. **本包，提交三**：单字母泛型参数改为全名，不改任何调用方写法；`swift build` 通过。**已完成**：顺带把两处单字母参数名 `i` 与 `InProcessContext` 的参数名 `ptr` 改成全名，同样只是内部名字。
-6. **本包，测试与文档**：建 `MachOReadingTests`（两个测试），跑本包全部测试；搬实现说明，改 README 与索引。
+6. **本包，测试与文档**：建 `MachOReadingTests`（两个测试），跑本包全部测试；搬实现说明，改 README 与索引。**已完成**：`MachOReadingTests` 的 5 个测试与原有的 30 个全部通过；实现说明见 `Internal/ReadingContextAbstraction.md`。
 7. **MachOSwiftSection 功能分支**（本地依赖指向本包的功能分支）：删两个 target、改依赖、删 `ConcurrentFileMappingTests.swift`、改文档。跑全部测试（不含 `IntegrationTests`），再做渲染 A/B：以切换前的 `next` 为基线，三条读取路径的输出逐字节一致。
 8. **MachOObjCSection**：放宽版本范围，打 tag。
 9. **切换当天**：本包合入 `main` 并打 2.0.0；MachOSwiftSection 把下限改为远端 2.0.0 与第 8 步的 tag，合入 `next`；本提案在本包落地编号，MachOSwiftSection 的提案索引加跨仓库行。
