@@ -7,7 +7,7 @@
 - **所属愿景**: 无
 - **关联提案**: MachOSwiftSection [0018 self-contained-abi-layer](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0018-self-contained-abi-layer.md)（定下 `MachOBase` 这一层能看到什么）、[0057 reading-context-migration](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0057-reading-context-migration.md)（废弃读取写法的删除计划）、[0075 wrapped-reader-recognition](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0075-wrapped-reader-recognition.md)（`MachOReaderWrapper` 放进本包）；MachOObjCSection [0001 objc-rendering-and-indexing-downstreaming](https://github.com/MxIris-Reverse-Engineering/MachOObjCSection/blob/main/Documentations/Evolutions/0001-objc-rendering-and-indexing-downstreaming.md)（本包的来历，当时决定不抽这一栈）；本包 [0001 cached-view](0001-cached-view.md)（用大版本号挡住旧下游的先例）
 - **实现分支 / PR**: 四个仓库同名的 `feature/move-reading-and-resolving-modules`（本包、MachOSwiftSection、MachOObjCSection、swift-decompiler），各在自己的 `.worktrees/<项目名>-MoveReadingAndResolvingModules`
-- **配套文档**: 待定 —— 落地时登记从 MachOSwiftSection 搬来的实现说明 `Internal/ReadingContextAbstraction.md`
+- **配套文档**: 实现说明 [Internal/ReadingContextAbstraction.md](../Internal/ReadingContextAbstraction.md)（从 MachOSwiftSection 搬来读取层本身的部分）
 
 ## 摘要
 
@@ -255,9 +255,9 @@ remote: .package(
 4. **本包，提交二**：声明 target、product 与 FileIO 依赖，做「代码改动」一节的修改；`swift build` 通过。**已完成**：本地依赖与纯远端依赖（MachOKit 0.55.102、swift-fileio 0.15.1）下都编译通过。
 5. **本包，提交三**：单字母泛型参数改为全名，不改任何调用方写法；`swift build` 通过。**已完成**：顺带把两处单字母参数名 `i` 与 `InProcessContext` 的参数名 `ptr` 改成全名，同样只是内部名字。
 6. **本包，测试与文档**：建 `MachOReadingTests`（两个测试），跑本包全部测试；搬实现说明，改 README 与索引。**已完成**：`MachOReadingTests` 的 5 个测试与原有的 30 个全部通过；实现说明见 `Internal/ReadingContextAbstraction.md`。
-7. **MachOSwiftSection 功能分支**（本地依赖指向本包的功能分支）：删两个 target、改依赖、删 `ConcurrentFileMappingTests.swift`、改文档。跑全部测试（不含 `IntegrationTests`），再做渲染 A/B：以切换前的 `next` 为基线，三条读取路径的输出逐字节一致。
+7. **MachOSwiftSection 功能分支**（本地依赖指向本包的功能分支）：删两个 target、改依赖、删 `ConcurrentFileMappingTests.swift`、改文档。跑全部测试（不含 `IntegrationTests`），再做渲染 A/B：以切换前的 `next` 为基线，三条读取路径的输出逐字节一致。**已完成**：Xcode 26.6 下 2835 个测试只有一个计时测试在整套负载下超时（单独跑通过，基线上同样超时）；渲染 A/B 以 `origin/next` 为基线，dyld cache 24 对、模拟器上的独立文件 48 对、进程内镜像 24 对，共 96 对全部逐字节一致。
 8. **MachOObjCSection**：放宽版本范围，打 tag。**范围已放宽**（功能分支，本地依赖下编译通过）；打 tag 属于发版，留到收尾。
-9. **切换当天**：本包合入 `main` 并打 2.0.0；MachOSwiftSection 把下限改为远端 2.0.0 与第 8 步的 tag，合入 `next`；本提案在本包落地编号，MachOSwiftSection 的提案索引加跨仓库行。
+9. **切换当天**：本包合入 `main` 并打 2.0.0；MachOSwiftSection 把下限改为远端 2.0.0 与第 8 步的 tag，合入 `next`；本提案在本包落地编号，MachOSwiftSection 的提案索引加跨仓库行。同一天还要合 MachOObjCSection 的范围放宽与 swift-decompiler 的迁移（它跟 MachOSwiftSection 的 `next`，要先于 `next` 删废弃写法合入）。注意：本包 `main` 一合入，`MxIris-Reverse-Engineering.xcworkspace` 与 MachOKitUI 的根目录就会报模块重名——它们配的是 MachOSwiftSection 的 `main`（0.24.0，仍自带同名模块），要到 MachOSwiftSection 发版、`main` 也切过去才恢复；`-Next` 工作区与 RuntimeViewer 配的是 `next`，不受影响。
 10. **MachOSwiftSection 发版**（原定 0.25.0），Changelog 写明搬迁。
 11. **后续**：MachOKitUI 的提案。
 
@@ -289,3 +289,6 @@ remote: .package(
 | 2026-11-11 | `readersOfOneCacheFileShareOneMapping` 的失败归为基线已有 | MachOSwiftSection 的全量测试里它失败了（跨文件读取拿到的 sub-cache 实例与本次打开的映射不是同一份，跑了 216 秒）；同一批测试在 `origin/next` 的基线检出上也同样失败，所以不是本提案引入的。单独在本包的测试里它通过；用「先打开一次本机 cache 并让它的子 cache 表常驻」的探针也复现不了，原因没查清，列为后续项。 |
 | 2026-11-11 | MachOSwiftSection 不再依赖 swift-fileio，`ObjCClass64` 遵循 `Resolvable` 补 `@retroactive` | swift-fileio 原本只有 MachOReading 用，模块搬走后它在 MachOSwiftSection 里没有用处。`ClassHierarchyDumper` 让 MachOObjCSection 的 `ObjCClass64` 遵循 `Resolvable`，协议搬到本包后双方都来自别的包，编译器提示补上 `@retroactive`。 |
 | 2026-11-11 | 本地联调要用名字正好是 `MachOKitExtensions` 的真实目录 | SwiftPM 会把本地依赖的路径解析成真实路径，并以真实目录名作为包的身份：直接指向本包的功能 worktree（目录名带后缀）时，`package: "MachOKitExtensions"` 对不上。验证 MachOSwiftSection 时，在 agent 自己的目录里放了从本包与 MachOObjCSection 功能分支导出的同名快照，并临时（不提交）把 MachOSwiftSection 的两条本地依赖指向它们；共享的 `.worktrees/` 链接一律没动。这一条也写进了 MachOSwiftSection 的 `AGENTS.md`。 |
+| 2026-11-11 | 渲染 A/B 全部一致 | 基线是 `origin/next` 的独立检出（依赖本包 `main`），候选是 MachOSwiftSection 功能分支（依赖本包功能分支）；两侧用默认的 Xcode 27.2 各自 release 预构建后带 `--skip-build` 跑，不用基线缓存。dyld cache（macOS 26.6、15.5）24 对、模拟器 runtime（iOS 15.5 到 26.5）里的独立文件 48 对、进程内镜像 24 对，共 96 对逐字节一致。仓库自带脚本要 Python 3.10 以上，系统的 `python3` 是 3.9，改用 Homebrew 的 3.14。 |
+| 2026-11-11 | 没有先在本地合进常驻检出 | 本包的常驻检出就是仓库根目录的 `main`，同时被两套本地环境当作兄弟目录：`-Next` 工作区与 RuntimeViewer 配的是 MachOSwiftSection 的 `next`，`MxIris-Reverse-Engineering.xcworkspace` 与 MachOKitUI 根目录配的是 MachOSwiftSection 的 `main`（0.24.0，仍自带同名模块）。只要把本包合进来，后一套就报模块重名。所以四个功能分支都只推送、不合进常驻检出，切换留到正式收尾（落地步骤 9），要不要先在本地合 `next` 一侧由用户定。 |
+| 2026-11-11 | 实现完成，待用户看过后收尾 | 落地步骤 1 到 7 完成，第 8 步的打 tag 与第 9、10 步属于收尾与发版。文档判断：实现说明已写（`Internal/ReadingContextAbstraction.md`，登记到头部「配套文档」）；调用方要遵守的契约只有 README 里的产品说明与「为什么只新增也升大版本」，不另写使用指南；没有引入新术语，沿用 MachOSwiftSection 术语表的词条，本包暂不建术语表。 |
