@@ -249,14 +249,14 @@ remote: .package(
 
 ## 落地步骤
 
-1. **前置**：swift-decompiler 迁掉 7 行废弃写法（属于 0057 的下游迁移）。**已完成**：编译器报出的是两个文件里的 13 处，比按文本搜到的多 3 处 `dumpName(using:in:)`；迁完后没有读取写法的废弃警告，732 个测试通过。
+1. **前置**：swift-decompiler 迁掉 7 行废弃写法（属于 0057 的下游迁移）。**已完成**：编译器报出的是两个文件里的 13 处，比按文本搜到的多 3 处 `dumpName(using:in:)`；迁完后没有读取写法的废弃警告，732 个测试通过。**已落地**：2026-11-12 合入 swift-decompiler 的 `main` 并推送。
 2. **MachOSwiftSection**：按 0057 删除废弃写法，合入 `next`。**已完成删除**（在功能分支上；合入 `next` 留到切换当天）：344 个转发、`AsyncResolvable` 与 `implementationAddress(in: machO)` 旧名；覆盖率登记表去掉 15 个键，基线用 Xcode 26.6 编的样本重新生成。全量测试 2840 个里只有基线上同样失败的 `readersOfOneCacheFileShareOneMapping`（见决策日志）。
 3. **本包，提交一**：把两个模块的文件原样复制到 `Sources/MachOReading`、`Sources/MachOResolving`，暂不在 `Package.swift` 声明，构建不受影响。复制后与 MachOSwiftSection `next` 上的原文件做 `diff -r`，应完全一致。**已完成**：复制的是 MachOSwiftSection 功能分支上删去废弃写法之后的版本，`diff -r` 一致。
 4. **本包，提交二**：声明 target、product 与 FileIO 依赖，做「代码改动」一节的修改；`swift build` 通过。**已完成**：本地依赖与纯远端依赖（MachOKit 0.55.102、swift-fileio 0.15.1）下都编译通过。
 5. **本包，提交三**：单字母泛型参数改为全名，不改任何调用方写法；`swift build` 通过。**已完成**：顺带把两处单字母参数名 `i` 与 `InProcessContext` 的参数名 `ptr` 改成全名，同样只是内部名字。
 6. **本包，测试与文档**：建 `MachOReadingTests`（两个测试），跑本包全部测试；搬实现说明，改 README 与索引。**已完成**：`MachOReadingTests` 的 5 个测试与原有的 30 个全部通过；实现说明见 `Internal/ReadingContextAbstraction.md`。
 7. **MachOSwiftSection 功能分支**（本地依赖指向本包的功能分支）：删两个 target、改依赖、删 `ConcurrentFileMappingTests.swift`、改文档。跑全部测试（不含 `IntegrationTests`），再做渲染 A/B：以切换前的 `next` 为基线，三条读取路径的输出逐字节一致。**已完成**：Xcode 26.6 下 2835 个测试只有一个计时测试在整套负载下超时（单独跑通过，基线上同样超时）；渲染 A/B 以 `origin/next` 为基线，dyld cache 24 对、模拟器上的独立文件 48 对、进程内镜像 24 对，共 96 对全部逐字节一致。
-8. **MachOObjCSection**：放宽版本范围，打 tag。**范围已放宽**（功能分支，本地依赖下编译通过）；打 tag 属于发版，留到收尾。
+8. **MachOObjCSection**：放宽版本范围，打 tag。**范围放宽已落地**：2026-11-12 合入 MachOObjCSection 的 `next` 并推送；打 tag 属于发版，等用户决定。
 9. **切换当天**：本包合入 `main` 并打 2.0.0；MachOSwiftSection 把下限改为远端 2.0.0 与第 8 步的 tag，合入 `next`；本提案在本包落地编号，MachOSwiftSection 的提案索引加跨仓库行。同一天还要合 MachOObjCSection 的范围放宽与 swift-decompiler 的迁移（它跟 MachOSwiftSection 的 `next`，要先于 `next` 删废弃写法合入）。注意：本包 `main` 一合入，`MxIris-Reverse-Engineering.xcworkspace` 与 MachOKitUI 的根目录就会报模块重名——它们配的是 MachOSwiftSection 的 `main`（0.24.0，仍自带同名模块），要到 MachOSwiftSection 发版、`main` 也切过去才恢复；`-Next` 工作区与 RuntimeViewer 配的是 `next`，不受影响。
 10. **MachOSwiftSection 发版**（原定 0.25.0），Changelog 写明搬迁。
 11. **后续**：MachOKitUI 的提案。
@@ -293,3 +293,5 @@ remote: .package(
 | 2026-11-11 | 没有先在本地合进常驻检出 | 本包的常驻检出就是仓库根目录的 `main`，同时被两套本地环境当作兄弟目录：`-Next` 工作区与 RuntimeViewer 配的是 MachOSwiftSection 的 `next`，`MxIris-Reverse-Engineering.xcworkspace` 与 MachOKitUI 根目录配的是 MachOSwiftSection 的 `main`（0.24.0，仍自带同名模块）。只要把本包合进来，后一套就报模块重名。所以四个功能分支都只推送、不合进常驻检出，切换留到正式收尾（落地步骤 9），要不要先在本地合 `next` 一侧由用户定。 |
 | 2026-11-11 | 实现完成，待用户看过后收尾 | 落地步骤 1 到 7 完成，第 8 步的打 tag 与第 9、10 步属于收尾与发版。文档判断：实现说明已写（`Internal/ReadingContextAbstraction.md`，登记到头部「配套文档」）；调用方要遵守的契约只有 README 里的产品说明与「为什么只新增也升大版本」，不另写使用指南；没有引入新术语，沿用 MachOSwiftSection 术语表的词条，本包暂不建术语表。 |
 | 2026-11-12 | 不先在本地合并，等正式收尾 | 用户选择：四个功能分支保持推送状态，不合进任何常驻检出；正式收尾时按落地步骤 9 让四个仓库同一天切换，主工作区与 MachOKitUI 不会中途报模块重名。 |
+| 2026-11-12 | 更正上一行 | 「不会中途报模块重名」说错了：本包 `main` 一合入，`MxIris-Reverse-Engineering.xcworkspace` 与 MachOKitUI 根目录就会报模块重名，要到 MachOSwiftSection 的 `main` 也切过去（它发 0.25.0）才恢复，落地步骤 9 写的才对。 |
+| 2026-11-12 | 先落地 swift-decompiler 与 MachOObjCSection | 正式收尾时这两步不依赖发版：swift-decompiler 迁完后对新旧 MachOSwiftSection 都能编，MachOObjCSection 接受本包 1.x 与 2.x。两者都已 `--no-ff` 合入各自的集成分支并推送，功能分支与 worktree 已删。MachOObjCSection 落地前补跑了全部测试：`MachOObjCSectionTests` 在 `setUp` 读本机 `Downloads` 里的一个文件，读不到就强制解包而崩溃，`ObjCMetadataSourceTests` 的测试进程随之异常退出；在它 `next` 的独立检出上跑同两个 target 结果相同，是基线已有的问题。本包与 MachOSwiftSection 的落地要先发版（本包 2.0.0、MachOObjCSection 新 tag），而 MachOSwiftSection 的本地 `next` 上还有另一个等用户验收、未推送的功能，所以停下来问用户。 |
