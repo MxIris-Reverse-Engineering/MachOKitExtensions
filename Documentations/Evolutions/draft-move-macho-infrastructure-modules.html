@@ -96,7 +96,7 @@ ol li, ul li { margin: 3px 0; }
 
 <h2 id="decide">要你定</h2>
 <div class="panel">
-<p>提案已批准，第 1–7 步已实现，详见决策日志。仍待你决定的：MachOSwiftSection 愿景 <code>ReverseEngineeringWithoutIDA.md</code> 第 6 条「新代码先写在 <code>Sources/MachO/</code> 下」的策略已过时，要不要改；本包没有 CI，<code>SharedCache</code> 的单线程池防护现在只在本地生效。写提案时由我定下的做法（可推翻）：</p>
+<p>提案已批准，落地步骤 1–8 已完成，等与前置提案、MachOSwiftSection 0.25.0 同一天落地。实现中冒出的两件事已由用户定下（愿景第 6 条改写；本包加 CI 另写提案），见决策日志。写提案时由我定下的做法（可推翻）：</p>
 <ul>
 <li><code>SymbolLanguage</code> 放在本包，Swift 前缀也由它判断（C/C++ store 要排除 Swift 名字）</li>
 <li>C/C++ store 把 ObjC 名字当作 C 一样收</li>
@@ -833,6 +833,8 @@ let store = SwiftSymbolIndexStore.shared
 <tr><td>2026-11-18</td><td>内存记录</td><td>macOS 27.2 的 AppKit 有 161,089 个 C/C++/ObjC 名字：缓存里读出的 <code>MachOFile</code> 符号表 11.1 MB（复制的名字 7.9 MB）、偏移索引 360,328 个键（至少 8.6 MB）；进程内 <code>MachOImage</code> 符号表 3.2 MB（零拷贝）、180,164 个键（至少 4.3 MB）；有序偏移各 1.4 MB。文件的每行同时登记原始地址与规范化偏移，C/C++ store 用不到前者，给 <code>SymbolOffsetIndexing</code> 加一档「只登记规范化偏移」能省约一半，记为后续项。数字写进 <code>Internal/SymbolIndex.md</code>，普查留作测试 <code>symbolIndexCensusOfALargeImage</code>。</td></tr>
 <tr><td>2026-11-18</td><td>渲染 A/B 全部一致</td><td>基线是本提案在 MachOSwiftSection 功能分支上的第一个提交（迁移分支并入同一个 <code>origin/next</code>，依赖迁移分支的本包），候选是本提案的功能分支；两侧用 Xcode 27.2 各自 release 预构建后带 <code>--skip-build</code> 跑，不用基线缓存。归档缓存（macOS 26.6、15.5）24 对、模拟器运行时（iOS 15.5、16.4、17.5、26.5）里的独立文件 36 对、进程内镜像 24 对，共 84 对逐字节一致。本包全量测试与 MachOSwiftSection 全量测试（<code>--skip IntegrationTests</code>）都通过（Ultra）。</td></tr>
 <tr><td>2026-11-18</td><td>实现完成，待用户看过后收尾</td><td>落地步骤 1–8 完成，第 9 步（与前置提案、MachOSwiftSection 0.25.0 同一天落地）属于收尾。文档判断：实现说明三份已写并登记在头部；调用方契约（偏移口径、<code>closestSymbols</code> 不设上限、<code>isExported</code> 三态、<code>remove(for:)</code> 由调用方负责）写在 <code>SymbolIndexStore</code> 的文档注释里，不另写使用指南；新术语 routing、sweep 在 <code>Internal/SymbolIndex.md</code> 里定义，本包暂不建术语表，MachOSwiftSection 的术语表已同步。功能分支只推送，按前置提案的理由不合进任何常驻检出。</td></tr>
+<tr><td>2026-11-18</td><td>愿景第 6 条改为「通用代码直接写进本包」</td><td>用户决定。MachOSwiftSection 愿景 <code>ReverseEngineeringWithoutIDA.md</code> 原写「新的通用代码先在 <code>Sources/MachO/</code> 下写成独立模块，等读取层迁移落定后再搬」；整个 Mach-O 层已迁入本包、那个分组已不存在，改为不依赖 Swift 元数据的通用代码直接写进本包。在 MachOSwiftSection 的功能分支上提交。</td></tr>
+<tr><td>2026-11-18</td><td>本包加 CI 另写提案</td><td>用户决定：给本包加 macOS 的 GitHub Actions 工作流，跑全量测试并在单线程协作池上重跑 <code>SharedCache</code> 的几个 suite，补回迁移丢掉的那层防护。不在本提案的分支里做，记为后续项。</td></tr>
 </table>
 </div>
 </details>
