@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Draft - 把 MachOSwiftSection 剩余的 MachO 基础模块迁入本包，并拆出 C/C++ 符号索引</title>
+<style>
+:root {
+  --bg: #ffffff; --fg: #1d1d1f; --muted: #6e6e73; --line: #d2d2d7; --panel: #f5f5f7;
+  --code-bg: #f2f2f4; --accent: #0a66d8;
+  --added: #1f8f4e; --added-bg: #e3f5ea; --modified: #b26a00; --modified-bg: #fdf0db;
+  --removed: #c62828; --removed-bg: #fbe4e4; --kept: #5b5b60; --kept-bg: #ececef;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1c1c1e; --fg: #f2f2f7; --muted: #a1a1a6; --line: #3a3a3c; --panel: #2c2c2e;
+    --code-bg: #2a2a2d; --accent: #5aa9ff;
+    --added: #4cd281; --added-bg: #183826; --modified: #ffb340; --modified-bg: #3d2c10;
+    --removed: #ff6b6b; --removed-bg: #3d1a1a; --kept: #b0b0b5; --kept-bg: #333336;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.65 -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif; }
+main { max-width: 1100px; margin: 0 auto; padding: 24px 20px 64px; }
+h1 { font-size: 1.6em; line-height: 1.3; margin: 0 0 8px; }
+h2 { font-size: 1.25em; margin: 36px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+h3 { font-size: 1.05em; margin: 22px 0 8px; }
+a { color: var(--accent); }
+code { font: 0.88em/1.4 ui-monospace, "SF Mono", Menlo, monospace; background: var(--code-bg); padding: 1px 4px; border-radius: 4px; }
+pre { background: var(--code-bg); padding: 12px 14px; border-radius: 8px; overflow-x: auto; font: 12.5px/1.5 ui-monospace, "SF Mono", Menlo, monospace; }
+pre code { background: none; padding: 0; }
+.meta { color: var(--muted); font-size: 0.92em; }
+.meta span { display: inline-block; margin-right: 16px; }
+.badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 0.85em; background: var(--modified-bg); color: var(--modified); font-weight: 600; }
+.panel { background: var(--panel); border-radius: 10px; padding: 14px 18px; margin: 16px 0; }
+nav.toc { font-size: 0.92em; }
+nav.toc a { margin-right: 12px; white-space: nowrap; }
+table { border-collapse: collapse; width: 100%; font-size: 0.9em; margin: 10px 0; }
+th, td { border: 1px solid var(--line); padding: 6px 8px; vertical-align: top; text-align: left; }
+th { background: var(--panel); }
+.table-wrap { overflow-x: auto; }
+details { border: 1px solid var(--line); border-radius: 10px; margin: 14px 0; padding: 0 16px; }
+details > summary { cursor: pointer; font-weight: 600; padding: 12px 0; font-size: 1.08em; }
+details[open] > summary { border-bottom: 1px solid var(--line); margin-bottom: 8px; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 0.88em; margin: 6px 0 10px; }
+.legend i { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: -2px; margin-right: 5px; border: 1.5px solid; }
+.lg-added { background: var(--added-bg); border-color: var(--added) !important; }
+.lg-modified { background: var(--modified-bg); border-color: var(--modified) !important; }
+.lg-removed { background: var(--removed-bg); border-color: var(--removed) !important; }
+.lg-kept { background: var(--kept-bg); border-color: var(--kept) !important; }
+svg { width: 100%; height: auto; display: block; }
+svg text { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; fill: var(--fg); }
+svg .title { font-size: 13px; font-weight: 700; }
+svg .small { font-size: 10.5px; fill: var(--muted); }
+svg .pkg { fill: none; stroke: var(--line); stroke-width: 1.5; }
+svg .added { fill: var(--added-bg); stroke: var(--added); stroke-width: 1.5; }
+svg .modified { fill: var(--modified-bg); stroke: var(--modified); stroke-width: 1.5; }
+svg .removed { fill: var(--removed-bg); stroke: var(--removed); stroke-width: 1.5; stroke-dasharray: 4 3; }
+svg .kept { fill: var(--kept-bg); stroke: var(--kept); stroke-width: 1.2; }
+svg .arrow { stroke: var(--muted); stroke-width: 1.4; fill: none; marker-end: url(#arrowhead); }
+svg .arrowhead { fill: var(--muted); }
+svg .strike { text-decoration: line-through; }
+ol li, ul li { margin: 3px 0; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Draft - 把 MachOSwiftSection 剩余的 MachO 基础模块迁入本包，并拆出 C/C++ 符号索引</h1>
+<p class="meta">
+  <span>状态：<span class="badge">Accepted</span></span>
+  <span>对应提案最后更新：<strong>2026-11-18</strong></span>
+  <span>创建：2026-11-18</span>
+  <span>作者：JH</span>
+  <span>原文：<code>draft-move-macho-infrastructure-modules.md</code></span>
+</p>
+
+<nav class="toc panel">
+  <a href="#summary">摘要</a><a href="#decide">要你定</a><a href="#architecture">架构图</a><a href="#changemap">改动地图</a>
+  <a href="#motivation">动机</a><a href="#research">前期调研</a><a href="#proposal">提议方案</a><a href="#design">详细设计</a>
+  <a href="#alternatives">替代方案</a><a href="#impact">影响</a><a href="#evolution">API 演进</a><a href="#steps">落地步骤</a><a href="#log">决策日志</a>
+</nav>
+
+<h2 id="summary">摘要</h2>
+<p>把 MachOSwiftSection 里还剩下的 Mach-O 基础模块迁进本包：<code>MachOPointers</code>、<code>MachOCaches</code>、<code>MachODependencies</code> 原样迁入，<code>MachOBase</code>、<code>MachOFoundation</code> 两个汇总模块跟着迁入，各带一个同名 library product。<code>MachOSymbols</code> 拆成两半：与语言无关的部分（紧凑符号表、按偏移分桶、符号值到偏移的换算、对符号表与导出表的单趟采集、导出信息）以原名迁入本包，并在其上新建一个只收 C、C++、Objective-C 名字的 <code>SymbolIndexStore</code>；Swift 部分留在 MachOSwiftSection，模块改名 <code>SwiftSymbols</code>，原来的 store 改名 <code>SwiftSymbolIndexStore</code>，通过本包的协议钩子 <code>SymbolTableRouting</code> 复用同一套采集。<code>Utilities</code> 留在 MachOSwiftSection；<code>MachOMacros</code> 与测试支撑模块在 MachOSwiftSection 改用 <code>SwiftSection</code> 前缀。落地后 MachOSwiftSection 里带 MachO 前缀的模块只剩 ABI 模型 <code>MachOSwiftSection</code>（及其 C 部分 <code>MachOSwiftSectionC</code>）。随前置提案一起发本包 2.0.0、MachOSwiftSection 0.25.0。C++ 符号的结构化归类不在本提案，放到 2.1.0 另写提案。</p>
+
+<div class="panel">
+<p><strong>头部信息</strong></p>
+<ul>
+<li><strong>所属愿景</strong>：无</li>
+<li><strong>关联提案</strong>：本包 <a href="draft-move-reading-and-resolving-modules.md">draft-move-reading-and-resolving-modules</a>（前置：先把 <code>MachOReading</code> / <code>MachOResolving</code> 迁进本包；本提案的功能分支从它的功能分支切出，两者同一天落地）；MachOSwiftSection <a href="https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0001-symbol-name-offsetization.md">0001 symbol-name-offsetization</a>（符号表的紧凑行与零拷贝名字）、<a href="https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0017-macho-dependencies-module.md">0017 macho-dependencies-module</a>、<a href="https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0018-self-contained-abi-layer.md">0018 self-contained-abi-layer</a>（<code>MachOBase</code> 这一层能看到什么）、<a href="https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0053-shared-cache-composition-and-eviction-registry.md">0053 shared-cache-composition-and-eviction-registry</a>（<code>SharedCache</code> 与驱逐登记）、<a href="https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0055-group-sources-by-layer.md">0055 group-sources-by-layer</a></li>
+<li><strong>实现分支 / PR</strong>：本包与 MachOSwiftSection 各一条 <code>feature/move-macho-infrastructure-modules</code>，分别从两边的 <code>feature/move-reading-and-resolving-modules</code> 切出，worktree 在各自的 <code>.worktrees/&lt;项目名&gt;-MoveMachOInfrastructureModules</code></li>
+<li><strong>配套文档</strong>：待定 —— 落地时登记实现说明的链接（计划见「详细设计 · 文档」）</li>
+</ul>
+</div>
+
+<h2 id="decide">要你定</h2>
+<div class="panel">
+<p>提案状态为 Draft，需要你批准（状态改为 <code>Accepted</code>）后才开始实现。写提案时没有单独提问、由我定下的做法记在决策日志最后一行，你可以推翻其中任何一条：</p>
+<ul>
+<li><code>SymbolLanguage</code> 放在本包，Swift 前缀也由它判断（C/C++ store 要排除 Swift 名字）</li>
+<li>C/C++ store 把 ObjC 名字当作 C 一样收</li>
+<li>零拷贝只用于 dyld shared cache 里的镜像与声明了镜像不会卸载的 routing</li>
+<li>新增 <code>closestSymbols(at:in:)</code></li>
+<li>共享的构件放在 <code>@_spi(Internals)</code></li>
+<li>2.0.0 不做 C++ 字符串 demangle</li>
+<li><code>MachOSwiftSectionC</code> 不改名</li>
+<li><code>SwiftSymbols</code> 放进新的层分组 <code>Symbols/</code></li>
+<li>ABI 模块直接再导出 <code>Utilities</code></li>
+</ul>
+</div>
+
+<h2 id="architecture">架构图</h2>
+<div class="legend">
+  <span><i class="lg-added"></i>新增 / 迁入</span>
+  <span><i class="lg-modified"></i>改名或修改</span>
+  <span><i class="lg-removed"></i>删除 / 迁走</span>
+  <span><i class="lg-kept"></i>不变</span>
+</div>
+
+<h3>模块归属：改动前后</h3>
+<svg viewBox="0 0 1060 560" role="img" aria-label="Module ownership before and after">
+  <defs>
+    <marker id="arrowhead" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto"><polygon class="arrowhead" points="0 0, 9 3.5, 0 7"/></marker>
+  </defs>
+  <!-- MachOKitExtensions package -->
+  <rect class="pkg" x="10" y="10" width="420" height="540" rx="12"/>
+  <text class="title" x="26" y="34">MachOKitExtensions (package)</text>
+  <rect class="kept" x="30" y="50" width="380" height="30" rx="6"/><text x="44" y="70">MachOKitExtensions</text>
+  <rect class="kept" x="30" y="88" width="185" height="30" rx="6"/><text x="44" y="108">MachOReading</text>
+  <rect class="kept" x="225" y="88" width="185" height="30" rx="6"/><text x="239" y="108">MachOResolving</text>
+  <text class="small" x="30" y="134">moved by the prerequisite proposal</text>
+  <rect class="added" x="30" y="146" width="380" height="30" rx="6"/><text x="44" y="166">+ MachOPointers</text><text class="small" x="250" y="166">moved, unchanged</text>
+  <rect class="added" x="30" y="184" width="380" height="30" rx="6"/><text x="44" y="204">+ MachOCaches</text><text class="small" x="250" y="204">@Mutex -&gt; NSLock</text>
+  <rect class="added" x="30" y="222" width="380" height="30" rx="6"/><text x="44" y="242">+ MachODependencies</text><text class="small" x="250" y="242">moved, unchanged</text>
+  <rect class="added" x="30" y="260" width="380" height="150" rx="6"/>
+  <text x="44" y="280">+ MachOSymbols</text><text class="small" x="200" y="280">language-neutral half</text>
+  <text class="small" x="56" y="300">SymbolTable, SymbolRowBucket,</text>
+  <text class="small" x="56" y="316">SymbolValueOffsetConverter</text>
+  <text x="56" y="338">+ SymbolLanguage</text>
+  <text x="56" y="356">+ SymbolTableRouting   (hook)</text>
+  <text x="56" y="374">+ SymbolSweep</text>
+  <text x="56" y="392">+ SymbolIndexStore     (C / C++ / ObjC)</text>
+  <rect class="added" x="30" y="418" width="380" height="30" rx="6"/><text x="44" y="438">+ MachOBase</text><text class="small" x="250" y="438">umbrella, no Utilities</text>
+  <rect class="added" x="30" y="456" width="380" height="30" rx="6"/><text x="44" y="476">+ MachOFoundation</text><text class="small" x="250" y="476">umbrella</text>
+  <text class="small" x="30" y="514">MachOKitExtensions module re-exports none of them</text>
+
+  <!-- MachOSwiftSection package -->
+  <rect class="pkg" x="620" y="10" width="430" height="540" rx="12"/>
+  <text class="title" x="636" y="34">MachOSwiftSection (package)</text>
+  <text class="small" x="640" y="56">Support/</text>
+  <rect class="kept" x="640" y="62" width="190" height="26" rx="6"/><text x="652" y="80">Utilities</text>
+  <rect class="kept" x="840" y="62" width="195" height="26" rx="6"/><text x="850" y="80">ARM64InstructionDecoding</text>
+  <rect class="modified" x="640" y="94" width="395" height="26" rx="6"/><text x="652" y="112">MachOMacros -&gt; SwiftSectionMacros</text>
+  <text class="small" x="640" y="138">MachO/  (group removed)</text>
+  <rect class="removed" x="640" y="144" width="395" height="26" rx="6"/><text x="652" y="162">- MachOPointers</text>
+  <rect class="removed" x="640" y="174" width="395" height="26" rx="6"/><text x="652" y="192">- MachOCaches</text>
+  <rect class="removed" x="640" y="204" width="395" height="26" rx="6"/><text x="652" y="222">- MachODependencies</text>
+  <rect class="removed" x="640" y="234" width="395" height="26" rx="6"/><text x="652" y="252">- MachOSymbols (language-neutral half)</text>
+  <rect class="removed" x="640" y="264" width="395" height="26" rx="6"/><text x="652" y="282">- MachOBase, MachOFoundation</text>
+  <text class="small" x="640" y="308">Symbols/  (new group)</text>
+  <rect class="modified" x="640" y="314" width="395" height="44" rx="6"/>
+  <text x="652" y="332">SwiftSymbols   (Swift half of MachOSymbols)</text>
+  <text class="small" x="664" y="350">SwiftSymbolIndexStore, SwiftSymbolTableRouting</text>
+  <text class="small" x="640" y="378">ABI/</text>
+  <rect class="modified" x="640" y="384" width="395" height="26" rx="6"/><text x="652" y="402">MachOSwiftSection  (re-exports MachOBase + Utilities)</text>
+  <rect class="kept" x="640" y="414" width="395" height="26" rx="6"/><text x="652" y="432">MachOSwiftSectionC</text>
+  <rect class="kept" x="640" y="444" width="395" height="26" rx="6"/><text x="652" y="462">Analysis/ Declaration/ Output/ ...   Swift*</text>
+  <text class="small" x="640" y="488">TestSupport/</text>
+  <rect class="modified" x="640" y="494" width="395" height="44" rx="6"/>
+  <text x="652" y="512">MachOFixtureSupport, MachOTestingSupport(C)</text>
+  <text x="652" y="530">-&gt; SwiftSectionFixtureSupport, SwiftSectionTestingSupport(C)</text>
+
+  <!-- move arrows -->
+  <path class="arrow" d="M640 157 C 540 157, 520 161, 414 161"/>
+  <path class="arrow" d="M640 187 C 540 187, 520 199, 414 199"/>
+  <path class="arrow" d="M640 217 C 540 217, 520 237, 414 237"/>
+  <path class="arrow" d="M640 247 C 540 247, 520 300, 414 300"/>
+  <path class="arrow" d="M640 277 C 540 277, 520 450, 414 450"/>
+  <path class="arrow" d="M640 336 C 560 336, 520 360, 414 360"/>
+  <text class="small" x="452" y="388">SwiftSymbols uses the hook</text>
+</svg>
+
+<h3>依赖方向（箭头指向被依赖者）</h3>
+<pre><code>SwiftSymbols ──&gt; MachOSymbols, MachOCaches        (MachOKitExtensions)
+             ──&gt; Demangling, Utilities
+MachOSwiftSection (ABI) ──&gt; MachOBase              (MachOKitExtensions)
+                        ──&gt; Utilities, SwiftSectionMacros, MachOSwiftSectionC
+Swift* modules ──&gt; MachOFoundation                 (MachOKitExtensions)
+               ──&gt; SwiftSymbols, MachOSwiftSection, ...
+
+MachOFoundation ──&gt; MachOBase, MachOSymbols, MachODependencies
+MachOBase       ──&gt; MachOKitExtensions, MachOReading, MachOResolving, MachOPointers
+MachOSymbols    ──&gt; MachOKitExtensions, MachOResolving, MachOCaches
+MachOCaches     ──&gt; MachOKitExtensions
+MachOPointers   ──&gt; MachOKitExtensions, MachOReading, MachOResolving</code></pre>
+
+<h3>采集与两个 store 的数据流</h3>
+<svg viewBox="0 0 1060 430" role="img" aria-label="Symbol sweep data flow">
+  <rect class="added" x="300" y="12" width="460" height="196" rx="10"/>
+  <text class="title" x="316" y="34">SymbolSweep(sweeping: machO, routing:)</text>
+  <text x="316" y="58">symbol-table leg  (imports skipped)</text>
+  <text class="small" x="330" y="76">language = SymbolLanguage(ofSymbolNameBytes:)</text>
+  <text class="small" x="330" y="92">table = routing.table(forSymbolNamed:language:)  nil: skip</text>
+  <text class="small" x="330" y="108">debug entry -&gt; reserveRow (no offset)</text>
+  <text class="small" x="330" y="124">otherwise   -&gt; canonicalRow -&gt; rowsByOffset if indexed</text>
+  <text x="316" y="148">export-trie leg</text>
+  <text class="small" x="330" y="166">any entry -&gt; hasExportInformation</text>
+  <text class="small" x="330" y="182">routed name -&gt; exported bit / new row / names-without-rows</text>
+  <text class="small" x="316" y="200">freeze -&gt; [Table: SweptSymbolTable]</text>
+
+  <rect class="added" x="20" y="250" width="470" height="168" rx="10"/>
+  <text class="title" x="36" y="272">SymbolIndexStore  (MachOKitExtensions)</text>
+  <text x="36" y="296">NonSwiftSymbolTableRouting</text>
+  <text class="small" x="48" y="314">.c / .cPlusPlus / .objectiveC -&gt; .symbols</text>
+  <text class="small" x="48" y="330">mapped names: dyld-cache images only</text>
+  <text x="36" y="354">Storage = swept[.symbols]</text>
+  <text class="small" x="48" y="372">+ offsets sorted (canonical only)</text>
+  <text x="36" y="398">SharedCache(evictionGroup: .symbolStore)</text>
+
+  <rect class="modified" x="570" y="250" width="470" height="168" rx="10"/>
+  <text class="title" x="586" y="272">SwiftSymbolIndexStore  (MachOSwiftSection)</text>
+  <text x="586" y="296">SwiftSymbolTableRouting</text>
+  <text class="small" x="598" y="314">.swift -&gt; .swift | .symbolicMangling</text>
+  <text class="small" x="598" y="330">mapped names: every MachOImage (pinned)</text>
+  <text x="586" y="354">Storage = swept[.swift] + swept[.symbolicMangling]</text>
+  <text class="small" x="598" y="372">+ lazy demangled index (unchanged)</text>
+  <text x="586" y="398">SharedCache(evictionGroup: .swiftSymbolStore)</text>
+
+  <path class="arrow" d="M420 208 L 300 248"/>
+  <path class="arrow" d="M640 208 L 760 248"/>
+</svg>
+
+<h2 id="changemap">改动地图</h2>
+<p>本包路径相对本包根目录；<code>MSS:</code> 指 MachOSwiftSection 仓库根。</p>
+<div class="table-wrap">
+<table>
+<tr><th>文件 / 类型</th><th>动作</th><th>改什么</th><th>为什么</th><th>步骤</th></tr>
+<tr><td><code>Sources/MachOPointers/**</code>（19 个文件）</td><td>新增</td><td>从 <code>MSS:Sources/MachO/MachOPointers</code> 原样复制；删 <code>LocatableLayoutWrapper+RelativePointer.swift:1</code> 的 <code>import BinaryParseSupport</code></td><td>迁入相对指针层</td><td>1</td></tr>
+<tr><td><code>Sources/MachOCaches/**</code>（5 个文件）</td><td>新增</td><td>原样复制；<code>SharedCache</code> 的 <code>@Mutex</code> 与 7 处 <code>withLockUnchecked</code> 换 <code>NSLock</code>；删 <code>import Utilities</code>、<code>import SwiftStdlibToolbox</code>；<code>init(evictionGroup:follows:registry:)</code>、<code>register(_:forKey:)</code>、<code>resolve(key:build:)</code>、<code>SharedCacheRegistry.init()</code> 提为 <code>@_spi(Internals) public</code></td><td>本包不依赖 FrameworkToolbox；跨包后 <code>package</code> 不可见，MachOSwiftSection 有 25 处构造</td><td>1</td></tr>
+<tr><td><code>Sources/MachODependencies/**</code>（11 个文件）</td><td>新增</td><td>原样复制；Darwin 专属部分包进 <code>#if canImport(Darwin)</code></td><td>本包承诺 Linux</td><td>1</td></tr>
+<tr><td><code>Sources/MachOBase/Exported.swift</code></td><td>新增</td><td>再导出 <code>MachOKitExtensions</code>、<code>MachOReading</code>、<code>MachOResolving</code>、<code>MachOPointers</code></td><td><code>Utilities</code> 留在 MachOSwiftSection</td><td>1</td></tr>
+<tr><td><code>Package.swift</code></td><td>修改</td><td>新增 <code>MachOPointers</code>、<code>MachOCaches</code>、<code>MachODependencies</code>、<code>MachOBase</code> 四个 target 与同名 product；测试 target <code>MachOCachesTests</code>、<code>MachODependenciesTests</code>、<code>MachOPointersTests</code></td><td>迁入</td><td>1</td></tr>
+<tr><td><code>Tests/MachOCachesTests/{SharedCacheTests,SharedCacheRegistryTests,SharedCacheKeyTests}.swift</code></td><td>新增</td><td>从 <code>MSS:Tests/MachOCachesTests</code> 搬，不改断言</td><td>测试跟着代码走</td><td>1</td></tr>
+<tr><td><code>Tests/MachOKitExtensionsTests/{DyldCacheImageSearchTests,MachOImageCacheMembershipTests}.swift</code></td><td>新增</td><td>从 <code>MSS:Tests/MachOCachesTests</code> 搬</td><td>它们测的是本包的行为</td><td>1</td></tr>
+<tr><td><code>Tests/MachODependenciesTests/*</code>（8 个文件）</td><td>新增</td><td>从 <code>MSS:Tests/MachODependenciesTests</code> 搬（<code>DependencyClosureTests</code> 除外）；SymbolTestsCore / SymbolTestsHelper 换成 <code>/usr/bin/curl</code> 的副本；<code>DyldSharedCachePath</code> 换字面路径，保留 <code>.enabled(if:)</code></td><td>不依赖 MachOSwiftSection 的样本</td><td>1</td></tr>
+<tr><td><code>Tests/MachOPointersTests/RelativePointerResolutionTests.swift</code></td><td>新增</td><td>在本进程的合成字节上解析相对直接、间接、带标志位的指针</td><td>迁入后本包没有它的专属测试</td><td>1</td></tr>
+<tr><td><code>Sources/MachOSymbols/SymbolTable.swift</code> · <code>SymbolRow</code>、<code>PackedNameReference</code>、<code>SymbolTable</code>、<code>SymbolTableBuilder</code></td><td>新增</td><td>从 <code>MSS:Sources/MachO/MachOSymbols/SymbolTable.swift</code> 搬；<code>SymbolTable</code> 的读取 API 与 <code>init(standaloneSymbol:)</code> 提为 <code>@_spi(Internals) public</code>；<code>nameBytesHaveSwiftManglingPrefix</code> 并入 <code>SymbolLanguage</code>；<code>:95-106</code> 的卸载注释按新规则重写</td><td>Swift 侧的 <code>DemangledSymbol</code>、<code>SymbolicManglingSymbols</code>、<code>DemanglingWave</code> 读这些 API</td><td>2</td></tr>
+<tr><td><code>Sources/MachOSymbols/SymbolRowBucket.swift</code> · <code>SymbolRowBucket</code></td><td>新增</td><td>搬，提为 <code>@_spi(Internals) public</code></td><td>Swift 侧的成员索引也用它</td><td>2</td></tr>
+<tr><td><code>Sources/MachOSymbols/SymbolValueOffsetConverter.swift</code> · <code>SymbolValueOffsetConverter</code></td><td>新增</td><td>搬，提为 <code>@_spi(Internals) public</code></td><td>Swift 侧的 <code>swiftSymbols</code> 用它</td><td>2</td></tr>
+<tr><td><code>Sources/MachOSymbols/NlistProtocol+.swift</code> · <code>isExternal</code>、<code>isLocal</code>、<code>isDebuggingEntry</code></td><td>新增</td><td>从 <code>MSS:…/SymbolIndexStore.swift:1955-1981</code> 搬，由 <code>package</code> 改为 <code>@_spi(Internals) public</code></td><td>SwiftThunkAnalysis 用 <code>isDebuggingEntry</code>；<code>isExternal</code> 的名字容易误解（只指导入），不宜正式公开</td><td>2</td></tr>
+<tr><td><code>Sources/MachOSymbols/SymbolLanguage.swift</code> · <code>SymbolLanguage</code></td><td>新增</td><td>按前缀判断语言（见详细设计）</td><td>两个 store 共用一份前缀知识</td><td>2</td></tr>
+<tr><td><code>Sources/MachOSymbols/SymbolTableRouting.swift</code> · <code>SymbolTableRouting</code></td><td>新增</td><td>钩子协议</td><td>Swift store 经它复用采集</td><td>2</td></tr>
+<tr><td><code>Sources/MachOSymbols/SymbolSweep.swift</code> · <code>SymbolSweep</code>、<code>SweptSymbolTable</code>、<code>SymbolExportFacts</code></td><td>新增</td><td>由 <code>MSS:…/SymbolIndexStore.swift:743-979</code> 的 <code>buildSymbolTableStage</code> 改写：名字分类交给 routing，按表分别建 builder、偏移索引、导出信息与本地符号事实；零拷贝名字按新规则</td><td>通用采集</td><td>2</td></tr>
+<tr><td><code>Tests/MachOSymbolsTests/PackedNameReferenceBudgetTests.swift</code></td><td>新增</td><td>搬 <code>MSS:</code> 同名文件的 <code>:23-50</code></td><td>测试跟着代码走</td><td>2</td></tr>
+<tr><td><code>Tests/MachOSymbolsTests/SymbolLanguageTests.swift</code></td><td>新增</td><td>各语言的代表名字</td><td>新类型</td><td>2</td></tr>
+<tr><td><code>Tests/MachOSymbolsTests/SymbolSweepTests.swift</code></td><td>新增</td><td>两条采集腿等价、二分查找、按 routing 分表、偏移索引开关、导出信息三态、零拷贝规则、调试条目只占行</td><td>新类型；吸收 <code>SymbolTableEquivalenceTests</code>、<code>SymbolIndexStoreFixtureTests</code> 的通用用例</td><td>2</td></tr>
+<tr><td><code>Sources/MachOSymbols/SymbolIndexStore.swift</code> · <code>SymbolIndexStore</code></td><td>新增</td><td>只收非 Swift 名字的 store</td><td>C/C++ 索引</td><td>3</td></tr>
+<tr><td><code>Sources/MachOSymbols/SharedCacheEvictionGroup+MachOSymbols.swift</code> · <code>.symbolStore</code></td><td>新增</td><td>本包 store 的驱逐组</td><td>驱逐登记要一个组名</td><td>3</td></tr>
+<tr><td><code>Sources/MachOFoundation/Exported.swift</code></td><td>新增</td><td>再导出 <code>MachOBase</code>、<code>MachOSymbols</code>、<code>MachODependencies</code></td><td>汇总模块随之迁入</td><td>3</td></tr>
+<tr><td><code>Package.swift</code></td><td>修改</td><td>新增 <code>MachOSymbols</code>、<code>MachOFoundation</code> target 与 product、测试 target <code>MachOSymbolsTests</code></td><td>迁入</td><td>3</td></tr>
+<tr><td><code>Tests/MachOSymbolsTests/SymbolIndexStoreTests.swift</code></td><td>新增</td><td>C/C++ store 的查询契约</td><td>新类型</td><td>3</td></tr>
+<tr><td><code>Tests/MachOSymbolsTests/WrappedReaderSymbolTests.swift</code></td><td>新增</td><td>包装读取器下的偏移换算，改用本包的 <code>ForwardingReader</code> 与 C/C++ store</td><td>吸收 <code>MSS:</code> 同名测试的通用部分</td><td>3</td></tr>
+<tr><td><code>MSS:Sources/MachO/{MachOBase,MachOCaches,MachODependencies,MachOFoundation,MachOPointers}</code></td><td>删除</td><td>—</td><td>已迁入本包</td><td>4</td></tr>
+<tr><td><code>MSS:Package.swift</code></td><td>修改</td><td>删掉这五个 target 与 <code>.library(.MachOBase)</code>、<code>.library(.MachOFoundation)</code>、<code>.library(.MachODependencies)</code>（<code>:1441-1443</code>）及 <code>:1437-1440</code> 的注释；改依赖本包的同名 product；本包下限仍是 2.0.0</td><td>迁走</td><td>4</td></tr>
+<tr><td><code>MSS:Sources/ABI/MachOSwiftSection/Exported.swift</code></td><td>修改</td><td>加 <code>@_exported import Utilities</code></td><td>下游（如 RuntimeViewer 的 <code>offsetEnumerated()</code>）经 <code>import MachOSwiftSection</code> 拿到 <code>Utilities</code> 的链不断</td><td>4</td></tr>
+<tr><td><code>MSS:Sources/ABI/MachOSwiftSection/**</code> 中用 <code>@Layout</code> 的 29 个文件</td><td>修改</td><td>补 <code>import Utilities</code></td><td><code>MachOBase</code> 不再导出它</td><td>4</td></tr>
+<tr><td><code>MSS:Tests/MachOCachesTests</code>、<code>MSS:Tests/MachODependenciesTests</code>（<code>DependencyClosureTests</code> 除外）</td><td>删除</td><td>—</td><td>已搬到本包</td><td>4</td></tr>
+<tr><td><code>MSS:Tests/MachODependenciesTests/DependencyClosureTests.swift</code></td><td>移动</td><td>移到 <code>MSS:Tests/IntegrationTests/MachODependencies/</code></td><td>它依赖 SymbolTestsCore 夹具，留在 MachOSwiftSection；<code>MachODependenciesTests</code> 这个 target 随之删除</td><td>4</td></tr>
+<tr><td><code>MSS:Tests/IntegrationTests/SwiftInterface/SwiftInterfaceBuilderTests.swift:14</code></td><td>修改</td><td>去掉 <code>@testable</code>，只留 <code>@_spi(Internals) import MachOCaches</code>；若用到 internal 成员，改用 SPI</td><td>跨包的 <code>@testable</code> 不保证可用</td><td>4</td></tr>
+<tr><td><code>MSS:Sources/MachO/MachOSymbols</code> → <code>MSS:Sources/Symbols/SwiftSymbols</code></td><td>移动</td><td>target 改名 <code>SwiftSymbols</code>，目录放进新的层分组 <code>Symbols/</code>（<code>MachO/</code> 分组随之消失）</td><td>命名规则；0055 的按层分组</td><td>5</td></tr>
+<tr><td><code>MSS:Sources/Symbols/SwiftSymbols/SymbolIndexStore.swift</code> → <code>SwiftSymbolIndexStore.swift</code> · <code>SwiftSymbolIndexStore</code></td><td>修改</td><td>类型改名；<code>Storage</code> 的通用字段改由 <code>SymbolSweep</code> 产出（<code>SwiftSymbolTableRouting</code>：<code>.swift</code> 主表、<code>.symbolicMangling</code> 附加表）；删除已迁走的通用代码与 <code>NlistProtocol</code> 扩展；<code>ExportFacts</code> 换成 <code>SymbolExportFacts</code>；删空 import（<code>MemberwiseInit</code>、<code>AsyncAlgorithms</code>、<code>Utilities</code>）与无用的 <code>@Loggable</code></td><td>拆分</td><td>5</td></tr>
+<tr><td><code>MSS:Sources/Symbols/SwiftSymbols/SwiftSymbolTableRouting.swift</code> · <code>SwiftSymbolTableRouting</code></td><td>新增</td><td>Swift 的 routing</td><td>钩子的 Swift 实现</td><td>5</td></tr>
+<tr><td><code>MSS:Sources/Symbols/SwiftSymbols/{SymbolTable,SymbolRowBucket,SymbolValueOffsetConverter}.swift</code></td><td>删除</td><td>—</td><td>已迁入本包</td><td>5</td></tr>
+<tr><td><code>MSS:Sources/Symbols/SwiftSymbols/SharedCacheEvictionGroup+SwiftSymbols.swift</code> · <code>.swiftSymbolStore</code>、<code>.internedNames</code></td><td>修改</td><td>由 <code>SharedCacheEvictionGroup+MachOSymbols.swift</code> 改名；<code>.symbolStore</code> 改名 <code>.swiftSymbolStore</code>（名字字符串一并改）</td><td>本包 store 用 <code>.symbolStore</code>，组按名字判等</td><td>5</td></tr>
+<tr><td><code>MSS:</code> 7 处 <code>follows: [.symbolStore]</code></td><td>修改</td><td>改为 <code>.swiftSymbolStore</code></td><td>跟随的是 Swift store</td><td>5</td></tr>
+<tr><td><code>MSS:</code> 所有 <code>SymbolIndexStore</code> 引用（源码与测试）</td><td>修改</td><td>改为 <code>SwiftSymbolIndexStore</code>；<code>DependencyValues.symbolIndexStore</code> 改为 <code>swiftSymbolIndexStore</code></td><td>类型改名</td><td>5</td></tr>
+<tr><td><code>MSS:</code> 所有 <code>import MachOSymbols</code>（源码 94、测试 53）</td><td>修改</td><td>改为 <code>import SwiftSymbols</code>；经 <code>import MachOFoundation</code> 用到 Swift 符号 API 的文件按编译报错补 <code>import SwiftSymbols</code></td><td>模块改名；<code>MachOFoundation</code> 不再带 Swift 部分</td><td>5</td></tr>
+<tr><td><code>MSS:Package.swift</code></td><td>修改</td><td><code>MachOSymbols</code> target 改为 <code>SwiftSymbols</code>（依赖本包的 <code>MachOSymbols</code>、<code>MachOCaches</code> 与 Demangling、<code>Utilities</code>）；新增 <code>.library(.SwiftSymbols)</code>；<code>MachOSymbolsTests</code> 改名 <code>SwiftSymbolsTests</code></td><td>模块改名；让 MachOKitUI 能正式依赖它</td><td>5</td></tr>
+<tr><td><code>MSS:Tests/MachOSymbolsTests</code> → <code>MSS:Tests/SwiftSymbolsTests</code></td><td>移动</td><td>删掉已搬到本包的通用用例；<code>SymbolTableEquivalenceTests</code> 改为钉住「<code>SymbolLanguage</code> 判为 <code>.swift</code>」与 <code>isSwiftSymbol</code> 及 <code>_symbolic</code> 前缀判断等价</td><td>拆分</td><td>5</td></tr>
+<tr><td><code>MSS:Tests/SwiftSymbolsTests/SymbolIndexStoreNamingScanTests.swift</code></td><td>新增</td><td>扫描 <code>Sources/</code>，除本包类型外不允许出现没有 <code>Swift</code> 前缀的 <code>SymbolIndexStore</code></td><td>防止漏改名后悄悄编到 C/C++ store</td><td>5</td></tr>
+<tr><td><code>MSS:Sources/Support/MachOMacros</code> → <code>MSS:Sources/Support/SwiftSectionMacros</code></td><td>移动</td><td>target 改名；<code>#externalMacro(module: "MachOMacros")</code> 两处改名</td><td>命名规则</td><td>6</td></tr>
+<tr><td><code>MSS:Sources/TestSupport/{MachOFixtureSupport,MachOTestingSupport,MachOTestingSupportC}</code> → <code>SwiftSection…</code></td><td>移动</td><td>target 改名；测试里约 680 个文件的 import；<code>BaselineGenerator.swift:891-892</code>；重新生成 <code>AllFixtureSuites.swift</code>；<code>PrintFailureEventTests.swift:265</code> 的 <code>hostModules</code></td><td>命名规则</td><td>6</td></tr>
+<tr><td><code>MSS:Tests/MachOTestingSupportTests</code> → <code>MSS:Tests/SwiftSectionTestingSupportTests</code></td><td>移动</td><td>target 改名</td><td>命名规则</td><td>6</td></tr>
+<tr><td><code>MSS:.github/workflows/macOS.yml:123</code>、<code>:148-149</code></td><td>修改</td><td>从 <code>--filter</code> 删掉迁走的 suite，改名的 suite 换新名</td><td><code>ContinuousIntegrationTestFilterTests</code> 要求列表里的 suite 都存在</td><td>6</td></tr>
+<tr><td><code>Documentations/Internal/SharedCache.md</code></td><td>新增</td><td>由 <code>MSS:Documentations/Internal/Modules/MachOCaches.md</code> 改写</td><td>实现说明跟着代码走</td><td>7</td></tr>
+<tr><td><code>Documentations/Internal/DependencyResolution.md</code></td><td>新增</td><td>由 <code>MSS:Documentations/Internal/Modules/MachODependencies.md</code> 改写</td><td>同上</td><td>7</td></tr>
+<tr><td><code>Documentations/Internal/SymbolIndex.md</code></td><td>新增</td><td>由 <code>MSS:Documentations/Internal/Modules/MachOSymbols.md</code> 的子系统 1 改写，加上 <code>SymbolLanguage</code>、<code>SymbolTableRouting</code>、C/C++ store 与零拷贝规则</td><td>同上</td><td>7</td></tr>
+<tr><td><code>README.md</code>、<code>Documentations/README.md</code></td><td>修改</td><td>product 表、2.0.0 说明、文档索引</td><td>新 product</td><td>7</td></tr>
+<tr><td><code>MSS:Documentations/Internal/Modules/MachOSymbols.md</code> → <code>SwiftSymbols.md</code></td><td>移动</td><td>删掉已搬到本包的子系统 1 通用部分，改为链接</td><td>拆分</td><td>7</td></tr>
+<tr><td><code>MSS:Documentations/Internal/Modules/{MachOCaches,MachODependencies}.md</code></td><td>删除</td><td>模块表改为链接到本包文档</td><td>已迁走</td><td>7</td></tr>
+<tr><td><code>MSS:AGENTS.md</code>、<code>MSS:Documentations/{README.md,Glossary.md,Internal/ProjectMap.md,Internal/Modules/README.md,Internal/SelfContainedABILayer.md,Internal/StaticLayoutDependencyClosure.md}</code>、<code>MSS:README.md</code></td><td>修改</td><td>模块层次图、模块说明、路径、product 表</td><td>模块搬家与改名</td><td>7</td></tr>
+<tr><td><code>Documentations/Evolutions/README.md</code>、<code>MSS:Documentations/Evolutions/README.md</code></td><td>修改</td><td>本提案取号、改 Implemented；MachOSwiftSection 的索引加跨仓库行</td><td>落地</td><td>9</td></tr>
+<tr><td>MachOKitUI <code>Sources/MachOKitUICore/Builder/MachOSwiftSectionDetailBuilder.swift:9</code></td><td>修改（不在本提案的分支里做）</td><td><code>import MachOSymbols</code> 改为 <code>import SwiftSymbols</code></td><td><code>resolvesSymbolUsingIndexStore</code> 随 Swift 部分改名；随 MachOKitUI 升级本包 2.0.0 的提案一起改</td><td>—</td></tr>
+</table>
+</div>
+
+<details id="motivation">
+<summary>动机</summary>
+<ul>
+<li><strong>这几个模块本来就与 Swift 无关，却只能经 MachOSwiftSection 拿到。</strong>核实过 <code>next</code> 上每个模块的 import：<code>MachOPointers</code>、<code>MachOCaches</code>、<code>MachODependencies</code>、<code>MachOBase</code>、<code>MachOFoundation</code> 一行 Swift 元数据或 demangle 代码都没有；<code>MachOSymbols</code> 里只有 demangle 与按 Swift 语法归类那一半 import 了 Demangling（见「前期调研」）。它们当初就按「迟早拆出去」的边界写成独立模块，但不装 MachOSwiftSection 就用不到。</li>
+<li><strong>关掉 SwiftSection trait 的使用方拿不到这些能力。</strong>MachOKitUI 把 MachOSwiftSection 做成可选 trait；关掉时它只依赖 MachOKit 与本包（前置提案的动机一节已有证据）。依赖闭包、跨镜像共享缓存、相对指针这些都与 Swift 无关，却跟着 trait 一起消失。</li>
+<li><strong>C/C++ 符号的按地址、按名字查找，各下游都在手写。</strong>
+<ul>
+<li>MachOKitUI <code>Sources/MachOKitUICore/Model/MachOSymbolLookup.swift:12-64</code>：按 <code>n_value</code> 排序、二分找「不大于目标地址的最后一个符号」，给 Function Starts 每行标符号名。</li>
+<li>swift-decompiler <code>Sources/Decompiler/Loader/MachOFunctionLoader.swift:27-255</code>：遍历 <code>symbols</code> 建「<code>__text</code> 内地址 → 名字」字典。</li>
+<li>MachOObjCSection <code>Sources/ObjCMetadataSource/ObjCExportIndex.swift:37-172</code>：遍历导出表建 ObjC 类名集合，注释里写明「与 MachOSwiftSection 的 <code>SymbolIndexStore</code> 做法相同」。</li>
+<li>REAgent <code>Sources/REAgentStaticAnalysis/StaticAnalysisSession.swift:216-275</code>：每次查询线性扫描整张符号表。</li>
+</ul></li>
+<li><strong>现有的 <code>SymbolIndexStore</code> 帮不上它们</strong>：它在采集阶段就把非 Swift 名字全部丢掉（<code>next</code> 的 <code>SymbolIndexStore.swift:824</code>、<code>:879-880</code>、<code>:927</code>），而且只在 MachOSwiftSection 里。</li>
+<li><strong>要和前置提案同一个大版本发。</strong>SwiftPM 不允许依赖图里出现同名模块。前置提案已经因为 <code>MachOReading</code> / <code>MachOResolving</code> 让本包升到 2.0.0；这次迁入的 <code>MachOBase</code>、<code>MachOSymbols</code> 等也与 0.24.x 及更早的 MachOSwiftSection 重名。放进同一个 2.0.0，只需一次大版本、一次跨仓库切换；之后单独发就得再升 3.0.0。</li>
+<li><strong>命名规则</strong>：迁移后 MachOSwiftSection 的模块名本身说明层次 —— Mach-O 层的通用基础设施在本包，MachOSwiftSection 里带 MachO 前缀的只有 ABI 模型，其上的模块一律以 Swift 开头。</li>
+</ul>
+</details>
+
+<details id="research">
+<summary>前期调研</summary>
+<p>以 MachOSwiftSection <code>next</code> 检出（<code>a5d4c2c5</code>）为准，下文 <code>MSS:</code> 指它的仓库根。本包以前置提案的功能分支为准。</p>
+<h3>各模块的现状</h3>
+<ul>
+<li><code>MSS:Sources/MachO/MachOPointers</code>：19 个文件、809 行。没有 <code>package</code> / <code>@_spi</code> 声明。import <code>MachOKit</code>、<code>MachOKitExtensions</code>、<code>MachOReading</code>、<code>MachOResolving</code>，外加 <code>LocatableLayoutWrapper+RelativePointer.swift:1</code> 的 <code>import BinaryParseSupport</code>（只用 <code>LayoutWrapper</code>，而 MachOKit 已经在 <code>Sources/MachOKit/Util/exported.swift:18-19</code> 再导出它）。<code>Package.swift:438-448</code> 声明的 <code>Utilities</code> 依赖没有任何文件用到。</li>
+<li><code>MSS:Sources/MachO/MachOCaches</code>：5 个文件、675 行，全部 <code>@_spi(Internals) public</code>。
+<ul>
+<li><code>SharedCache.swift:60</code> 用 FrameworkToolbox 的 <code>@Mutex</code>，<code>:105</code>、<code>:135</code>、<code>:143</code>、<code>:152</code>、<code>:160</code>、<code>:180</code>、<code>:213</code> 用 <code>withLockUnchecked</code>；其余文件用 <code>NSLock</code>、<code>NSCondition</code>、pthread。</li>
+<li><code>SharedCache.swift:4</code> 的 <code>import Utilities</code> 没用到任何符号。</li>
+<li>四个 <code>package</code> 成员在模块外有使用者：<code>SharedCache.init(evictionGroup:follows:registry:)</code>（<code>:45</code>，模块外 25 处构造，分布在 SwiftInspection、SwiftLayout、SwiftObjCInterop、SwiftThunkAnalysis、MachOSymbols、SwiftDeclarationRendering）、<code>register(_:forKey:)</code>（<code>:104</code>，只有测试）、<code>resolve(key:build:)</code>（<code>:179</code>，<code>SymbolicDemangler.swift:1156</code> 与 <code>InternedNodeReferenceCache.swift:89</code>）、<code>SharedCacheRegistry.init()</code>（<code>SharedCacheRegistry.swift:65</code>，只有测试）。</li>
+<li><code>MSS:Tests/IntegrationTests/SwiftInterface/SwiftInterfaceBuilderTests.swift:14</code> 写的是 <code>@_spi(Internals) @testable import MachOCaches</code>。</li>
+</ul></li>
+<li><code>MSS:Sources/MachO/MachODependencies</code>：11 个文件、1156 行。只依赖 MachOKit（<code>DependencyClosure.swift:2</code> 用 <code>@_spi(Support)</code> 取 <code>_cachedFullCache</code>）、本包与 Darwin，锁全是 <code>NSLock</code>，没有 <code>package</code> 声明。</li>
+<li><code>MSS:Sources/MachO/MachOBase/Exported.swift</code>：只有 5 行 <code>@_exported import</code>（<code>MachOKitExtensions</code>、<code>MachOReading</code>、<code>MachOResolving</code>、<code>MachOPointers</code>、<code>Utilities</code>）。ABI 层有 29 个文件用 <code>@Layout</code>（<code>Utilities</code> 里声明的宏）却没写 <code>import Utilities</code>，全靠这条再导出。</li>
+<li><code>MSS:Sources/MachO/MachOFoundation/Exported.swift</code>：再导出 <code>MachOBase</code>、<code>MachODependencies</code>、<code>MachOSymbols</code>。</li>
+<li><code>MSS:Sources/Support/Utilities</code>：迁入的模块一处都不用它（逐个公开名字查过；<code>MachOCaches</code> 与 <code>MachOSymbols</code> 的 <code>import Utilities</code> 都是空 import）。真正的使用者是 Swift 层：<code>SwiftDump</code> 21 个文件、<code>SwiftPrinting</code> 11 个、<code>SwiftDeclarationRendering</code> 8 个等。它的声明大多是 <code>package</code> 级别（<code>asyncMap</code>、<code>SubstitutionMap</code>、<code>StringBuilder</code>、抛错版 <code>init(bitPattern:)</code>），<code>ThrowingBitPatternInitializers.swift:3-7</code> 的注释还记着它们正是为了不再公开才从本包搬出去的；<code>SubstitutionMap.swift:64</code>、<code>:88</code> 用 FrameworkToolbox 的 <code>#log</code>。</li>
+</ul>
+<h3><code>MachOSymbols</code> 的拆分点</h3>
+<ul>
+<li>通用部分：<code>SymbolTable.swift</code> 里的 <code>SymbolRow</code>、<code>PackedNameReference</code>、<code>SymbolTable</code>、<code>SymbolTableBuilder</code>、<code>compareSymbolNameBytes</code>；<code>SymbolRowBucket.swift</code>；<code>SymbolValueOffsetConverter.swift</code>；<code>SymbolIndexStore.swift</code> 里的 <code>Storage.symbolTable</code>、<code>symbolRowsByOffset</code>、<code>ExportFacts</code>（<code>:180-198</code>）、<code>isExported(name:)</code>、<code>symbol(atRow:offset:)</code>，store 上的 <code>isExported(name:in:)</code>、<code>hasExportInformation(in:)</code>、<code>containsSymbol(named:in:)</code>、<code>offset(ofSymbolNamed:in:)</code>、<code>symbols(for:in:)</code>，以及 <code>NlistProtocol</code> 的 <code>isExternal</code>、<code>isLocal</code>、<code>isDebuggingEntry</code>（<code>:1955-1981</code>，<code>package</code>）。这些只依赖 MachOKit、本包与 <code>MachOResolving.Symbol</code>。</li>
+<li>Swift 部分：<code>DemangledSymbol</code>、<code>InternedNodeReferenceCache</code>、<code>StructuralNodeReferenceKey</code>、<code>SymbolicManglingSymbols</code>、<code>LargeStackTaskExecution</code>、<code>SymbolIndexStore</code> 里的成员 / 类型 / thunk / 不透明类型索引、第二段懒构建的 demangle 索引（<code>:254-340</code>、<code>:995-1100</code>）、<code>DemanglingWave</code>、<code>DependencyValues.symbolIndexStore</code>（<code>:1917-1929</code>）、<code>Symbol.swift</code> 的 <code>resolve(from:in:)</code>、<code>resolvesSymbolUsingIndexStore</code> 与 <code>demangledNode</code>、<code>MachO+Symbol.swift</code> 的 <code>symbols(offset:)</code> 与 <code>swiftSymbols</code>。</li>
+<li>采集函数 <code>buildSymbolTableStage</code>（<code>SymbolIndexStore.swift:743-979</code>）里每个符号要做的决定：
+<ol>
+<li>名字归哪张表，或者不收：主表收 Swift 名字（mapped 腿 <code>:824</code> 按字节判断，泛型腿 <code>:879</code> 用 <code>isSwiftSymbol</code>），附加表收 <code>_symbolic </code> / <code>_default assoc type </code> 开头的名字（<code>:849</code>、<code>:880</code>），其余丢掉。</li>
+<li>导入（<code>N_EXT</code> 且 <code>N_UNDF</code>，即 <code>isExternal</code>）一律不收。</li>
+<li>每张表的行是否进按偏移的索引：主表进，附加表不进（<code>:860-866</code>）。</li>
+<li>调试条目只占行，不登记偏移（<code>:826-834</code>、<code>:850-857</code>、<code>:883-890</code>）。</li>
+<li>「镜像里有没有本地符号」只看主表里非调试、<code>isLocal</code> 的条目，被打包预算拒绝的名字也算（<code>:835-837</code>）。</li>
+<li>导出表：只记 Swift 名字（<code>:927</code>）；已有行的记位图，没有行但有偏移的铸新行进主表，铸不出或没有偏移的进 name-only 集合。</li>
+<li>「有没有导出信息」看导出表里有没有任何条目，与名字过滤无关（<code>:925</code>）。</li>
+<li>冻结后的派生阶段（Swift 侧的懒 demangle 索引）与表外名字的后备（<code>lateDemangledNode</code>）是 store 自己的事，不在采集里。</li>
+</ol></li>
+<li><code>SymbolTable</code> 依赖 <code>MachOResolving.Symbol</code>（<code>init(standaloneSymbol:)</code> 与 <code>symbol(atRow:)</code>），所以必须在前置提案之上做。</li>
+<li>前缀判断有三份：Demangling 的 <code>getManglingPrefixLength</code>（<code>swift-demangling/Sources/Demangling/Utils/Extensions.swift:12</code>，前缀 <code>_T0</code>、<code>_$S</code>、<code>_$s</code>、<code>_$e</code>、<code>$S</code>、<code>$s</code>、<code>$e</code>、<code>@__swiftmacro_</code>）、<code>MachOSymbols</code> 的按字节版 <code>nameBytesHaveSwiftManglingPrefix</code>（<code>SymbolTable.swift:391-402</code>，由 <code>SymbolTableEquivalenceTests</code> 钉住与前者等价）、<code>MachOSwiftSection</code> 的 <code>String+.swift:37-51</code>（由 <code>ManglingPrefixTests</code> 钉住）。<code>_symbolic</code> 前缀在 <code>SymbolicManglingSymbols.swift:64-66</code>。</li>
+<li>依赖：<code>@Mutex</code> 只出现在 Swift 部分（<code>SymbolIndexStore.swift:249</code>、<code>:262</code>、<code>:529</code>，<code>Symbol.swift:12</code>，<code>LargeStackTaskExecution.swift:48</code>）；<code>@Loggable(.private)</code>（<code>:16</code>）没有任何日志调用；<code>MemberwiseInit</code>、<code>AsyncAlgorithms</code> 是空 import；<code>OrderedCollections</code> 只在 Swift 部分用；<code>Dependencies</code> 只用于 <code>DependencyValues</code> 键。通用部分一个都不用。</li>
+<li>零拷贝名字的卸载前提：<code>SymbolTable.swift:95-106</code> 的注释写明 mapped 行指向已加载镜像的字符串表，镜像卸载就悬空；成立的理由是「dyld 把带 Swift / ObjC 内容的镜像钉住不卸载，会卸载的只有纯 C 镜像，而它们没有 Swift 名字、不产生 mapped 行」（MachOSwiftSection <code>ReviewAdjudications.md</code> A4，2026-08-09 实测）。C/C++ 索引会收纯 C 镜像的名字，这个前提不再成立。</li>
+<li>驱逐：<code>SharedCacheEvictionGroup</code> 按名字字符串判等（<code>MSS:Sources/MachO/MachOCaches/SharedCacheEvictionGroup.swift:33-44</code>）。<code>.symbolStore</code> 定义在 <code>MSS:Sources/MachO/MachOSymbols/SharedCacheEvictionGroup+MachOSymbols.swift:6</code>，有 7 个缓存 <code>follows: [.symbolStore]</code>（<code>SymbolicManglingIndex.swift:115</code>、<code>ObjCClassMethodIndex.swift:49</code>、<code>ObjCImplementationClassIndex.swift:40</code>、<code>SwiftClassObjectIndex.swift:54</code>、<code>ObjCAncestorResolver.swift:236</code>、<code>SwiftClassWithoutClassObjectIndex.swift:150</code>、<code>ObjCClassHierarchy.swift:194</code>）。驱逐由 <code>SwiftDeclarationIndexer</code> 的 live owner 触发（<code>SwiftDeclarationIndexer.swift:339</code>、<code>:201</code>）；<code>SymbolIndexStore.remove(for:)</code> 在 Sources 里没有调用者，<code>:705-707</code> 说它由 indexer 调用的注释已经过时。</li>
+</ul>
+<h3>使用面</h3>
+<ul>
+<li>MachOSwiftSection 内 import 计数（文件数）：<code>MachOBase</code> 179（ABI 层 178）；<code>MachOFoundation</code> 源码 165、测试 277；<code>MachOCaches</code> 源码 31、测试 16；<code>MachODependencies</code> 源码 10、测试 10；<code>MachOSymbols</code> 源码 94、测试 53；<code>MachOFixtureSupport</code> 源码 8、测试 307；<code>MachOTestingSupport</code> 测试 367。</li>
+<li><code>SymbolIndexStore.shared</code> 在源码里被 SwiftInspection、SwiftDeclaration、SwiftObjCInterop、SwiftDump、SwiftDeclarationRendering 使用，测试里约 110 处；<code>DependencyValues.symbolIndexStore</code> 约 30 处。</li>
+<li>C/C++ store 与 Swift store 共有的方法名（<code>symbols(for:in:)</code>、<code>isExported(name:in:)</code>、<code>containsSymbol(named:in:)</code>、<code>offset(ofSymbolNamed:in:)</code>）在 Swift 层有十几处调用。类型若漏改名，这些调用会悄悄编到 C/C++ store 上，返回的是非 Swift 名字而不报错。</li>
+<li>下游（本机所有兄弟仓库，排除 <code>.build</code>、<code>checkouts</code>、<code>.worktrees</code>）：
+<ul>
+<li>MachOKitUI <code>Sources/MachOKitUICore/Builder/MachOSwiftSectionDetailBuilder.swift:9</code> <code>import MachOSymbols</code>，<code>:23-24</code> 读写 <code>MachOResolving.Symbol.resolvesSymbolUsingIndexStore</code>；整个文件在 <code>#if SwiftSection</code> 里。它对 MachOSwiftSection 是 <code>from: "0.24.0"</code>、对本包是 <code>from: "1.3.0"</code>，在它升级本包到 2.x 之前，SwiftPM 只会给它解析出 0.24.x。</li>
+<li>RuntimeViewer <code>RuntimeViewerCore/Sources/RuntimeViewerCore/Core/RuntimeObjCSection.swift:9</code> <code>import Utilities</code>，解析到的是 MachOSwiftSection 的 <code>Utilities</code>；同模块的 <code>Utils/ObjCDump+SemanticString.swift:595</code>、<code>:619</code> 用 <code>offsetEnumerated()</code>。它能编译，靠的是 <code>MachOSwiftSection → MachOBase → Utilities</code> 这条再导出链。</li>
+<li>swift-decompiler 只 <code>import MachOSwiftSection</code> 与 Swift 层模块，经再导出用到 <code>DependencySearchPath</code>、<code>InProcessContext</code>。REAgent 钉死 MachOSwiftSection 0.15.2。</li>
+<li>没有任何下游在 <code>Package.swift</code> 里依赖 <code>MachOBase</code>、<code>MachOFoundation</code>、<code>MachODependencies</code> 这三个 product（MachOSwiftSection <code>Package.swift:1441-1443</code>）。</li>
+<li>MachOObjCSection 自己有同名的 public <code>RelativeDirectPointer</code>、<code>RelativeIndirectPointer</code>、<code>RelativeRawPointer</code>（<code>Sources/MachOObjCSection/Model/Pointer/</code>），在 <code>Model/Method/ObjCMethod.swift:96-98</code>、<code>:160-162</code> 不加限定地使用。只要本包的 <code>MachOKitExtensions</code> 模块不再导出 <code>MachOPointers</code>，就不会歧义。</li>
+</ul></li>
+<li>测试：
+<ul>
+<li><code>MSS:Tests/MachOCachesTests</code> 5 个文件都可迁；其中 <code>DyldCacheImageSearchTests</code>、<code>MachOImageCacheMembershipTests</code> 测的本来就是本包的行为（MachOSwiftSection <code>AGENTS.md</code> 的 MachOKitExtensions 一条列着它们）。</li>
+<li><code>MSS:Tests/MachODependenciesTests</code> 9 个文件，除 <code>DependencyClosureTests</code>（要 dlopen SymbolTestsCore 与它 <code>@rpath</code> 下的兄弟框架）外都可迁，要把 SymbolTestsCore / SymbolTestsHelper 样本换成普通 Mach-O（如 <code>/usr/bin/curl</code> 的副本），<code>DyldSharedCachePath</code> 换成字面路径。</li>
+<li><code>MSS:Tests/MachOSymbolsTests</code> 里通用的用例：<code>PackedNameReferenceBudgetTests</code> 的前半（<code>:23-50</code>）、<code>SymbolTableEquivalenceTests</code> 的两腿等价与二分查找（<code>:51</code>、<code>:82</code>）、<code>SymbolIndexStoreFixtureTests</code> 的行桶与偏移查询几条、<code>WrappedReaderSymbolTests</code>（本包已有 <code>Tests/MachOKitExtensionsTests/Support/ForwardingReader.swift</code>）。其余都靠 SymbolTestsCore 或 Swift 名字，留下。</li>
+<li><code>MachOPointers</code> 没有专属测试；它的覆盖来自 <code>MSS:Tests/MachOSwiftSectionTests/ReadingContextRelocationTests.swift</code> 与 <code>DeprecatedReadingFormsTests.swift</code>，都经 ABI 类型。</li>
+<li><code>MSS:.github/workflows/macOS.yml:123</code>、<code>:148-149</code> 的 <code>--filter</code> 列着要迁走的 suite；<code>MSS:Tests/MachOTestingSupportTests/ContinuousIntegrationTestFilterTests.swift:15-57</code> 检查列表里每个 suite 都能在 <code>Tests/</code> 找到。本包没有 CI 配置。</li>
+<li>写死模块名的地方：<code>MSS:Sources/TestSupport/MachOFixtureSupport/Baseline/BaselineGenerator.swift:891-892</code>（生成的 <code>AllFixtureSuites.swift</code> 头部）、<code>MSS:Tests/SwiftInterfaceTests/PrintFailureEventTests.swift:265</code>（<code>hostModules</code>）、<code>#externalMacro(module: "MachOMacros")</code> 两处（<code>Sources/Support/Utilities/Macros/Layout.swift:4</code>、<code>Sources/ABI/MachOSwiftSection/Utils/ResolvableLocatableLayoutWrapper.swift:40</code>）。</li>
+</ul></li>
+<li>C++ 名字解析器（供 2.1.0）：LLVM 的 <code>ItaniumDemangle</code> 正本在 <code>libcxxabi/src/demangle</code>（系统 <code>__cxa_demangle</code> 就是它），<code>llvm/include/llvm/Demangle</code> 是副本。<code>ItaniumDemangle.h</code> 6212 行、<code>ItaniumDemangle.cpp</code> 608 行，除 C++ 标准库外只 include <code>DemangleConfig.h</code>、<code>StringViewExtras.h</code>、<code>Utility.h</code> 与 <code>ItaniumNodes.def</code>；<code>DemangleConfig.h</code> 在 libcxxabi 里依赖 <code>../abort_message.h</code>、在 LLVM 里依赖 <code>llvm/Config/llvm-config.h</code>，都只取几个宏，容易替换。许可证 Apache-2.0 WITH LLVM-exception。（<code>/Volumes/SwiftProjects/swift-project/llvm-project</code>，<code>903b9faaae5c</code>）</li>
+<li>平台：本包 README 承诺支持 Linux（<code>README.md:63-71</code>，MachOObjCSection 支持 Linux 的缘故）；FrameworkToolbox 的 platforms 只列 Apple 平台，MachOObjCSection 0001 因此把它从本包去掉；swift-dependencies 与 MemberwiseInit 都带宏、会引入 swift-syntax。本机没有 Linux SDK，Linux 编译这次验证不了（未验证）。</li>
+</ul>
+</details>
+
+<details id="proposal">
+<summary>提议方案与非目标</summary>
+<ol>
+<li><strong>本包迁入四个模块，原名、原样，只改为编译所必需的地方</strong>：<code>MachOPointers</code>、<code>MachOCaches</code>、<code>MachODependencies</code>、<code>MachOBase</code>，各带同名 library product。
+<ul>
+<li><code>SharedCache</code> 的 <code>@Mutex</code> 换成 <code>NSLock</code>，与本包其它代码一致；删掉空的 <code>import Utilities</code>、<code>import BinaryParseSupport</code>。</li>
+<li><code>MachOCaches</code> 里四个 <code>package</code> 成员提为 <code>@_spi(Internals) public</code>，SPI 名与它其余成员相同。</li>
+<li><code>MachOBase</code> 不再再导出 <code>Utilities</code>。</li>
+<li>只能在 Darwin 上编译的部分包进 <code>#if canImport(Darwin)</code>。</li>
+</ul></li>
+<li><strong><code>MachOSymbols</code> 拆开，通用部分以原名迁入本包</strong>：
+<ul>
+<li>搬来 <code>SymbolTable</code>、<code>SymbolTableBuilder</code>、<code>PackedNameReference</code>、<code>SymbolRowBucket</code>、<code>SymbolValueOffsetConverter</code> 与 <code>NlistProtocol</code> 的三个判断；Swift 侧要用的提为 <code>@_spi(Internals) public</code>。</li>
+<li>新增 <code>SymbolLanguage</code>：按名字前缀判断 C、C++、Objective-C、Swift，两个 store 共用这一份前缀知识。</li>
+<li>新增钩子协议 <code>SymbolTableRouting</code> 与采集类型 <code>SymbolSweep</code>：一次扫描符号表与导出表，按 routing 的决定把名字分进几张表，每张表带自己的按偏移索引、导出信息与本地符号事实。</li>
+<li>新增只收非 Swift 名字的 <code>SymbolIndexStore</code>：按偏移、按最近偏移、按名字、是否导出查询，每个镜像建一次、所有调用方共享。</li>
+<li>新增汇总模块 <code>MachOFoundation</code>：再导出 <code>MachOBase</code>、<code>MachOSymbols</code>、<code>MachODependencies</code>。</li>
+</ul></li>
+<li><strong>MachOSwiftSection 删掉迁走的五个模块，改依赖本包的 product</strong>；ABI 模块自己再导出 <code>Utilities</code>，补上 29 个文件的 <code>import Utilities</code>。</li>
+<li><strong>MachOSwiftSection 的 Swift 部分改名 <code>SwiftSymbols</code></strong>：<code>SymbolIndexStore</code> → <code>SwiftSymbolIndexStore</code>，采集改用 <code>SymbolSweep</code> 加一个 Swift 的 routing，其余（demangle 索引、成员归类、<code>_symbolic</code> 表、大栈执行器）不动；驱逐组改名 <code>.swiftSymbolStore</code>，<code>DependencyValues.symbolIndexStore</code> 改名 <code>swiftSymbolIndexStore</code>；新增 <code>SwiftSymbols</code> product；加一条源码扫描测试，禁止 Swift 层出现没改名的 <code>SymbolIndexStore</code>。</li>
+<li><strong>MachOSwiftSection 的命名收尾</strong>：<code>MachOMacros</code> → <code>SwiftSectionMacros</code>；<code>MachOFixtureSupport</code>、<code>MachOTestingSupport</code>、<code>MachOTestingSupportC</code> → <code>SwiftSectionFixtureSupport</code>、<code>SwiftSectionTestingSupport</code>、<code>SwiftSectionTestingSupportC</code>；<code>MachOSwiftSectionC</code> 是 ABI 模块的 C 部分，不改。</li>
+<li><strong>测试与文档跟着代码走</strong>：可迁的测试搬来并换样本，为 <code>MachOPointers</code>、<code>SymbolSweep</code>、<code>SymbolIndexStore</code> 补测试；实现说明搬来，两边互链。</li>
+<li><strong>随前置提案一起落地</strong>：本包 2.0.0、MachOSwiftSection 0.25.0 同一天切换。</li>
+</ol>
+<h3>非目标</h3>
+<ul>
+<li>C++ 名字的 demangle（转字符串或结构化归类）与 LLVM <code>ItaniumDemangle</code> 的引入：放到 2.1.0，另写提案。2.0.0 的 C/C++ store 只给原始名字和语言；要可读名字的调用方暂时继续用 MachOKit 的 <code>demangledName</code>。</li>
+<li>不迁 <code>Utilities</code>、<code>MachOMacros</code>、<code>ARM64InstructionDecoding</code> 及任何 Swift 层模块。</li>
+<li>不让 <code>MachOKitExtensions</code> 模块再导出任何迁入的模块（避免与 MachOObjCSection 的 <code>Relative*Pointer</code>、与 MachOKit 的 <code>Symbol</code> / <code>SymbolProtocol</code> 歧义）。</li>
+<li>不合并 <code>SharedCache</code> 与本包已有的 <code>MachOCacheStorage</code>：前者是跨实例、按镜像身份共享的缓存加驱逐登记，后者挂在单个 <code>MachOFile</code> 实例上；合不合并以后另议。</li>
+<li>不改迁入模块的 API 与行为。例外只有：上面列出的可见性提升、<code>MachOBase</code> 不再导出 <code>Utilities</code>、<code>SymbolTable</code> 在纯 C 镜像上不再零拷贝。</li>
+<li>不改 MachOKitUI、swift-decompiler、MachOObjCSection、REAgent 的代码去用新 store；MachOKitUI 那一行 import 随它升级本包 2.0.0 的那份提案改（前置提案已把 MachOKitUI 的改造列为另起提案）。</li>
+<li>不加 Linux CI。</li>
+</ul>
+</details>
+
+<details id="design">
+<summary>详细设计</summary>
+<h3>本包的 <code>Package.swift</code></h3>
+<p>在前置提案的基础上增加（<code>MachOReading</code>、<code>MachOResolving</code> 已在其中）：</p>
+<pre><code>products: [
+    // ...MachOKitExtensions, MachOReading, MachOResolving
+    .library(name: "MachOPointers", targets: ["MachOPointers"]),
+    .library(name: "MachOCaches", targets: ["MachOCaches"]),
+    .library(name: "MachODependencies", targets: ["MachODependencies"]),
+    .library(name: "MachOSymbols", targets: ["MachOSymbols"]),
+    .library(name: "MachOBase", targets: ["MachOBase"]),
+    .library(name: "MachOFoundation", targets: ["MachOFoundation"]),
+],
+targets: [
+    .target(name: "MachOPointers", dependencies: ["MachOKit", "MachOKitExtensions", "MachOReading", "MachOResolving"]),
+    .target(name: "MachOCaches", dependencies: ["MachOKit", "MachOKitExtensions"]),
+    .target(name: "MachODependencies", dependencies: ["MachOKit", "MachOKitExtensions"]),
+    .target(name: "MachOSymbols", dependencies: ["MachOKit", "MachOKitExtensions", "MachOResolving", "MachOCaches"]),
+    .target(name: "MachOBase", dependencies: ["MachOKitExtensions", "MachOReading", "MachOResolving", "MachOPointers"]),
+    .target(name: "MachOFoundation", dependencies: ["MachOBase", "MachOSymbols", "MachODependencies"]),
+    // test targets: MachOCachesTests, MachODependenciesTests, MachOPointersTests, MachOSymbolsTests
+]</code></pre>
+<p>不新增任何外部包依赖。</p>
+
+<h3><code>SymbolLanguage</code></h3>
+<pre><code>/// The language a symbol name was mangled for, told from the name's leading
+/// bytes alone.
+public struct SymbolLanguage: Hashable, Sendable, CustomStringConvertible {
+    /// A name no other language claims: plain C, assembler labels, and
+    /// anything unrecognized.
+    public static let c: SymbolLanguage
+
+    /// An Itanium-mangled name: `__Z…`, or `___Z…` for a block inside a C++
+    /// function.
+    public static let cPlusPlus: SymbolLanguage
+
+    /// An Objective-C method implementation (`-[…]`, `+[…]`) or a symbol of the
+    /// Objective-C runtime (`_OBJC_…`, `__OBJC_…`, `l_OBJC_…`, `L_OBJC_…`,
+    /// `_objc_msgSend$…`).
+    public static let objectiveC: SymbolLanguage
+
+    /// A Swift-mangled name (`$s`, `_$s`, `$S`, `_$S`, `$e`, `_$e`, `_T0`,
+    /// `@__swiftmacro_`) or a name the Swift compiler emits for the linker to
+    /// de-duplicate (`_symbolic `, `_default assoc type `).
+    public static let swift: SymbolLanguage
+
+    public init(ofSymbolNamed name: String)
+
+    @_spi(Internals)
+    public init(ofSymbolNameBytes name: UnsafePointer&lt;CChar&gt;)
+
+    public var description: String { get }
+}</code></pre>
+<ul>
+<li>struct 加静态成员而不是 enum：语言以后可能增加（比如 Rust 的 <code>__R</code>），调用方不该被迫穷举。</li>
+<li>Swift 前缀集合与 Demangling 的 <code>getManglingPrefixLength</code> 一致，<code>_symbolic</code> 前缀与 <code>SymbolicManglingSymbolName</code> 一致；两者由 MachOSwiftSection 的 <code>SymbolTableEquivalenceTests</code> 在真实符号表上钉住（本包不依赖 Demangling，钉不了）。</li>
+<li>按字节判断：先看首字节分支，再 <code>strncmp</code>，与现在的 <code>nameBytesHaveSwiftManglingPrefix</code> 同样不物化 <code>String</code>。</li>
+</ul>
+
+<h3>钩子：<code>SymbolTableRouting</code></h3>
+<pre><code>/// Decides, name by name, which of a store's tables a ``SymbolSweep`` files a
+/// symbol under.
+@_spi(Internals)
+public protocol SymbolTableRouting: Sendable {
+    /// The tables this routing files symbols into.
+    associatedtype Table: Hashable, Sendable
+
+    /// The table a symbol belongs in, or `nil` to leave it out of every table.
+    ///
+    /// Asked once for each defined symbol-table entry and once for each
+    /// export-trie entry. `name` is valid only for the duration of the call.
+    func table(forSymbolNamed name: UnsafePointer&lt;CChar&gt;, language: SymbolLanguage) -&gt; Table?
+
+    /// Whether the sweep files `table`'s rows by offset as well as by name.
+    func indexesRowsByOffset(in table: Table) -&gt; Bool
+
+    /// Whether rows read from an in-process image outside the dyld shared
+    /// cache may point into that image's string table instead of copying
+    /// their names.
+    ///
+    /// `true` only when every image whose names this routing files is one
+    /// dyld never unloads — dyld pins every image carrying Swift or
+    /// Objective-C content. Rows of an image inside the shared cache always
+    /// point in: the cache is never unmapped.
+    var mayReferenceStringTablesOfLoadedImages: Bool { get }
+}</code></pre>
+<ul>
+<li>用协议而不是闭包：两个具体 store 已经写出来了（C/C++ 与 Swift），协议的三个要求正是它们在采集里不同的地方，与「先具体、后抽象」一致。三个要求都没有默认实现，因为两个遵循者的答案本来就不同。</li>
+<li>名字以 C 字符串交给 routing：mapped 腿本来就是 C 字符串；泛型腿与导出表腿的 <code>String</code> 用 <code>withCString</code> 交出，成本只有一次借用。语言由采集先算好再传入，routing 只做查表级的判断。</li>
+<li>两个 routing 都是 internal 类型：<code>NonSwiftSymbolTableRouting</code>（本包）、<code>SwiftSymbolTableRouting</code>（MachOSwiftSection）。</li>
+</ul>
+
+<h3>采集：<code>SymbolSweep</code></h3>
+<pre><code>/// One pass over an image's symbol table and export trie, filing each name
+/// into the table its routing chooses.
+@_spi(Internals)
+public struct SymbolSweep&lt;Routing: SymbolTableRouting&gt;: Sendable {
+    public init(sweeping machO: some MachORepresentableWithCache, routing: Routing)
+
+    /// What the sweep filed under `table`; an empty table when the routing
+    /// filed nothing there.
+    public subscript(table: Routing.Table) -&gt; SweptSymbolTable { get }
+}
+
+@_spi(Internals)
+public struct SweptSymbolTable: Sendable {
+    public let symbolTable: SymbolTable
+
+    /// Rows by offset — the raw symbol value and, when it differs, the
+    /// canonical offset. Empty for a table the routing does not index by
+    /// offset.
+    public let rowsByOffset: [Int: SymbolRowBucket]
+
+    public let exportFacts: SymbolExportFacts
+
+    /// Whether a local (`N_EXT` clear), non-debug symbol was filed here,
+    /// counting one whose name the packed layout refused.
+    public let hasLocalSymbols: Bool
+}
+
+@_spi(Internals)
+public struct SymbolExportFacts: Sendable {
+    /// Whether the image's export trie had any entry, whatever the routing
+    /// kept.
+    public let hasExportInformation: Bool
+
+    /// `nil` when the image carries no export information; otherwise whether
+    /// `name` has an export-trie entry.
+    public func isExported(name: String, in symbolTable: SymbolTable) -&gt; Bool?
+}</code></pre>
+<p>行为与现在的 <code>buildSymbolTableStage</code> 逐条对应（「前期调研」第 1–7 条），差别只有：</p>
+<ul>
+<li>名字分类交给 routing，每个 routing 选出的表各有一个 <code>SymbolTableBuilder</code>；</li>
+<li>偏移索引、导出位图、name-only 集合、本地符号事实按表分别记；</li>
+<li>零拷贝规则：<code>MachOImage</code> 在 dyld shared cache 里（按 mach header 的 <code>MH_DYLIB_IN_CACHE</code> 判断，本包已有这个判断）或 <code>routing.mayReferenceStringTablesOfLoadedImages</code> 为真时，行指向镜像字符串表；否则名字复制进表的私有缓冲。<code>MachOFile</code> 与导出表名字照旧进私有缓冲。</li>
+<li>不再有「Swift」字样的字段名：<code>exportedSwiftNamesWithoutRows</code> 改为 <code>exportedNamesWithoutRows</code>，<code>hasLocalSwiftSymbols</code> 改为 <code>hasLocalSymbols</code>。</li>
+</ul>
+
+<h3>C/C++ store：<code>SymbolIndexStore</code></h3>
+<pre><code>/// The C, C++ and Objective-C symbols of an image, found by offset or by
+/// name. An image's index is built on first use and shared by every caller.
+///
+/// Offsets are the ones every reader in this package uses: a file offset for
+/// a standalone file, the unslid address minus the shared region start for an
+/// image read from a dyld shared cache, the distance from the mach header for
+/// a loaded image.
+public final class SymbolIndexStore: Sendable {
+    public static let shared: SymbolIndexStore
+
+    /// The symbols at exactly `offset`.
+    public func symbols(for offset: Int, in machO: some MachORepresentableWithCache) -&gt; Symbols?
+
+    /// The symbols at the greatest offset not after `offset` — the function
+    /// or data an address falls in, when the symbol table names it.
+    public func closestSymbols(at offset: Int, in machO: some MachORepresentableWithCache) -&gt; Symbols?
+
+    public func offset(ofSymbolNamed name: String, in machO: some MachORepresentableWithCache) -&gt; Int?
+
+    public func containsSymbol(named name: String, in machO: some MachORepresentableWithCache) -&gt; Bool
+
+    /// `nil` when the image carries no export information at all.
+    public func isExported(name: String, in machO: some MachORepresentableWithCache) -&gt; Bool?
+
+    public func hasExportInformation(in machO: some MachORepresentableWithCache) -&gt; Bool
+
+    /// Builds the image's index now instead of on first use.
+    public func prepare(in machO: some MachORepresentableWithCache)
+
+    public func contains(in machO: some MachORepresentableWithCache) -&gt; Bool
+
+    public func remove(for machO: some MachORepresentableWithCache)
+}</code></pre>
+<p>调用点示例：</p>
+<pre><code>let store = SymbolIndexStore.shared
+let main = store.offset(ofSymbolNamed: "_main", in: machOFile)
+let enclosing = store.closestSymbols(at: instructionOffset, in: machOFile)?.symbols.first?.name
+let language = SymbolLanguage(ofSymbolNamed: symbol.name)   // .cPlusPlus, .objectiveC, …</code></pre>
+<ul>
+<li>方法名沿用 Swift store 的同名查询（<code>symbols(for:in:)</code>、<code>offset(ofSymbolNamed:in:)</code>、<code>containsSymbol(named:in:)</code>、<code>isExported(name:in:)</code>、<code>hasExportInformation(in:)</code>），同一族的 API 保持一致；<code>closestSymbols(at:in:)</code> 取自 MachOKit 的 <code>closestSymbol(at:)</code>，用复数是因为同一偏移常有多个别名。</li>
+<li><code>closestSymbols</code> 只按规范化偏移找（<code>rowsByOffset</code> 里的 raw 键对独立文件是虚拟地址，不能混进有序数组）：建索引时把登记过偏移的行按规范化偏移排序存成数组，查询是二分。不设距离上限，由调用方判断（MachOKitUI 现在用 0x100000）。</li>
+<li>返回 <code>MachOResolving.Symbols</code> / <code>Symbol</code>，与 Swift store 一致。</li>
+<li>缓存用 <code>SharedCache&lt;Storage&gt;(evictionGroup: .symbolStore)</code>；store 自己不被任何 indexer 认领，<code>remove(for:)</code> 由调用方决定何时调。</li>
+<li>2.0.0 不做 C++ demangle（见非目标）。</li>
+</ul>
+
+<h3>MachOSwiftSection 一侧</h3>
+<ul>
+<li><code>SwiftSymbolIndexStore</code> 的构建改为：
+<pre><code>let sweep = SymbolSweep(sweeping: machO, routing: SwiftSymbolTableRouting())
+// Storage(symbolTable: sweep[.swift].symbolTable,
+//         symbolRowsByOffset: sweep[.swift].rowsByOffset,
+//         exportFacts: sweep[.swift].exportFacts,
+//         hasLocalSwiftSymbols: sweep[.swift].hasLocalSymbols,
+//         symbolicManglingSymbolTable: sweep[.symbolicMangling].symbolTable, ...)</code></pre>
+<code>SwiftSymbolTableRouting</code>：语言是 <code>.swift</code> 时，<code>_symbolic</code> / <code>_default assoc type </code> 开头的进 <code>.symbolicMangling</code>，其余进 <code>.swift</code>；只有 <code>.swift</code> 进偏移索引；<code>mayReferenceStringTablesOfLoadedImages</code> 为真。第二段懒构建的 demangle 索引、<code>lateDemangledNode</code>、按归属分组、所有 Swift 查询原样保留。</li>
+<li>与现状的唯一行为差异：导出表里若出现 <code>_symbolic</code> 名字，会进附加表而不是被丢掉。这类名字是链接器去重用的本地符号，不会被导出；渲染 A/B 会确认输出不变。</li>
+<li><code>MachORepresentableWithCache.symbols(offset:)</code>、<code>MachORepresentable.swiftSymbols</code>、<code>Symbol.resolve(from:in:)</code>、<code>Symbol.resolvesSymbolUsingIndexStore</code>、<code>SymbolProtocol.demangledNode</code> 留在 <code>SwiftSymbols</code>，签名不变。本包不提供 <code>symbols(offset:)</code> 这类 MachO 类型上的便捷方法，避免与它重名。</li>
+<li>import 的改法：<code>import MachOSymbols</code> 一律改为 <code>import SwiftSymbols</code>；其余按编译报错补 <code>import SwiftSymbols</code>。测试支撑模块（改名后）<code>@_exported import SwiftSymbols</code>，减少测试文件的改动。</li>
+<li><code>SymbolIndexStoreNamingScanTests</code>：扫 <code>Sources/</code> 与 <code>Tests/</code>，去掉注释后匹配 <code>(?&lt;![A-Za-z])SymbolIndexStore\b</code>，命中即失败。</li>
+</ul>
+
+<h3>锁与 SPI</h3>
+<ul>
+<li><code>SharedCache</code> 的 <code>storageByKey</code> 改为私有存储加一个 <code>NSLock</code>，7 处 <code>withLockUnchecked</code> 改为 <code>lock.withLock { }</code>；行为（重入时 trap、并发去重）由搬来的 <code>SharedCacheTests</code> 钉住。</li>
+<li>凡是 Swift 侧要用、又不宜成为正式公开 API 的，一律 <code>@_spi(Internals) public</code>，与 <code>MachOCaches</code> 现有约定相同；MachOSwiftSection 里已有的 <code>@_spi(Internals) import</code> 写法不用改。</li>
+</ul>
+
+<h3>测试</h3>
+<ul>
+<li>搬来的测试不改断言，只换样本与支撑代码。</li>
+<li>新增的行为见「落地步骤」各步的清单。</li>
+<li>MachOSwiftSection 的全量测试必须通过；它规定读取层与符号层的大改动要做渲染 A/B（其 <code>Documentations/Internal/SystemFrameworkRenderingVerification.md</code>）：基线是前置提案的 MachOSwiftSection 功能分支（它已与 <code>next</code> 做过 96 对逐字节一致的 A/B），候选是本提案的功能分支，三条读取路径的 <code>dump</code> 与 <code>interface</code> 输出逐字节一致。</li>
+<li>内存：在一个大镜像（AppKit 或 WebCore，<code>MachOFile</code> 与 <code>MachOImage</code> 各一次）上记录 C/C++ store 的行数与 <code>Storage</code> 大小，写进实现说明。</li>
+</ul>
+
+<h3>文档</h3>
+<ul>
+<li>本包新增三份实现说明：<code>Internal/SharedCache.md</code>、<code>Internal/DependencyResolution.md</code>、<code>Internal/SymbolIndex.md</code>，由 MachOSwiftSection 的模块文档改写，登记到 <code>Documentations/README.md</code> 与本提案头部的「配套文档」。</li>
+<li>MachOSwiftSection 的 <code>Internal/Modules/MachOSymbols.md</code> 改为 <code>SwiftSymbols.md</code>，只讲 Swift 部分并链接本包的 <code>SymbolIndex.md</code>；<code>MachOCaches.md</code>、<code>MachODependencies.md</code> 删除，模块表改为链接。</li>
+<li>两边的 README、AGENTS.md、Glossary、ProjectMap 同步模块名、层次图与路径。</li>
+</ul>
+</details>
+
+<details id="alternatives">
+<summary>替代方案考量</summary>
+<ul>
+<li><strong>类继承</strong>（本包 <code>open class SymbolIndexStore</code>，Swift store 写子类覆写分类方法）：两边的 <code>Storage</code> 形状完全不同，现在的 store 又是 <code>final</code> 单例；继承要么把存储做成泛型、要么在子类里再挂一份，而且热循环里每个符号多一次动态派发。否。</li>
+<li><strong>一次扫描同时喂两个 store</strong>：省一遍扫描，但两个 store 的建表时机、缓存与驱逐就被绑在一起——只想要 C 名字的调用方会被迫等 Swift 那半（以及它的 demangle 索引）建完。扫描本身相对 demangle 很便宜。否。</li>
+<li><strong>本包新模块另起名、MachOSwiftSection 的 <code>MachOSymbols</code> 不改名</strong>：名字会和内容反过来——叫 <code>MachOSymbols</code> 的是 Swift 专用的那一半。否。</li>
+<li><strong>2.0.0 之后单独发</strong>：本包新模块 <code>MachOSymbols</code> 会与 MachOSwiftSection 0.25.0 自带的同名模块冲突，得再发 3.0.0。否。</li>
+<li><strong><code>Utilities</code> 改名 <code>MachOUtilities</code> 迁入</strong>：最初这样定过，核实后推翻——迁入的模块一处都不用它；它的声明多为 <code>package</code>，跨包后只能改成 <code>public</code> 公开出去；还会带进 FrameworkToolbox 的日志宏和 <code>@Layout</code> 宏声明。否。</li>
+<li><strong><code>MachOMacros</code> 迁入本包</strong>：本包会多一个 swift-syntax 依赖，下游解析时多一条 swift-syntax 版本约束，而现在只有 MachOSwiftSection 的 ABI 层用这些宏。否。</li>
+<li><strong>迁入的代码照用 FrameworkToolbox、swift-dependencies、MemberwiseInit</strong>：FrameworkToolbox 只支持 Apple 平台，后两者带宏会引入 swift-syntax，都违背本包对 Linux 的承诺与「不依赖 swift-syntax」。通用部分本来也不用它们。否。</li>
+<li><strong>2.0.0 就用 <code>__cxa_demangle</code> 把 C++ 名字转成字符串</strong>：MachOKit 是经 <code>dlsym</code> 取这个函数的（<code>Util/CxaDemangle.swift</code>），平台行为不一；2.1.0 引入 <code>ItaniumDemangle</code> 后又要换一次实现、可能换输出。调用方现在就能用 MachOKit 的 <code>demangledName</code>。推迟到 2.1.0 一次做对。</li>
+<li><strong>C/C++ store 一律复制名字</strong>：最安全，但 dyld shared cache 里的镜像（绝大多数查询对象）永远不会卸载，复制白白多占内存。只对 cache 外的镜像复制。</li>
+<li><strong>C/C++ store 也一律零拷贝</strong>：纯 C 镜像可以被 <code>dlclose</code> 卸载，行会悬空。否。</li>
+</ul>
+</details>
+
+<details id="impact">
+<summary>影响</summary>
+<h3>源码兼容性（source compatibility）</h3>
+<ul>
+<li><strong>本包：纯新增。</strong>2.0.0（与前置提案共用）只新增 product 与模块，<code>MachOKitExtensions</code> 模块一行不改、也不再导出新模块。</li>
+<li><strong>MachOSwiftSection：有破坏</strong>（0.x 的次版本，允许）：
+<ul>
+<li><code>import MachOSymbols</code> 拿到的是本包的 C/C++ 部分；要 Swift 符号 API 改为 <code>import SwiftSymbols</code>。</li>
+<li><code>SymbolIndexStore</code> → <code>SwiftSymbolIndexStore</code>；<code>DependencyValues.symbolIndexStore</code> → <code>swiftSymbolIndexStore</code>；<code>SharedCacheEvictionGroup.symbolStore</code>（Swift store 的组）→ <code>.swiftSymbolStore</code>。</li>
+<li><code>MachOMacros</code>、<code>MachOFixtureSupport</code>、<code>MachOTestingSupport</code>、<code>MachOTestingSupportC</code> 改名（都不是 product）。</li>
+<li><code>MachOBase</code>、<code>MachOFoundation</code>、<code>MachODependencies</code> 三个 product 改由本包提供。</li>
+</ul>
+<pre><code>// before
+import MachOSymbols
+let store = SymbolIndexStore.shared
+@Dependency(\.symbolIndexStore) var symbolIndexStore
+
+// after
+import SwiftSymbols
+let store = SwiftSymbolIndexStore.shared
+@Dependency(\.swiftSymbolIndexStore) var symbolIndexStore</code></pre>
+<ul><li>不提供 <code>@available(*, deprecated, renamed:)</code> 过渡：旧名 <code>SymbolIndexStore</code> 在新版本里指的是本包的 C/C++ store，留一个指向 Swift store 的别名反而让同名指向两处。</li></ul>
+</li>
+</ul>
+<h3>ABI 兼容性</h3>
+<p>不适用 —— 本库以 SPM 源码分发，使用方每次重新编译。</p>
+<h3>下游影响</h3>
+<ul>
+<li><strong>本包内</strong>：<code>MachOKitExtensionsTests</code> 多两个搬来的测试文件；其余 target 不受影响。</li>
+<li><strong>MachOSwiftSection</strong>：见源码兼容性；改动大部分是机械的 import 与类型改名。</li>
+<li><strong>MachOKitUI</strong>：<code>MachOSwiftSectionDetailBuilder.swift:9</code> 要改 <code>import SwiftSymbols</code>（在 <code>#if SwiftSection</code> 里）。它现在的版本范围只会解析到 MachOSwiftSection 0.24.x，所以远端构建不受影响；用本地依赖、开 SwiftSection trait 构建时，从落地那天到它升级本包 2.0.0 之前会报找不到 <code>resolvesSymbolUsingIndexStore</code>——与前置提案已经记下的「本地依赖会报模块重名」是同一个窗口，随同一份 MachOKitUI 提案解决。</li>
+<li><strong>RuntimeViewer</strong>：<code>import Utilities</code> 与 <code>offsetEnumerated()</code> 靠 <code>MachOSwiftSection</code> 再导出 <code>Utilities</code>；改为由 ABI 模块直接再导出，链不断，预计不用改。落地时编译确认。</li>
+<li><strong>swift-decompiler</strong>：经 <code>import MachOSwiftSection</code> 与 Swift 层模块的再导出用到 <code>DependencySearchPath</code>、<code>InProcessContext</code>，再导出链不变，预计不用改。落地时编译确认。</li>
+<li><strong>REAgent</strong>：钉死 MachOSwiftSection 0.15.2，不受影响。</li>
+<li><strong>MachOObjCSection</strong>：不受影响；前置提案已把它对本包的范围放宽到 3.0.0 之前。</li>
+<li><strong>工作区</strong>：<code>MxIris-Reverse-Engineering.xcworkspace</code> 与 <code>-Next</code> 只列包，不涉及 product，不用改。</li>
+</ul>
+<h3>文档与示例</h3>
+<ul>
+<li>本包 README 的 product 表与「Since 2.0.0」一段补上新 product。</li>
+<li>MachOSwiftSection 的 README product 表、AGENTS.md 的模块层次图与模块说明、Glossary、ProjectMap、模块文档按改动地图同步。</li>
+</ul>
+</details>
+
+<details id="evolution">
+<summary>API 演进与废弃策略</summary>
+<ul>
+<li>被替代的旧 API：MachOSwiftSection 的 <code>SymbolIndexStore</code>、<code>DependencyValues.symbolIndexStore</code>、<code>.symbolStore</code> 直接改名，不留废弃别名（理由见源码兼容性）。</li>
+<li>废弃期：无。</li>
+<li>版本号：本包 2.0.0（与前置提案共用，大版本已因模块重名而跃迁）；MachOSwiftSection 0.25.0。2.1.0 的 C++ 归类只新增 API。</li>
+</ul>
+</details>
+
+<details id="steps">
+<summary>落地步骤</summary>
+<p>前提：前置提案的两条功能分支（本包与 MachOSwiftSection 的 <code>feature/move-reading-and-resolving-modules</code>）已推送。本提案在两边各开 <code>feature/move-macho-infrastructure-modules</code>，从它们切出，worktree 按 <code>create-worktree</code> skill 放在各自的 <code>.worktrees/&lt;项目名&gt;-MoveMachOInfrastructureModules</code>。联调时本地依赖目录必须真叫 <code>MachOKitExtensions</code>（前置提案决策日志 2026-11-11 的做法）。</p>
+<ol>
+<li><strong>本包迁入四个模块</strong> —— 改动地图步骤 1 各行。先一个提交原样复制，再一个提交做编译所需的修改。
+<ul>
+<li>行为：<code>sharedCacheResolvesEachKeyOnceUnderConcurrency</code>（搬来的 <code>SharedCacheTests</code> 全部通过）</li>
+<li>行为：<code>sharedCacheReentrantResolveTraps</code></li>
+<li>行为：<code>evictionFollowsFollowerGroups</code>（搬来的 <code>SharedCacheRegistryTests</code>）</li>
+<li>行为：<code>fileDependencyLocatorResolvesHostCacheImagesByExactPath</code>（搬来的 <code>MachODependenciesTests</code> 全部通过）</li>
+<li>行为：<code>relativeDirectPointerResolvesToTargetInProcessMemory</code></li>
+<li>行为：<code>relativeIndirectPointerReadsTargetThroughSlot</code></li>
+<li>行为：<code>relativePointerIntPairSeparatesFlagBits</code></li>
+</ul></li>
+<li><strong><code>MachOSymbols</code> 的通用部分与采集</strong> —— 改动地图步骤 2 各行。
+<ul>
+<li>行为：<code>symbolLanguageClassifiesSwiftManglingPrefixes</code></li>
+<li>行为：<code>symbolLanguageClassifiesSymbolicManglingNamesAsSwift</code></li>
+<li>行为：<code>symbolLanguageClassifiesItaniumNamesAsCPlusPlus</code></li>
+<li>行为：<code>symbolLanguageClassifiesMethodImplementationsAndRuntimeSymbolsAsObjectiveC</code></li>
+<li>行为：<code>symbolLanguageFallsBackToC</code></li>
+<li>行为：<code>stringAndByteClassificationAgreeOnEveryNameOfARealImage</code></li>
+<li>行为：<code>sweepFilesEachNameIntoTheTableItsRoutingChooses</code></li>
+<li>行为：<code>sweepSkipsImportedSymbols</code></li>
+<li>行为：<code>tableNotIndexedByOffsetHasNoOffsetRows</code></li>
+<li>行为：<code>debugEntryReservesARowWithoutAnOffset</code></li>
+<li>行为：<code>mappedAndDecodedLegsYieldTheSameTable</code></li>
+<li>行为：<code>nameLookupFindsEveryRowByBinarySearch</code></li>
+<li>行为：<code>exportFactsAreNilForAnImageWithoutAnExportTrie</code></li>
+<li>行为：<code>exportTrieNameWithoutASymbolTableEntryGetsARow</code></li>
+<li>行为：<code>cacheImageRowsPointIntoTheMappedStringTable</code></li>
+<li>行为：<code>imageOutsideTheCacheCopiesNamesUnlessTheRoutingAllowsMapping</code></li>
+<li>行为：<code>packedNameReferenceRefusesOversizedGeometry</code>（搬来的通用半）</li>
+</ul></li>
+<li><strong>C/C++ store 与 <code>MachOFoundation</code></strong> —— 改动地图步骤 3 各行。
+<ul>
+<li>行为：<code>storeFindsMainByNameInAnExecutable</code>（<code>/usr/bin/curl</code>，主可执行文件的 <code>__TEXT</code> 不在 0，偏移必须是文件偏移）</li>
+<li>行为：<code>storeFindsSymbolsAtAnExactOffset</code></li>
+<li>行为：<code>closestSymbolsReturnsTheEnclosingFunction</code></li>
+<li>行为：<code>closestSymbolsIgnoresRawVirtualAddressKeys</code></li>
+<li>行为：<code>storeNeverContainsSwiftNames</code>（本机 cache 的 libswiftCore：有 C 名字、没有 <code>$s</code> 名字）</li>
+<li>行为：<code>storeAnswersIsExportedTriState</code></li>
+<li>行为：<code>storeIsBuiltOnceAndSharedAcrossCallers</code></li>
+<li>行为：<code>removeEvictsTheImageIndex</code></li>
+<li>行为：<code>wrappedReaderSeesTheSameOffsetsAsTheReaderItWraps</code></li>
+</ul></li>
+<li><strong>MachOSwiftSection 删掉迁走的模块</strong> —— 改动地图步骤 4 各行。
+<ul><li>行为：全量构建通过；<code>DependencyClosureTests</code> 在 <code>IntegrationTests</code> 里照常通过。</li></ul></li>
+<li><strong><code>SwiftSymbols</code></strong> —— 改动地图步骤 5 各行。先一个提交做目录与 target 改名、类型改名、import 改名（纯机械），再一个提交把采集换成 <code>SymbolSweep</code>。
+<ul>
+<li>行为：<code>swiftRoutingFilesSymbolicManglingNamesIntoTheirOwnTable</code></li>
+<li>行为：<code>symbolLanguageSwiftMatchesDemanglingIsSwiftSymbol</code>（替代原 <code>SymbolTableEquivalenceTests</code> 的字节判断用例）</li>
+<li>行为：<code>noUnrenamedSymbolIndexStoreInSourcesOrTests</code></li>
+<li>行为：MachOSwiftSection 全量测试通过；渲染 A/B 逐字节一致。</li>
+</ul></li>
+<li><strong>MachOSwiftSection 的命名收尾</strong> —— 改动地图步骤 6 各行。
+<ul><li>行为：<code>ContinuousIntegrationTestFilterTests</code> 通过；重新生成的 <code>AllFixtureSuites.swift</code> 与改名后的模块一致；全量测试通过。</li></ul></li>
+<li><strong>文档</strong> —— 改动地图步骤 7 各行；本提案头部登记配套文档。</li>
+<li><strong>自审与验证</strong>：两个仓库全量测试；渲染 A/B；内存记录；在决策日志写下结果。功能分支只推送，不合进任何常驻检出（与前置提案相同的理由：本包 <code>main</code> 一合入，旧工作区就报模块重名）。</li>
+<li><strong>落地（与前置提案、MachOSwiftSection 0.25.0 同一天）</strong>：按前置提案决策日志里「落地那天要做的」清单执行，并插入本提案的分支——本包先合前置提案的分支、再合本提案的分支，发 2.0.0；MachOSwiftSection 同样先后合入 <code>next</code>，随 0.25.0 发布；两份提案各自取号、改 Implemented，MachOSwiftSection 的提案索引各加一行跨仓库链接。</li>
+</ol>
+<p><strong>收尾时必须判断两件事</strong>（判断结果写进决策日志）：</p>
+<ul>
+<li>要不要配套专题文章：计划写三份实现说明（见「详细设计 · 文档」）；调用方契约（偏移的口径、<code>closestSymbols</code> 不设上限、<code>isExported</code> 的三态、<code>remove(for:)</code> 由调用方负责）写进 <code>SymbolIndexStore</code> 的文档注释，是否另写使用指南在收尾时判断。</li>
+<li>有没有引入新术语：「routing」「sweep」「零拷贝行（mapped row）」是否进术语表，在收尾时判断；本包目前没有术语表，MachOSwiftSection 的术语表有 <code>SymbolIndexStore</code> 等词条要改。</li>
+</ul>
+</details>
+
+<details id="log">
+<summary>决策日志</summary>
+<div class="table-wrap">
+<table>
+<tr><th>日期</th><th>变更</th><th>说明</th></tr>
+<tr><td>2026-11-18</td><td>Created as Draft</td><td>用户要在本包建一个只处理 C 与 C++ 符号的 <code>SymbolIndexStore</code>，Swift 的逻辑经继承或钩子在 MachOSwiftSection 那边接上；随后把范围扩大到 MachOSwiftSection 里全部 MachO 开头的模块。按完整档提问四轮后写成本提案。</td></tr>
+<tr><td>2026-11-18</td><td>C/C++ 索引要做结构化归类</td><td>用户选择：不止按地址、名字、是否导出查询，还要按类、命名空间、成员归类 C++ 符号。否决：只做查询与字符串 demangle。</td></tr>
+<tr><td>2026-11-18</td><td>扩展方式：共享底层加协议钩子</td><td>用户选择。两个 store 各有缓存与生命周期，Swift 的 demangle 分类不进本包。否决：类继承（存储形状不同、<code>final</code> 单例、热循环动态派发）；一次扫描喂两边（建表与驱逐绑死）。</td></tr>
+<tr><td>2026-11-18</td><td>本包沿用 <code>MachOSymbols</code>，Swift 部分改名 <code>SwiftSymbols</code> / <code>SwiftSymbolIndexStore</code></td><td>用户选择。名字与内容对得上。否决：本包另起名。</td></tr>
+<tr><td>2026-11-18</td><td>随 2.0.0 一起落地</td><td>用户选择。只发一次大版本、只切一次。否决：2.0.0 之后单独发（会与 0.25.0 的同名模块冲突，要再发 3.0.0）。</td></tr>
+<tr><td>2026-11-18</td><td>范围扩大到全部 MachO 模块</td><td>用户决定：MachOSwiftSection 里带 MachO 前缀的只留 ABI 模型 <code>MachOSwiftSection</code>，其上的模块一律以 Swift 开头。核实过除 <code>MachOSymbols</code> 的 Swift 那半外，这些模块都不含 Swift 内容，当初就是为拆分而写。</td></tr>
+<tr><td>2026-11-18</td><td><code>MachOMacros</code> 留在 MachOSwiftSection，改名</td><td>用户选择。本包不引入 swift-syntax。否决：迁入本包。</td></tr>
+<tr><td>2026-11-18</td><td><code>Utilities</code> 先定迁入、后改为留下</td><td>第二轮提问时以「迁入的模块都用到它」为前提，用户选了改名 <code>MachOUtilities</code> 迁入。随后核实这个前提不成立：迁入的模块只有空 import，真正的使用者是 Swift 层，且它的声明多为 <code>package</code>、跨包后只能公开。据此重新提问，用户改为留在 MachOSwiftSection、不改名。</td></tr>
+<tr><td>2026-11-18</td><td>C++ 结构化归类放到 2.1.0，另写提案</td><td>用户选择。它只新增 API，不需要大版本；0.25.0 的落地不必等新的解析器。否决：随 2.0.0 一起。</td></tr>
+<tr><td>2026-11-18</td><td>C++ 解析器引入 LLVM <code>ItaniumDemangle</code></td><td>用户定的规则：依赖干净就引入，依赖多就用 Swift 自己写。核实它除 C++ 标准库外只依赖一个可替换的配置头文件，按规则引入；具体做法留给 2.1.0 的提案。</td></tr>
+<tr><td>2026-11-18</td><td>共识确认，开始写提案</td><td>用户批准已定的决策与以下默认做法：另写一份提案叠在前置提案上；MachOSwiftSection 的 <code>MachOMacros</code> 与测试支撑模块改用 <code>SwiftSection</code> 前缀；<code>SharedCache</code> 与 <code>MachOCacheStorage</code> 并存；只测迁入模块的测试搬来、依赖 Swift 样本的留下；下游一起改；迁入的代码不带 FrameworkToolbox、MemberwiseInit、swift-dependencies，锁换 <code>NSLock</code>。</td></tr>
+<tr><td>2026-11-18</td><td>写提案时定下的做法</td><td>未单独提问、写进简报供用户推翻：<code>SymbolLanguage</code> 放在本包，Swift 前缀也由它判断（C/C++ store 要排除 Swift 名字）；C/C++ store 把 ObjC 名字当作 C 一样收；零拷贝只用于 dyld shared cache 里的镜像与声明了镜像不会卸载的 routing；新增 <code>closestSymbols(at:in:)</code>；共享的构件放在 <code>@_spi(Internals)</code>；2.0.0 不做 C++ 字符串 demangle；<code>MachOSwiftSectionC</code> 不改名；<code>SwiftSymbols</code> 放进新的层分组 <code>Symbols/</code>；ABI 模块直接再导出 <code>Utilities</code>。</td></tr>
+<tr><td>2026-11-18</td><td>状态 → Accepted</td><td>用户批准，开始实现。</td></tr>
+</table>
+</div>
+</details>
+
+</main>
+</body>
+</html>
