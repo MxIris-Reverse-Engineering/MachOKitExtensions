@@ -1,6 +1,6 @@
 # Draft - 把 MachOSwiftSection 剩余的 MachO 基础模块迁入本包，并拆出 C/C++ 符号索引
 
-- **状态**: Accepted
+- **状态**: In Progress
 - **作者**: JH
 - **创建日期**: 2026-11-18
 - **最后更新**: 2026-11-18
@@ -627,3 +627,6 @@ public final class SymbolIndexStore: Sendable {
 | 2026-11-18 | 共识确认，开始写提案 | 用户批准已定的决策与以下默认做法：另写一份提案叠在前置提案上；MachOSwiftSection 的 `MachOMacros` 与测试支撑模块改用 `SwiftSection` 前缀；`SharedCache` 与 `MachOCacheStorage` 并存；只测迁入模块的测试搬来、依赖 Swift 样本的留下；下游一起改；迁入的代码不带 FrameworkToolbox、MemberwiseInit、swift-dependencies，锁换 `NSLock`。 |
 | 2026-11-18 | 写提案时定下的做法 | 未单独提问、写进简报供用户推翻：`SymbolLanguage` 放在本包，Swift 前缀也由它判断（C/C++ store 要排除 Swift 名字）；C/C++ store 把 ObjC 名字当作 C 一样收；零拷贝只用于 dyld shared cache 里的镜像与声明了镜像不会卸载的 routing；新增 `closestSymbols(at:in:)`；共享的构件放在 `@_spi(Internals)`；2.0.0 不做 C++ 字符串 demangle；`MachOSwiftSectionC` 不改名；`SwiftSymbols` 放进新的层分组 `Symbols/`；ABI 模块直接再导出 `Utilities`。 |
 | 2026-11-18 | 状态 → Accepted | 用户批准，开始实现。 |
+| 2026-11-18 | 开始实现 | 两个仓库各建 `feature/move-macho-infrastructure-modules`，从各自的 `feature/move-reading-and-resolving-modules` 切出。本包的功能分支并入了 `main`，让提案跟着分支更新。 |
+| 2026-11-18 | MachOSwiftSection 的功能分支先并入 `origin/next` | 迁移分支比 `origin/next` 落后 84 个提交，而本提案要在 MachOSwiftSection 里大面积改名（约 150 处类型引用、约 680 个测试文件的 import）。先并入再改，落地那天要解的冲突少得多；合并没有冲突。渲染 A/B 的基线因此改为「迁移分支并入同一个 `origin/next`」的检出，两边只差本提案。 |
+| 2026-11-18 | 本地联调用沙盒 | 照前置提案的做法：`/Volumes/DerivedData/Agents.noindex/claude/LocalDependencies/MoveMachOInfrastructureModules/` 里放本包功能分支的同步副本（目录名正好是 `MachOKitExtensions`）与 MachOObjCSection `origin/next` 的导出，MachOKit、swift-objc-dump、swift-semantic-string、FrameworkToolbox 链接到与 MachOSwiftSection 的 `.worktrees/` 相同的目标；MachOSwiftSection 功能 worktree 的 `Package.swift` 临时（不提交）指向这两个快照。共享的 `.worktrees/` 链接一律没动。 |
