@@ -98,6 +98,10 @@ let package = Package(
             targets: ["MachODependencies"]
         ),
         .library(
+            name: "MachOSymbols",
+            targets: ["MachOSymbols"]
+        ),
+        .library(
             name: "MachOBase",
             targets: ["MachOBase"]
         ),
@@ -182,6 +186,14 @@ let package = Package(
             ]
         ),
         .target(
+            name: "MachOSymbols",
+            dependencies: [
+                "MachOKit",
+                "MachOKitExtensions",
+                "MachOResolving",
+            ]
+        ),
+        .target(
             name: "MachOBase",
             dependencies: [
                 "MachOKitExtensions",
@@ -218,6 +230,15 @@ let package = Package(
             dependencies: [
                 "MachODependencies",
                 "MachOCaches",
+                "MachOKitExtensions",
+                "MachOKit",
+            ]
+        ),
+        .testTarget(
+            name: "MachOSymbolsTests",
+            dependencies: [
+                "MachOSymbols",
+                "MachOResolving",
                 "MachOKitExtensions",
                 "MachOKit",
             ]

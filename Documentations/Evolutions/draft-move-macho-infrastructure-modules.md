@@ -564,7 +564,7 @@ public final class SymbolIndexStore: Sendable {
    - 行为：`relativeDirectPointerResolvesToTargetInProcessMemory`
    - 行为：`relativeIndirectPointerReadsTargetThroughSlot`
    - 行为：`relativePointerIntPairSeparatesFlagBits`
-2. **`MachOSymbols` 的通用部分与采集** —— 改动地图步骤 2 各行。
+2. **`MachOSymbols` 的通用部分与采集**（已完成） —— 改动地图步骤 2 各行。
    - 行为：`symbolLanguageClassifiesSwiftManglingPrefixes`
    - 行为：`symbolLanguageClassifiesSymbolicManglingNamesAsSwift`
    - 行为：`symbolLanguageClassifiesItaniumNamesAsCPlusPlus`
@@ -578,10 +578,12 @@ public final class SymbolIndexStore: Sendable {
    - 行为：`mappedAndDecodedLegsYieldTheSameTable`
    - 行为：`nameLookupFindsEveryRowByBinarySearch`
    - 行为：`exportFactsAreNilForAnImageWithoutAnExportTrie`
-   - 行为：`exportTrieNameWithoutASymbolTableEntryGetsARow`
+   - 行为：`everyRoutedExportTrieNameWithAnOffsetHasAnExportedRow`
+   - 行为：`localSymbolIsNotExported`
+   - 行为：`fileRowsAreFiledUnderTheirFileOffset`
    - 行为：`cacheImageRowsPointIntoTheMappedStringTable`
    - 行为：`imageOutsideTheCacheCopiesNamesUnlessTheRoutingAllowsMapping`
-   - 行为：`packedNameReferenceRefusesOversizedGeometry`（搬来的通用半）
+   - 行为：`packedNameReferenceRefusesOverBudgetComponents`、`tableBuilderSkipsAnOverBudgetPrivateBufferName`（搬来的通用半）、`standaloneTableClampsAnOverBudgetName`、`symbolRowIsSixteenBytes`、`symbolRowBucketAppendMigrationAndIterationOrder`
 3. **C/C++ store 与 `MachOFoundation`** —— 改动地图步骤 3 各行。
    - 行为：`storeFindsMainByNameInAnExecutable`（`/usr/bin/curl`，主可执行文件的 `__TEXT` 不在 0，偏移必须是文件偏移）
    - 行为：`storeFindsSymbolsAtAnExactOffset`
@@ -632,3 +634,5 @@ public final class SymbolIndexStore: Sendable {
 | 2026-11-18 | 本地联调用沙盒 | 照前置提案的做法：`/Volumes/DerivedData/Agents.noindex/claude/LocalDependencies/MoveMachOInfrastructureModules/` 里放本包功能分支的同步副本（目录名正好是 `MachOKitExtensions`）与 MachOObjCSection `origin/next` 的导出，MachOKit、swift-objc-dump、swift-semantic-string、FrameworkToolbox 链接到与 MachOSwiftSection 的 `.worktrees/` 相同的目标；MachOSwiftSection 功能 worktree 的 `Package.swift` 临时（不提交）指向这两个快照。共享的 `.worktrees/` 链接一律没动。 |
 | 2026-11-18 | `MachOPointers` 保留 `import BinaryParseSupport` | 调研时以为 MachOKit 已再导出它、这行可删；删掉后编译报「`Layout` 关联类型所在的 `BinaryParseSupport` 没有被这个文件 import」——用到关联类型时必须直接 import。保留原样。 |
 | 2026-11-18 | 第 1 步完成 | 四个模块迁入；`SharedCacheTests` 等 3 个、本包行为的 2 个、MachODependencies 的 8 个测试搬来，样本换成 `/usr/bin/curl` 与字面路径；新增 `RelativePointerResolutionTests`。本包全部 114 个测试通过（Ultra，Xcode 27.2）。 |
+| 2026-11-18 | 第 2 步的样本与测试名按实际调整 | 「没有导出表」的样本原想用内核文件，但它的段地址（`0xffffff80…`）超出 `Int`，MachOKit 读段地址时就会崩（与本提案无关，原 Swift 索引读它也一样），改用 SDK 里的 `usr/lib/lazydylib1.o`。`curl` 的符号表被剥得只剩 `__mh_execute_header`，「文件偏移换算」改用它验证，「本地符号不算导出」改读测试 bundle 自己。「导出表里有、符号表里没有的名字铸新行」改为更一般的「每个带偏移的导出名都有一行且记为导出」，因为本机样本里找不到稳定的前一种情形。 |
+| 2026-11-18 | 第 2 步完成 | `SymbolTable`、`SymbolRowBucket`、`SymbolValueOffsetConverter` 与 `NlistProtocol` 的三个判断迁入并公开到 `@_spi(Internals)`；新增 `SymbolLanguage`、`SymbolTableRouting`、`SymbolSweep`、`SweptSymbolTable`、`SymbolExportFacts`。镜像是否在共享缓存里用 `header.isInDyldCache` 判断（与本包 `MachOImage.cache` 同一个依据）。`MachOSymbolsTests` 24 个测试通过。 |
