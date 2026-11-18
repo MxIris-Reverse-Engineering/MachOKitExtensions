@@ -7,7 +7,7 @@
 - **所属愿景**: 无
 - **关联提案**: 本包 [draft-move-reading-and-resolving-modules](draft-move-reading-and-resolving-modules.md)（前置：先把 `MachOReading` / `MachOResolving` 迁进本包；本提案的功能分支从它的功能分支切出，两者同一天落地）；MachOSwiftSection [0001 symbol-name-offsetization](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0001-symbol-name-offsetization.md)（符号表的紧凑行与零拷贝名字）、[0017 macho-dependencies-module](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0017-macho-dependencies-module.md)、[0018 self-contained-abi-layer](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0018-self-contained-abi-layer.md)（`MachOBase` 这一层能看到什么）、[0053 shared-cache-composition-and-eviction-registry](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0053-shared-cache-composition-and-eviction-registry.md)（`SharedCache` 与驱逐登记）、[0055 group-sources-by-layer](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0055-group-sources-by-layer.md)
 - **实现分支 / PR**: 本包与 MachOSwiftSection 各一条 `feature/move-macho-infrastructure-modules`，分别从两边的 `feature/move-reading-and-resolving-modules` 切出，worktree 在各自的 `.worktrees/<项目名>-MoveMachOInfrastructureModules`
-- **配套文档**: 待定 —— 落地时登记实现说明的链接（计划见「详细设计 · 文档」）
+- **配套文档**: 实现说明 [Internal/SymbolIndex.md](../Internal/SymbolIndex.md)（符号表、采集与 C/C++ 符号索引）、[Internal/SharedCache.md](../Internal/SharedCache.md)、[Internal/DependencyResolution.md](../Internal/DependencyResolution.md)（后两份由 MachOSwiftSection 的模块文档改写）
 - **网页版**: 同目录同名的 `.html`
 
 ## 摘要

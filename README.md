@@ -14,10 +14,12 @@ arithmetic, cache resolution and load-command helpers that the Swift side took f
 Extracting the target into its own package breaks that cycle: both packages now depend on
 `MachOKitExtensions`, and neither depends on the other.
 
-Since 2.0.0 the package also carries MachOSwiftSection's reading layer, `MachOReading` and
-`MachOResolving`, as products of their own, so that a package can read typed values out of a
-Mach-O without depending on MachOSwiftSection. MachOKitUI with its `SwiftSection` trait off is the
-first such package.
+Since 2.0.0 the package also carries the rest of MachOSwiftSection's Mach-O layer as products of
+their own: the reading layer (`MachOReading`, `MachOResolving`), relative pointers, the per-image
+shared cache, dependency closures, and the language-neutral half of its symbol index, on which a
+new index of C, C++ and Objective-C symbols is built. A package can use them without depending on
+MachOSwiftSection; MachOKitUI with its `SwiftSection` trait off is the first such package.
+MachOSwiftSection keeps what is Swift-specific, its Swift symbol index included.
 
 ## Products
 
@@ -26,6 +28,12 @@ first such package.
 | `MachOKitExtensions` | The extensions on MachOKit's types listed below |
 | `MachOReading` | Reading typed values out of a file, a loaded image or this process's memory: `Readable` (conformed to by `MachOFile`, `MachOImage` and `UnsafeRawPointer`), and `ReadingContext` with `MachOContext` (addresses are offsets in a file or image) and `InProcessContext` (addresses are pointers in this process; Darwin only) |
 | `MachOResolving` | `Resolvable`, a value read at an address, and `SymbolOrElement`, which names the symbol dyld binds at an address instead of reading what is not there; the `Symbol` and `Symbols` value types |
+| `MachOPointers` | Relative and indirect pointers as Swift's runtime lays them out (`RelativeDirectPointer`, `RelativeIndirectablePointer`, their integer-pair forms, `SymbolOrElementPointer`), read through a `ReadingContext` |
+| `MachOCaches` | `SharedCache`: one lazily built value per image, shared by every caller, with an eviction registry (behind the `Internals` SPI) |
+| `MachODependencies` | The images a binary links, found in this process, on disk or in a dyld shared cache: `DependencyClosure`, `DependencySearchPath`, `FileDependencyLocator` |
+| `MachOSymbols` | `SymbolIndexStore`, an index of an image's C, C++ and Objective-C symbols by offset, by nearest offset, by name and by export status; `SymbolLanguage`, which tells a symbol name's language from its leading bytes |
+| `MachOBase` | `MachOKitExtensions`, `MachOReading`, `MachOResolving` and `MachOPointers` as one import |
+| `MachOFoundation` | `MachOBase`, `MachOSymbols` and `MachODependencies` as one import |
 
 ## What the MachOKitExtensions module provides
 
@@ -49,6 +57,7 @@ first such package.
 ```swift
 .product(name: "MachOKitExtensions", package: "MachOKitExtensions"),
 .product(name: "MachOReading", package: "MachOKitExtensions"),
+.product(name: "MachOSymbols", package: "MachOKitExtensions"),
 ```
 
 ```swift
@@ -75,9 +84,23 @@ let fromFile = try magic(at: 0, in: machOFile.context)
 let fromImage = try magic(at: 0, in: machOImage.context)
 ```
 
-2.0.0 adds the `MachOReading` and `MachOResolving` products and changes nothing in the
-`MachOKitExtensions` module. It is a major version because MachOSwiftSection 0.24 and earlier
-declare modules of those same names, and SwiftPM refuses a package graph with two modules of one
+The symbol index answers for C, C++ and Objective-C names; MachOSwiftSection's `SwiftSymbols`
+keeps the Swift ones:
+
+```swift
+import MachOKit
+import MachOSymbols
+
+let store = SymbolIndexStore.shared
+let headerOffset = store.offset(ofSymbolNamed: "__mh_execute_header", in: machOFile)
+let enclosing = store.closestSymbols(at: instructionOffset, in: machOFile)?.symbols.first?.name
+let language = SymbolLanguage(ofSymbolNamed: "__ZN4llvm5Value4dumpEv")   // .cPlusPlus
+```
+
+2.0.0 adds the `MachOReading`, `MachOResolving`, `MachOPointers`, `MachOCaches`,
+`MachODependencies`, `MachOSymbols`, `MachOBase` and `MachOFoundation` products and changes
+nothing in the `MachOKitExtensions` module, which re-exports none of them. It is a major version
+because MachOSwiftSection 0.24 and earlier declare modules of those same names, and SwiftPM refuses a package graph with two modules of one
 name: a `from: "1.x"` requirement keeps such a MachOSwiftSection from ever resolving together
 with this release.
 
