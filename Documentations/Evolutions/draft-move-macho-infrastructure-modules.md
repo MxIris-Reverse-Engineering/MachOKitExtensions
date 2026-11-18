@@ -87,7 +87,7 @@
 ## 提议方案
 
 1. **本包迁入四个模块，原名、原样，只改为编译所必需的地方**：`MachOPointers`、`MachOCaches`、`MachODependencies`、`MachOBase`，各带同名 library product。
-   - `SharedCache` 的 `@Mutex` 换成 `NSLock`，与本包其它代码一致；删掉空的 `import Utilities`、`import BinaryParseSupport`。
+   - `SharedCache` 的 `@Mutex` 换成 `NSLock`，与本包其它代码一致；删掉空的 `import Utilities`。
    - `MachOCaches` 里四个 `package` 成员提为 `@_spi(Internals) public`，SPI 名与它其余成员相同。
    - `MachOBase` 不再再导出 `Utilities`。
    - 只能在 Darwin 上编译的部分包进 `#if canImport(Darwin)`。
@@ -119,7 +119,7 @@
 
 | 文件 / 类型 | 动作 | 改什么 | 为什么 | 步骤 |
 |---|---|---|---|---|
-| `Sources/MachOPointers/**`（19 个文件） | 新增 | 从 `MSS:Sources/MachO/MachOPointers` 原样复制；删 `LocatableLayoutWrapper+RelativePointer.swift:1` 的 `import BinaryParseSupport` | 迁入相对指针层 | 1 |
+| `Sources/MachOPointers/**`（19 个文件） | 新增 | 从 `MSS:Sources/MachO/MachOPointers` 原样复制（`LocatableLayoutWrapper+RelativePointer.swift:1` 的 `import BinaryParseSupport` 保留，见决策日志） | 迁入相对指针层 | 1 |
 | `Sources/MachOCaches/**`（5 个文件） | 新增 | 原样复制；`SharedCache` 的 `@Mutex` 与 7 处 `withLockUnchecked` 换 `NSLock`；删 `import Utilities`、`import SwiftStdlibToolbox`；`init(evictionGroup:follows:registry:)`、`register(_:forKey:)`、`resolve(key:build:)`、`SharedCacheRegistry.init()` 提为 `@_spi(Internals) public` | 本包不依赖 FrameworkToolbox；跨包后 `package` 不可见，MachOSwiftSection 有 25 处构造 | 1 |
 | `Sources/MachODependencies/**`（11 个文件） | 新增 | 原样复制；Darwin 专属部分包进 `#if canImport(Darwin)` | 本包承诺 Linux | 1 |
 | `Sources/MachOBase/Exported.swift` | 新增 | 再导出 `MachOKitExtensions`、`MachOReading`、`MachOResolving`、`MachOPointers` | `Utilities` 留在 MachOSwiftSection | 1 |
@@ -556,7 +556,7 @@ public final class SymbolIndexStore: Sendable {
 
 前提：前置提案的两条功能分支（本包与 MachOSwiftSection 的 `feature/move-reading-and-resolving-modules`）已推送。本提案在两边各开 `feature/move-macho-infrastructure-modules`，从它们切出，worktree 按 `create-worktree` skill 放在各自的 `.worktrees/<项目名>-MoveMachOInfrastructureModules`。联调时本地依赖目录必须真叫 `MachOKitExtensions`（前置提案决策日志 2026-11-11 的做法）。
 
-1. **本包迁入四个模块** —— 改动地图步骤 1 各行。先一个提交原样复制，再一个提交做编译所需的修改。
+1. **本包迁入四个模块**（已完成） —— 改动地图步骤 1 各行。先一个提交原样复制，再一个提交做编译所需的修改。
    - 行为：`sharedCacheResolvesEachKeyOnceUnderConcurrency`（搬来的 `SharedCacheTests` 全部通过）
    - 行为：`sharedCacheReentrantResolveTraps`
    - 行为：`evictionFollowsFollowerGroups`（搬来的 `SharedCacheRegistryTests`）
@@ -630,3 +630,5 @@ public final class SymbolIndexStore: Sendable {
 | 2026-11-18 | 开始实现 | 两个仓库各建 `feature/move-macho-infrastructure-modules`，从各自的 `feature/move-reading-and-resolving-modules` 切出。本包的功能分支并入了 `main`，让提案跟着分支更新。 |
 | 2026-11-18 | MachOSwiftSection 的功能分支先并入 `origin/next` | 迁移分支比 `origin/next` 落后 84 个提交，而本提案要在 MachOSwiftSection 里大面积改名（约 150 处类型引用、约 680 个测试文件的 import）。先并入再改，落地那天要解的冲突少得多；合并没有冲突。渲染 A/B 的基线因此改为「迁移分支并入同一个 `origin/next`」的检出，两边只差本提案。 |
 | 2026-11-18 | 本地联调用沙盒 | 照前置提案的做法：`/Volumes/DerivedData/Agents.noindex/claude/LocalDependencies/MoveMachOInfrastructureModules/` 里放本包功能分支的同步副本（目录名正好是 `MachOKitExtensions`）与 MachOObjCSection `origin/next` 的导出，MachOKit、swift-objc-dump、swift-semantic-string、FrameworkToolbox 链接到与 MachOSwiftSection 的 `.worktrees/` 相同的目标；MachOSwiftSection 功能 worktree 的 `Package.swift` 临时（不提交）指向这两个快照。共享的 `.worktrees/` 链接一律没动。 |
+| 2026-11-18 | `MachOPointers` 保留 `import BinaryParseSupport` | 调研时以为 MachOKit 已再导出它、这行可删；删掉后编译报「`Layout` 关联类型所在的 `BinaryParseSupport` 没有被这个文件 import」——用到关联类型时必须直接 import。保留原样。 |
+| 2026-11-18 | 第 1 步完成 | 四个模块迁入；`SharedCacheTests` 等 3 个、本包行为的 2 个、MachODependencies 的 8 个测试搬来，样本换成 `/usr/bin/curl` 与字面路径；新增 `RelativePointerResolutionTests`。本包全部 114 个测试通过（Ultra，Xcode 27.2）。 |

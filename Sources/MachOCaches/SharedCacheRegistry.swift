@@ -62,7 +62,7 @@ public final class SharedCacheRegistry: @unchecked Sendable {
 
     /// `package` so a test can drive a registry of its own, with caches
     /// created against it, instead of the process-wide one.
-    package init() {}
+    public init() {}
 
     /// Registers `cache` under `group`, following `follows`. Called by
     /// ``SharedCache``'s initializer; held weakly. Declarations are unioned:

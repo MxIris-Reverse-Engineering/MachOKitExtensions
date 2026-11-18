@@ -81,6 +81,26 @@ let package = Package(
             name: "MachOResolving",
             targets: ["MachOResolving"]
         ),
+        // The rest of MachOSwiftSection's Mach-O layer, none of it Swift
+        // specific: relative and indirect pointers, the per-image shared
+        // cache and its eviction registry, dependency closures, and the
+        // umbrella the ABI model imports.
+        .library(
+            name: "MachOPointers",
+            targets: ["MachOPointers"]
+        ),
+        .library(
+            name: "MachOCaches",
+            targets: ["MachOCaches"]
+        ),
+        .library(
+            name: "MachODependencies",
+            targets: ["MachODependencies"]
+        ),
+        .library(
+            name: "MachOBase",
+            targets: ["MachOBase"]
+        ),
     ],
     dependencies: [
         .package(
@@ -138,9 +158,66 @@ let package = Package(
                 "MachOReading",
             ]
         ),
+        .target(
+            name: "MachOPointers",
+            dependencies: [
+                "MachOKit",
+                "MachOKitExtensions",
+                "MachOReading",
+                "MachOResolving",
+            ]
+        ),
+        .target(
+            name: "MachOCaches",
+            dependencies: [
+                "MachOKit",
+                "MachOKitExtensions",
+            ]
+        ),
+        .target(
+            name: "MachODependencies",
+            dependencies: [
+                "MachOKit",
+                "MachOKitExtensions",
+            ]
+        ),
+        .target(
+            name: "MachOBase",
+            dependencies: [
+                "MachOKitExtensions",
+                "MachOReading",
+                "MachOResolving",
+                "MachOPointers",
+            ]
+        ),
         .testTarget(
             name: "MachOKitExtensionsTests",
             dependencies: [
+                "MachOKitExtensions",
+                "MachOKit",
+            ]
+        ),
+        .testTarget(
+            name: "MachOPointersTests",
+            dependencies: [
+                "MachOPointers",
+                "MachOReading",
+                "MachOResolving",
+            ]
+        ),
+        .testTarget(
+            name: "MachOCachesTests",
+            dependencies: [
+                "MachOCaches",
+                "MachOKitExtensions",
+                "MachOKit",
+            ]
+        ),
+        .testTarget(
+            name: "MachODependenciesTests",
+            dependencies: [
+                "MachODependencies",
+                "MachOCaches",
                 "MachOKitExtensions",
                 "MachOKit",
             ]

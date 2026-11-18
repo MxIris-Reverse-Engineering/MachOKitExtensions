@@ -1,8 +1,6 @@
 import Foundation
 import MachOKit
 import MachOKitExtensions
-import Utilities
-import SwiftStdlibToolbox
 
 /// One lazily built value per Mach-O image, shared by every caller that
 /// asks for it.
@@ -28,7 +26,7 @@ import SwiftStdlibToolbox
 ///
 /// `final`: an owning type holds a private instance and forwards to it,
 /// rather than subclassing. `@unchecked Sendable` because the mutable state
-/// is behind an `os_unfair_lock`.
+/// is behind an `NSLock`.
 @_spi(Internals)
 public final class SharedCache<Storage>: SharedCacheEvicting, @unchecked Sendable {
     /// The family this cache's entries are evicted with.
@@ -42,7 +40,7 @@ public final class SharedCache<Storage>: SharedCacheEvicting, @unchecked Sendabl
     ///     reference, because this is where the fact is known.
     ///   - registry: Where the cache registers itself. The process-wide
     ///     registry, except for a test driving a registry of its own.
-    package init(evictionGroup: SharedCacheEvictionGroup, follows: Set<SharedCacheEvictionGroup> = [], registry: SharedCacheRegistry = .shared) {
+    public init(evictionGroup: SharedCacheEvictionGroup, follows: Set<SharedCacheEvictionGroup> = [], registry: SharedCacheRegistry = .shared) {
         self.evictionGroup = evictionGroup
         registry.register(self, group: evictionGroup, follows: follows)
     }
@@ -57,8 +55,17 @@ public final class SharedCache<Storage>: SharedCacheEvicting, @unchecked Sendabl
         case inFlight(SharedCacheBuildPromise<Storage>)
     }
 
-    @Mutex
+    private let storageByKeyLock = NSLock()
+
     private var storageByKey: [SharedCacheKey: Entry] = [:]
+
+    /// Runs `body` on the entries under the cache lock. The lock is never held
+    /// across a build, so `body` must not call back into the cache.
+    private func withStorageByKey<Result>(_ body: (inout [SharedCacheKey: Entry]) -> Result) -> Result {
+        storageByKeyLock.lock()
+        defer { storageByKeyLock.unlock() }
+        return body(&storageByKey)
+    }
 
     /// Routing decision the cache lock makes on behalf of `storage(...)`:
     /// either return a cached value, await someone else's in-flight build,
@@ -100,9 +107,9 @@ public final class SharedCache<Storage>: SharedCacheEvicting, @unchecked Sendabl
         register(storage, forKey: SharedCacheKey(machO))
     }
 
-    /// Key-taking form of ``register(_:for:)``, for the in-package tests.
-    package func register(_ storage: Storage, forKey key: SharedCacheKey) {
-        _storageByKey.withLockUnchecked { dict in
+    /// Key-taking form of ``register(_:for:)``, for tests.
+    public func register(_ storage: Storage, forKey key: SharedCacheKey) {
+        withStorageByKey { dict in
             dict[key] = .completed(storage)
         }
     }
@@ -132,7 +139,7 @@ public final class SharedCache<Storage>: SharedCacheEvicting, @unchecked Sendabl
     /// flushing between unrelated batches. Bypasses the registry's
     /// ownership rules, so not something library code calls.
     public func removeAll() {
-        _storageByKey.withLockUnchecked { dict in
+        withStorageByKey { dict in
             dict.removeAll(keepingCapacity: false)
         }
     }
@@ -140,7 +147,7 @@ public final class SharedCache<Storage>: SharedCacheEvicting, @unchecked Sendabl
     // MARK: - SharedCacheEvicting
 
     public func containsEntry(for key: SharedCacheKey) -> Bool {
-        _storageByKey.withLockUnchecked { dict in
+        withStorageByKey { dict in
             if case .completed = dict[key] {
                 return true
             }
@@ -149,7 +156,7 @@ public final class SharedCache<Storage>: SharedCacheEvicting, @unchecked Sendabl
     }
 
     public func removeEntry(for key: SharedCacheKey) {
-        _storageByKey.withLockUnchecked { dict in
+        withStorageByKey { dict in
             if case .completed = dict[key] {
                 dict.removeValue(forKey: key)
             }
@@ -157,7 +164,7 @@ public final class SharedCache<Storage>: SharedCacheEvicting, @unchecked Sendabl
     }
 
     public var entryKeys: [SharedCacheKey] {
-        _storageByKey.withLockUnchecked { dict in
+        withStorageByKey { dict in
             dict.compactMap { key, entry in
                 if case .completed = entry {
                     return key
@@ -173,11 +180,11 @@ public final class SharedCache<Storage>: SharedCacheEvicting, @unchecked Sendabl
     /// unsynchronized so that concurrent builds for distinct keys don't
     /// serialize.
     ///
-    /// `package`-visible so the in-package test target can exercise the
+    /// Public (behind the SPI) so a test target can exercise the
     /// concurrency contract directly without manufacturing a fake
     /// `MachORepresentableWithCache` conformer.
-    package func resolve(key: SharedCacheKey, build: () -> Storage?) -> Storage? {
-        let outcome: Outcome = _storageByKey.withLockUnchecked { dict in
+    public func resolve(key: SharedCacheKey, build: () -> Storage?) -> Storage? {
+        let outcome: Outcome = withStorageByKey { dict in
             if let entry = dict[key] {
                 switch entry {
                 case .completed(let storage):
@@ -210,7 +217,7 @@ public final class SharedCache<Storage>: SharedCacheEvicting, @unchecked Sendabl
             return promise.wait()
         case .build(let promise):
             let result = build()
-            _storageByKey.withLockUnchecked { dict in
+            withStorageByKey { dict in
                 // Only publish back if our promise is still the in-flight
                 // marker. `removeAll()` could have cleared the dict
                 // mid-build, or `register(_:for:)` could have installed a
