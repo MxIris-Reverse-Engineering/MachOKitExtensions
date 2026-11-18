@@ -105,6 +105,10 @@ let package = Package(
             name: "MachOBase",
             targets: ["MachOBase"]
         ),
+        .library(
+            name: "MachOFoundation",
+            targets: ["MachOFoundation"]
+        ),
     ],
     dependencies: [
         .package(
@@ -191,6 +195,7 @@ let package = Package(
                 "MachOKit",
                 "MachOKitExtensions",
                 "MachOResolving",
+                "MachOCaches",
             ]
         ),
         .target(
@@ -202,11 +207,20 @@ let package = Package(
                 "MachOPointers",
             ]
         ),
+        .target(
+            name: "MachOFoundation",
+            dependencies: [
+                "MachOBase",
+                "MachOSymbols",
+                "MachODependencies",
+            ]
+        ),
         .testTarget(
             name: "MachOKitExtensionsTests",
             dependencies: [
                 "MachOKitExtensions",
                 "MachOKit",
+                "MachOSymbols",
             ]
         ),
         .testTarget(

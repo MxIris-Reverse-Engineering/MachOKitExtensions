@@ -133,7 +133,7 @@
 | `Sources/MachOSymbols/SymbolValueOffsetConverter.swift` · `SymbolValueOffsetConverter` | 新增 | 搬，提为 `@_spi(Internals) public` | Swift 侧的 `swiftSymbols` 用它 | 2 |
 | `Sources/MachOSymbols/NlistProtocol+.swift` · `isExternal`、`isLocal`、`isDebuggingEntry` | 新增 | 从 `MSS:…/SymbolIndexStore.swift:1955-1981` 搬，由 `package` 改为 `@_spi(Internals) public` | SwiftThunkAnalysis 用 `isDebuggingEntry`；`isExternal` 的名字容易误解（只指导入），不宜正式公开 | 2 |
 | `Sources/MachOSymbols/SymbolLanguage.swift` · `SymbolLanguage` | 新增 | 按前缀判断语言（见详细设计） | 两个 store 共用一份前缀知识 | 2 |
-| `Sources/MachOSymbols/SymbolTableRouting.swift` · `SymbolTableRouting` | 新增 | 钩子协议 | Swift store 经它复用采集 | 2 |
+| `Sources/MachOSymbols/SymbolTableRouting.swift` · `SymbolTableRouting`、`SymbolOffsetIndexing` | 新增 | 钩子协议与偏移索引的三档选项 | Swift store 经它复用采集 | 2 |
 | `Sources/MachOSymbols/SymbolSweep.swift` · `SymbolSweep`、`SweptSymbolTable`、`SymbolExportFacts` | 新增 | 由 `MSS:…/SymbolIndexStore.swift:743-979` 的 `buildSymbolTableStage` 改写：名字分类交给 routing，按表分别建 builder、偏移索引、导出信息与本地符号事实；零拷贝名字按新规则 | 通用采集 | 2 |
 | `Tests/MachOSymbolsTests/PackedNameReferenceBudgetTests.swift` | 新增 | 搬 `MSS:` 同名文件的 `:23-50` | 测试跟着代码走 | 2 |
 | `Tests/MachOSymbolsTests/SymbolLanguageTests.swift` | 新增 | 各语言的代表名字 | 新类型 | 2 |
@@ -143,7 +143,7 @@
 | `Sources/MachOFoundation/Exported.swift` | 新增 | 再导出 `MachOBase`、`MachOSymbols`、`MachODependencies` | 汇总模块随之迁入 | 3 |
 | `Package.swift` | 修改 | 新增 `MachOSymbols`、`MachOFoundation` target 与 product、测试 target `MachOSymbolsTests` | 迁入 | 3 |
 | `Tests/MachOSymbolsTests/SymbolIndexStoreTests.swift` | 新增 | C/C++ store 的查询契约 | 新类型 | 3 |
-| `Tests/MachOSymbolsTests/WrappedReaderSymbolTests.swift` | 新增 | 包装读取器下的偏移换算，改用本包的 `ForwardingReader` 与 C/C++ store | 吸收 `MSS:` 同名测试的通用部分 | 3 |
+| `Tests/MachOKitExtensionsTests/WrappedReaderSymbolIndexTests.swift` | 新增 | 包装读取器下的偏移换算，用本包已有的 `ForwardingReader` 与 C/C++ store；`MachOKitExtensionsTests` 因此多依赖 `MachOSymbols` | 吸收 `MSS:` `WrappedReaderSymbolTests` 的通用部分；替身就在这个 target 里，不复制 | 3 |
 | `MSS:Sources/MachO/{MachOBase,MachOCaches,MachODependencies,MachOFoundation,MachOPointers}` | 删除 | — | 已迁入本包 | 4 |
 | `MSS:Package.swift` | 修改 | 删掉这五个 target 与 `.library(.MachOBase)`、`.library(.MachOFoundation)`、`.library(.MachODependencies)`（`:1441-1443`）及 `:1437-1440` 的注释；改依赖本包的同名 product；本包下限仍是 2.0.0 | 迁走 | 4 |
 | `MSS:Sources/ABI/MachOSwiftSection/Exported.swift` | 修改 | 加 `@_exported import Utilities` | 下游（如 RuntimeViewer 的 `offsetEnumerated()`）经 `import MachOSwiftSection` 拿到 `Utilities` 的链不断 | 4 |
@@ -231,19 +231,20 @@ SymbolSweep(sweeping: machO, routing: someRouting)
       table    = routing.table(forSymbolNamed: name, language: language)   -- nil: skip
       debug entry      -> builders[table].reserveRow(...)                   -- no offset
       otherwise        -> builders[table].canonicalRow(...)
-                          -> rowsByOffset[table] (raw + canonical) if routing.indexesRowsByOffset(in: table)
+                          -> rowsByOffset[table] (raw + canonical) unless routing.offsetIndexing(in: table) == .nameOnly
+                          -> sortedCanonicalOffsets[table]           if it is .byOffsetWithSortedOffsets
                           -> hasLocalSymbols[table] |= isLocal
   export-trie leg
     any entry          -> exportFacts.hasExportInformation = true
     routed name        -> exported bit on its row, or a new row, or names-without-rows
-  freeze -> [Table: SweptSymbolTable(symbolTable, rowsByOffset, exportFacts, hasLocalSymbols)]
+  freeze -> [Table: SweptSymbolTable(symbolTable, rowsByOffset, sortedCanonicalOffsets, exportFacts, hasLocalSymbols)]
 
 SymbolIndexStore (MachOKitExtensions)              SwiftSymbolIndexStore (MachOSwiftSection)
   NonSwiftSymbolTableRouting                         SwiftSymbolTableRouting
     .c / .cPlusPlus / .objectiveC -> .symbols          .swift -> .swift | .symbolicMangling
     mapped names: dyld-cache images only               mapped names: every MachOImage (pinned)
   Storage = swept[.symbols]                          Storage = swept[.swift] + swept[.symbolicMangling]
-          + offsets sorted (canonical only)                  + lazy demangled index      (unchanged)
+          (.byOffsetWithSortedOffsets)                      + lazy demangled index      (unchanged)
   SharedCache(evictionGroup: .symbolStore)           SharedCache(evictionGroup: .swiftSymbolStore)
 ```
 
@@ -329,8 +330,8 @@ public protocol SymbolTableRouting: Sendable {
     /// export-trie entry. `name` is valid only for the duration of the call.
     func table(forSymbolNamed name: UnsafePointer<CChar>, language: SymbolLanguage) -> Table?
 
-    /// Whether the sweep files `table`'s rows by offset as well as by name.
-    func indexesRowsByOffset(in table: Table) -> Bool
+    /// How the sweep files `table`'s rows by offset, beyond by name.
+    func offsetIndexing(in table: Table) -> SymbolOffsetIndexing
 
     /// Whether rows read from an in-process image outside the dyld shared
     /// cache may point into that image's string table instead of copying
@@ -342,8 +343,21 @@ public protocol SymbolTableRouting: Sendable {
     /// point in: the cache is never unmapped.
     var mayReferenceStringTablesOfLoadedImages: Bool { get }
 }
+
+/// How a ``SymbolSweep`` files a table's rows by offset.
+@_spi(Internals)
+public struct SymbolOffsetIndexing: Hashable, Sendable {
+    /// Rows are found by name alone.
+    public static let nameOnly: SymbolOffsetIndexing
+    /// Rows are also found by offset: `SweptSymbolTable.rowsByOffset`.
+    public static let byOffset: SymbolOffsetIndexing
+    /// `byOffset`, plus every canonical offset in ascending order
+    /// (`SweptSymbolTable.sortedCanonicalOffsets`), for a nearest-offset search.
+    public static let byOffsetWithSortedOffsets: SymbolOffsetIndexing
+}
 ```
 
+- 偏移索引用三档的 `SymbolOffsetIndexing`（struct 加静态成员，以后能加档）：Swift 的附加表只按名字找（`.nameOnly`），Swift 主表按偏移找（`.byOffset`），C/C++ 表还要有序偏移做「最近偏移」查找（`.byOffsetWithSortedOffsets`）；有序偏移每个偏移占一个整数，只在要求时保留，Swift 主表不必多付这份内存。
 - 用协议而不是闭包：两个具体 store 已经写出来了（C/C++ 与 Swift），协议的三个要求正是它们在采集里不同的地方，与「先具体、后抽象」一致。三个要求都没有默认实现，因为两个遵循者的答案本来就不同。
 - 名字以 C 字符串交给 routing：mapped 腿本来就是 C 字符串；泛型腿与导出表腿的 `String` 用 `withCString` 交出，成本只有一次借用。语言由采集先算好再传入，routing 只做查表级的判断。
 - 两个 routing 都是 internal 类型：`NonSwiftSymbolTableRouting`（本包）、`SwiftSymbolTableRouting`（MachOSwiftSection）。
@@ -370,6 +384,11 @@ public struct SweptSymbolTable: Sendable {
     /// canonical offset. Empty for a table the routing does not index by
     /// offset.
     public let rowsByOffset: [Int: SymbolRowBucket]
+
+    /// Every canonical offset a row is filed under, ascending; empty unless
+    /// the routing asked for `.byOffsetWithSortedOffsets`. Never a file's raw
+    /// symbol value, which is a virtual address.
+    public let sortedCanonicalOffsets: [Int]
 
     public let exportFacts: SymbolExportFacts
 
@@ -445,7 +464,7 @@ public final class SymbolIndexStore: Sendable {
   ```
 
 - 方法名沿用 Swift store 的同名查询（`symbols(for:in:)`、`offset(ofSymbolNamed:in:)`、`containsSymbol(named:in:)`、`isExported(name:in:)`、`hasExportInformation(in:)`），同一族的 API 保持一致；`closestSymbols(at:in:)` 取自 MachOKit 的 `closestSymbol(at:)`，用复数是因为同一偏移常有多个别名。
-- `closestSymbols` 只按规范化偏移找（`rowsByOffset` 里的 raw 键对独立文件是虚拟地址，不能混进有序数组）：建索引时把登记过偏移的行按规范化偏移排序存成数组，查询是二分。不设距离上限，由调用方判断（MachOKitUI 现在用 0x100000）。
+- `closestSymbols` 只按规范化偏移找（`rowsByOffset` 里的 raw 键对独立文件是虚拟地址，不能混进有序数组）：采集按 `.byOffsetWithSortedOffsets` 在登记时记下每个规范化偏移、冻结时排序去重，查询是二分，命中的偏移再从 `rowsByOffset` 取出那里的全部名字。不能事后用「行的偏移等于键」来区分 raw 键：链接后的镜像里 C 名字常常重名（不同目标文件里同名的 static 函数、`ltmp0`），一个名字只有一行、偏移取最后一次出现，其余出现的偏移就会被误排除。不设距离上限，由调用方判断（MachOKitUI 现在用 0x100000）。
 - 返回 `MachOResolving.Symbols` / `Symbol`，与 Swift store 一致。
 - 缓存用 `SharedCache<Storage>(evictionGroup: .symbolStore)`；store 自己不被任何 indexer 认领，`remove(for:)` 由调用方决定何时调。
 - 2.0.0 不做 C++ demangle（见非目标）。
@@ -584,15 +603,15 @@ public final class SymbolIndexStore: Sendable {
    - 行为：`cacheImageRowsPointIntoTheMappedStringTable`
    - 行为：`imageOutsideTheCacheCopiesNamesUnlessTheRoutingAllowsMapping`
    - 行为：`packedNameReferenceRefusesOverBudgetComponents`、`tableBuilderSkipsAnOverBudgetPrivateBufferName`（搬来的通用半）、`standaloneTableClampsAnOverBudgetName`、`symbolRowIsSixteenBytes`、`symbolRowBucketAppendMigrationAndIterationOrder`
-3. **C/C++ store 与 `MachOFoundation`** —— 改动地图步骤 3 各行。
-   - 行为：`storeFindsMainByNameInAnExecutable`（`/usr/bin/curl`，主可执行文件的 `__TEXT` 不在 0，偏移必须是文件偏移）
+3. **C/C++ store 与 `MachOFoundation`**（已完成） —— 改动地图步骤 3 各行。
+   - 行为：`storeFindsTheMachHeaderByNameInAnExecutable`（`/usr/bin/curl`，主可执行文件的 `__TEXT` 不在 0，偏移必须是文件偏移）
    - 行为：`storeFindsSymbolsAtAnExactOffset`
    - 行为：`closestSymbolsReturnsTheEnclosingFunction`
    - 行为：`closestSymbolsIgnoresRawVirtualAddressKeys`
    - 行为：`storeNeverContainsSwiftNames`（本机 cache 的 libswiftCore：有 C 名字、没有 `$s` 名字）
-   - 行为：`storeAnswersIsExportedTriState`
-   - 行为：`storeIsBuiltOnceAndSharedAcrossCallers`
-   - 行为：`removeEvictsTheImageIndex`
+   - 行为：`storeAnswersIsExportedTriState`、`storeAnswersNilWithoutExportInformation`
+   - 行为：`sortedCanonicalOffsetsAreKeptOnlyWhenAsked`
+   - 行为：`storeIsBuiltOnceAndSharedAcrossCallers`（含 `remove(for:)` 后重建）
    - 行为：`wrappedReaderSeesTheSameOffsetsAsTheReaderItWraps`
 4. **MachOSwiftSection 删掉迁走的模块** —— 改动地图步骤 4 各行。
    - 行为：全量构建通过；`DependencyClosureTests` 在 `IntegrationTests` 里照常通过。
@@ -636,3 +655,7 @@ public final class SymbolIndexStore: Sendable {
 | 2026-11-18 | 第 1 步完成 | 四个模块迁入；`SharedCacheTests` 等 3 个、本包行为的 2 个、MachODependencies 的 8 个测试搬来，样本换成 `/usr/bin/curl` 与字面路径；新增 `RelativePointerResolutionTests`。本包全部 114 个测试通过（Ultra，Xcode 27.2）。 |
 | 2026-11-18 | 第 2 步的样本与测试名按实际调整 | 「没有导出表」的样本原想用内核文件，但它的段地址（`0xffffff80…`）超出 `Int`，MachOKit 读段地址时就会崩（与本提案无关，原 Swift 索引读它也一样），改用 SDK 里的 `usr/lib/lazydylib1.o`。`curl` 的符号表被剥得只剩 `__mh_execute_header`，「文件偏移换算」改用它验证，「本地符号不算导出」改读测试 bundle 自己。「导出表里有、符号表里没有的名字铸新行」改为更一般的「每个带偏移的导出名都有一行且记为导出」，因为本机样本里找不到稳定的前一种情形。 |
 | 2026-11-18 | 第 2 步完成 | `SymbolTable`、`SymbolRowBucket`、`SymbolValueOffsetConverter` 与 `NlistProtocol` 的三个判断迁入并公开到 `@_spi(Internals)`；新增 `SymbolLanguage`、`SymbolTableRouting`、`SymbolSweep`、`SweptSymbolTable`、`SymbolExportFacts`。镜像是否在共享缓存里用 `header.isInDyldCache` 判断（与本包 `MachOImage.cache` 同一个依据）。`MachOSymbolsTests` 24 个测试通过。 |
+| 2026-11-18 | 偏移索引的开关换成三档选项 | 提案里钩子是 `indexesRowsByOffset(in:) -> Bool`，C/C++ store 建索引时再按「行的偏移等于键」挑出规范化偏移、排序后做「最近偏移」查找。实测在 Foundation 上答错：链接后的镜像里 C 名字常常重名，一个名字只有一行、偏移取最后一次出现，其余出现的偏移被误当成原始地址排除。改为钩子返回 `SymbolOffsetIndexing`（`.nameOnly`、`.byOffset`、`.byOffsetWithSortedOffsets`），由采集在登记时记下规范化偏移、冻结时排序去重，放进 `SweptSymbolTable.sortedCanonicalOffsets`；只有要求的表才保留，Swift 主表不多付这份内存。`closestSymbols` 命中偏移后返回那里的全部名字。 |
+| 2026-11-18 | C/C++ store 的 `containsSymbol` 与 `offset(ofSymbolNamed:)` 只认有偏移的名字 | 只被调试条目提到、行只是占位的名字不算这个镜像定义的符号，两个查询都答「没有」。Swift store 的同名查询不变。 |
+| 2026-11-18 | 包装读取器的测试放进 `MachOKitExtensionsTests` | 替身 `ForwardingReader` 就在那个 target 里，给它加一个 `MachOSymbols` 依赖，比复制 131 行替身省事；它测的也正是「读取器类型的判断能看穿包装」在符号索引上的效果。 |
+| 2026-11-18 | 第 3 步完成 | 新增 C/C++ `SymbolIndexStore`（驱逐组 `.symbolStore`）与 `MachOFoundation`。本包全部测试通过：`MachOKitExtensionsTests` 47 个、`MachOSymbolsTests` 等其余 target 合计 63 个（Ultra，Xcode 27.2）。 |

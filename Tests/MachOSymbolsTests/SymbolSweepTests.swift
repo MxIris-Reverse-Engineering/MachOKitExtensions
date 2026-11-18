@@ -28,16 +28,19 @@ private struct LanguageRouting: SymbolTableRouting {
         }
     }
 
-    func indexesRowsByOffset(in table: Table) -> Bool {
-        table != .objectiveC
+    func offsetIndexing(in table: Table) -> SymbolOffsetIndexing {
+        table == .objectiveC ? .nameOnly : .byOffset
     }
 }
 
-/// Files every name, Swift included, under one offset-indexed table.
+/// Files every name, Swift included, under one offset-indexed table, keeping
+/// its offsets in order when asked to.
 private struct EverythingRouting: SymbolTableRouting {
     enum Table: Hashable, Sendable {
         case all
     }
+
+    var keepsSortedOffsets = false
 
     var mayReferenceStringTablesOfLoadedImages: Bool { true }
 
@@ -45,8 +48,8 @@ private struct EverythingRouting: SymbolTableRouting {
         .all
     }
 
-    func indexesRowsByOffset(in table: Table) -> Bool {
-        true
+    func offsetIndexing(in table: Table) -> SymbolOffsetIndexing {
+        keepsSortedOffsets ? .byOffsetWithSortedOffsets : .byOffset
     }
 }
 
@@ -256,5 +259,27 @@ struct SymbolSweepTests {
         for row in 0 ..< copying.rowCount {
             #expect(copying.materializedName(atRow: UInt32(row)) == mapping.materializedName(atRow: UInt32(row)))
         }
+    }
+}
+
+extension SymbolSweepTests {
+    /// Sorted offsets cost an integer per offset, so a table keeps them only
+    /// when its routing asks; and they are canonical offsets only — a file's
+    /// raw symbol values, virtual addresses, are not among them.
+    @Test func sortedCanonicalOffsetsAreKeptOnlyWhenAsked() throws {
+        let curl = try Self.curl()
+        let withoutOrder = SymbolSweep(sweeping: curl, routing: EverythingRouting())[.all]
+        #expect(withoutOrder.sortedCanonicalOffsets.isEmpty)
+        #expect(!withoutOrder.rowsByOffset.isEmpty)
+
+        let withOrder = SymbolSweep(sweeping: curl, routing: EverythingRouting(keepsSortedOffsets: true))[.all]
+        #expect(withOrder.sortedCanonicalOffsets == [0])
+        #expect(withOrder.rowsByOffset[0x1_0000_0000] != nil)
+
+        let foundation = SymbolSweep(sweeping: try Self.loadedImage(named: "Foundation"), routing: EverythingRouting(keepsSortedOffsets: true))[.all]
+        let offsets = foundation.sortedCanonicalOffsets
+        #expect(offsets.count > 1)
+        #expect(zip(offsets, offsets.dropFirst()).allSatisfy { $0 < $1 })
+        #expect(Set(offsets) == Set(foundation.rowsByOffset.keys))
     }
 }

@@ -50,7 +50,7 @@ public struct SymbolSweep<Routing: SymbolTableRouting>: Sendable {
 
         var accumulators: [Routing.Table: TableAccumulator] = [:]
         func makeAccumulator(for table: Routing.Table) -> TableAccumulator {
-            TableAccumulator(mappedStringTableBase: builderStringTableBase, indexesRowsByOffset: routing.indexesRowsByOffset(in: table))
+            TableAccumulator(mappedStringTableBase: builderStringTableBase, offsetIndexing: routing.offsetIndexing(in: table))
         }
 
         // Symbol-table leg for a loaded image: names are read in place
@@ -130,7 +130,7 @@ public struct SymbolSweep<Routing: SymbolTableRouting>: Sendable {
         }
 
         self.sweptTablesByTable = accumulators.mapValues { $0.freeze(hasExportInformation: hasExportInformation) }
-        self.emptyTable = TableAccumulator(mappedStringTableBase: nil, indexesRowsByOffset: false).freeze(hasExportInformation: hasExportInformation)
+        self.emptyTable = TableAccumulator(mappedStringTableBase: nil, offsetIndexing: .nameOnly).freeze(hasExportInformation: hasExportInformation)
     }
 }
 
@@ -143,6 +143,13 @@ public struct SweptSymbolTable: Sendable {
     /// canonical offset. Empty for a table the routing does not index by
     /// offset.
     public let rowsByOffset: [Int: SymbolRowBucket]
+
+    /// Every canonical offset a row is filed under, ascending. Empty unless
+    /// the routing asked for ``SymbolOffsetIndexing/byOffsetWithSortedOffsets``.
+    /// Unlike the keys of ``rowsByOffset``, never a file's raw symbol value,
+    /// which is a virtual address and would sort among the offsets as if it
+    /// were one.
+    public let sortedCanonicalOffsets: [Int]
 
     public let exportFacts: SymbolExportFacts
 
@@ -198,9 +205,14 @@ public struct SymbolExportFacts: Sendable {
 private struct TableAccumulator {
     private var builder: SymbolTableBuilder
 
-    private let indexesRowsByOffset: Bool
+    private let offsetIndexing: SymbolOffsetIndexing
 
     private var rowsByOffset: [Int: SymbolRowBucket] = [:]
+
+    /// Every canonical offset a row was filed under, in filing order and with
+    /// repeats; sorted and de-duplicated at freeze. Kept only when the
+    /// routing asks for it.
+    private var canonicalOffsets: [Int] = []
 
     private var hasLocalSymbols = false
 
@@ -208,9 +220,9 @@ private struct TableAccumulator {
 
     private var exportedNamesWithoutRows: Set<String> = []
 
-    init(mappedStringTableBase: UnsafeRawPointer?, indexesRowsByOffset: Bool) {
+    init(mappedStringTableBase: UnsafeRawPointer?, offsetIndexing: SymbolOffsetIndexing) {
         self.builder = SymbolTableBuilder(mappedStringTableBase: mappedStringTableBase)
-        self.indexesRowsByOffset = indexesRowsByOffset
+        self.offsetIndexing = offsetIndexing
     }
 
     /// Files a symbol-table entry whose name points into the image's mapped
@@ -301,7 +313,10 @@ private struct TableAccumulator {
     /// Scanning instead would go quadratic on a degenerate address where
     /// thousands of names pile onto one offset.
     private mutating func registerRow(_ row: UInt32, rawOffset: Int, canonicalOffset: Int, isNewRow: Bool) {
-        guard indexesRowsByOffset else { return }
+        guard offsetIndexing.indexesByOffset else { return }
+        if offsetIndexing.keepsSortedOffsets {
+            canonicalOffsets.append(canonicalOffset)
+        }
         appendRow(row, atOffset: rawOffset, mayAlreadyBeListed: !isNewRow)
         if canonicalOffset != rawOffset {
             appendRow(row, atOffset: canonicalOffset, mayAlreadyBeListed: !isNewRow)
@@ -332,9 +347,18 @@ private struct TableAccumulator {
         while exportedRowBitmap.count < exportedRowBitmapWordCount {
             exportedRowBitmap.append(0)
         }
+        var sortedCanonicalOffsets = canonicalOffsets
+        sortedCanonicalOffsets.sort()
+        var uniqueCount = 0
+        for offset in sortedCanonicalOffsets where uniqueCount == 0 || sortedCanonicalOffsets[uniqueCount - 1] != offset {
+            sortedCanonicalOffsets[uniqueCount] = offset
+            uniqueCount += 1
+        }
+        sortedCanonicalOffsets.removeLast(sortedCanonicalOffsets.count - uniqueCount)
         return SweptSymbolTable(
             symbolTable: symbolTable,
             rowsByOffset: rowsByOffset,
+            sortedCanonicalOffsets: sortedCanonicalOffsets,
             exportFacts: SymbolExportFacts(
                 hasExportInformation: hasExportInformation,
                 exportedRowBitmap: exportedRowBitmap,

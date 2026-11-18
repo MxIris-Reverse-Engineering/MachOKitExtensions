@@ -21,8 +21,8 @@ public protocol SymbolTableRouting: Sendable {
     /// already.
     func table(forSymbolNamed name: UnsafePointer<CChar>, language: SymbolLanguage) -> Table?
 
-    /// Whether the sweep files `table`'s rows by offset as well as by name.
-    func indexesRowsByOffset(in table: Table) -> Bool
+    /// How the sweep files `table`'s rows by offset, beyond by name.
+    func offsetIndexing(in table: Table) -> SymbolOffsetIndexing
 
     /// Whether rows read from an in-process image outside the dyld shared
     /// cache may point into that image's string table instead of copying
@@ -33,4 +33,43 @@ public protocol SymbolTableRouting: Sendable {
     /// Objective-C content. Rows of an image inside the shared cache always
     /// point in: the cache is never unmapped.
     var mayReferenceStringTablesOfLoadedImages: Bool { get }
+}
+
+/// How a ``SymbolSweep`` files a table's rows by offset.
+///
+/// A struct with static members rather than an enum, so that another form of
+/// offset index can be added without breaking a routing's `switch`.
+@_spi(Internals)
+public struct SymbolOffsetIndexing: Hashable, Sendable {
+    private enum Kind: Hashable, Sendable {
+        case nameOnly
+        case byOffset
+        case byOffsetWithSortedOffsets
+    }
+
+    private let kind: Kind
+
+    private init(kind: Kind) {
+        self.kind = kind
+    }
+
+    /// Rows are found by name alone.
+    public static let nameOnly = SymbolOffsetIndexing(kind: .nameOnly)
+
+    /// Rows are also found by offset: ``SweptSymbolTable/rowsByOffset``.
+    public static let byOffset = SymbolOffsetIndexing(kind: .byOffset)
+
+    /// ``byOffset``, plus every canonical offset a row is filed under in
+    /// ascending order — ``SweptSymbolTable/sortedCanonicalOffsets`` — for a
+    /// nearest-offset search. Costs one integer per offset, which a store
+    /// that never searches by proximity should not pay.
+    public static let byOffsetWithSortedOffsets = SymbolOffsetIndexing(kind: .byOffsetWithSortedOffsets)
+
+    var indexesByOffset: Bool {
+        kind != .nameOnly
+    }
+
+    var keepsSortedOffsets: Bool {
+        kind == .byOffsetWithSortedOffsets
+    }
 }
