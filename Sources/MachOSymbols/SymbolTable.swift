@@ -165,6 +165,19 @@ public final class SymbolTable: @unchecked Sendable {
         rows.count
     }
 
+    /// The bytes the table keeps alive: its rows, the name-order permutation
+    /// and the private name buffer. A mapped string table is the image's and
+    /// is not counted.
+    public var retainedByteCount: Int {
+        rows.count * MemoryLayout<SymbolRow>.stride + rowsSortedByName.count * MemoryLayout<UInt32>.stride + privateNameBuffer.count
+    }
+
+    /// The bytes of the names the table copied rather than reading them in
+    /// place from a mapped string table.
+    public var privateNameByteCount: Int {
+        privateNameBuffer.count
+    }
+
     public func canonicalOffset(atRow row: UInt32) -> Int {
         Int(rows[Int(row)].canonicalOffset)
     }

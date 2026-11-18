@@ -77,3 +77,16 @@ struct PackedNameReferenceBudgetTests {
         #expect(!bucket.contains(6))
     }
 }
+
+extension PackedNameReferenceBudgetTests {
+    /// A table counts its rows, its name-order permutation and the names it
+    /// copied.
+    @Test func retainedByteCountAddsRowsPermutationAndCopiedNames() {
+        var tableBuilder = SymbolTableBuilder(mappedStringTableBase: nil)
+        _ = tableBuilder.canonicalRow(forName: "_first", canonicalOffset: 0, isExternal: false)
+        _ = tableBuilder.canonicalRow(forName: "_second", canonicalOffset: 8, isExternal: false)
+        let symbolTable = tableBuilder.freeze()
+        #expect(symbolTable.privateNameByteCount == "_first".utf8.count + "_second".utf8.count)
+        #expect(symbolTable.retainedByteCount == 2 * 16 + 2 * 4 + symbolTable.privateNameByteCount)
+    }
+}
