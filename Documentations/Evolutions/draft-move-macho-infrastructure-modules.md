@@ -149,7 +149,7 @@
 | `MSS:Sources/ABI/MachOSwiftSection/Exported.swift` | 修改 | 加 `@_exported import Utilities` | 下游（如 RuntimeViewer 的 `offsetEnumerated()`）经 `import MachOSwiftSection` 拿到 `Utilities` 的链不断 | 4 |
 | `MSS:Sources/ABI/MachOSwiftSection/**` 中用 `@Layout` 的 29 个文件 | 修改 | 补 `import Utilities` | `MachOBase` 不再导出它 | 4 |
 | `MSS:Tests/MachOCachesTests`、`MSS:Tests/MachODependenciesTests`（`DependencyClosureTests` 除外） | 删除 | — | 已搬到本包 | 4 |
-| `MSS:Tests/MachODependenciesTests/DependencyClosureTests.swift` | 移动 | 移到 `MSS:Tests/IntegrationTests/MachODependencies/` | 它依赖 SymbolTestsCore 夹具，留在 MachOSwiftSection；`MachODependenciesTests` 这个 target 随之删除 | 4 |
+| `MSS:Tests/MachODependenciesTests/DependencyClosureTests.swift` | 移动 | 移到 `MSS:Tests/SwiftLayoutTests/`（与 `DependencyClosureLayoutTests` 同处）；`@testable import MachODependencies` 改为普通 import | 它依赖 SymbolTestsCore 夹具，留在 MachOSwiftSection；`IntegrationTests` 按项目规定永远不跑，放进去等于没人测；`MachODependenciesTests` 这个 target 随之删除 | 4 |
 | `MSS:Tests/IntegrationTests/SwiftInterface/SwiftInterfaceBuilderTests.swift:14` | 修改 | 去掉 `@testable`，只留 `@_spi(Internals) import MachOCaches`；若用到 internal 成员，改用 SPI | 跨包的 `@testable` 不保证可用 | 4 |
 | `MSS:Sources/MachO/MachOSymbols` → `MSS:Sources/Symbols/SwiftSymbols` | 移动 | target 改名 `SwiftSymbols`，目录放进新的层分组 `Symbols/`（`MachO/` 分组随之消失） | 命名规则；0055 的按层分组 | 5 |
 | `MSS:Sources/Symbols/SwiftSymbols/SymbolIndexStore.swift` → `SwiftSymbolIndexStore.swift` · `SwiftSymbolIndexStore` | 修改 | 类型改名；`Storage` 的通用字段改由 `SymbolSweep` 产出（`SwiftSymbolTableRouting`：`.swift` 主表、`.symbolicMangling` 附加表）；删除已迁走的通用代码与 `NlistProtocol` 扩展；`ExportFacts` 换成 `SymbolExportFacts`；删空 import（`MemberwiseInit`、`AsyncAlgorithms`、`Utilities`）与无用的 `@Loggable` | 拆分 | 5 |
@@ -613,16 +613,16 @@ public final class SymbolIndexStore: Sendable {
    - 行为：`sortedCanonicalOffsetsAreKeptOnlyWhenAsked`
    - 行为：`storeIsBuiltOnceAndSharedAcrossCallers`（含 `remove(for:)` 后重建）
    - 行为：`wrappedReaderSeesTheSameOffsetsAsTheReaderItWraps`
-4. **MachOSwiftSection 删掉迁走的模块** —— 改动地图步骤 4 各行。
+4. **MachOSwiftSection 删掉迁走的模块**（已完成，与第 5 步的机械改名同一个提交） —— 改动地图步骤 4 各行。
    - 行为：全量构建通过；`DependencyClosureTests` 在 `IntegrationTests` 里照常通过。
-5. **`SwiftSymbols`** —— 改动地图步骤 5 各行。先一个提交做目录与 target 改名、类型改名、import 改名（纯机械），再一个提交把采集换成 `SymbolSweep`。
-   - 行为：`swiftRoutingFilesSymbolicManglingNamesIntoTheirOwnTable`
+5. **`SwiftSymbols`**（已完成） —— 改动地图步骤 5 各行。先一个提交做目录与 target 改名、类型改名、import 改名（纯机械），再一个提交把采集换成 `SymbolSweep`。
+   - 行为：`swiftRoutingFilesSymbolicManglingNamesIntoTheirOwnTable`、`swiftRoutingLeavesOtherLanguagesOut`、`onlyTheSwiftTableIsIndexedByOffset`
    - 行为：`symbolLanguageSwiftMatchesDemanglingIsSwiftSymbol`（替代原 `SymbolTableEquivalenceTests` 的字节判断用例）
    - 行为：`noUnrenamedSymbolIndexStoreInSourcesOrTests`
    - 行为：MachOSwiftSection 全量测试通过；渲染 A/B 逐字节一致。
-6. **MachOSwiftSection 的命名收尾** —— 改动地图步骤 6 各行。
+6. **MachOSwiftSection 的命名收尾**（已完成，与第 5 步后半同一个提交） —— 改动地图步骤 6 各行。
    - 行为：`ContinuousIntegrationTestFilterTests` 通过；重新生成的 `AllFixtureSuites.swift` 与改名后的模块一致；全量测试通过。
-7. **文档** —— 改动地图步骤 7 各行；本提案头部登记配套文档。
+7. **文档**（已完成） —— 改动地图步骤 7 各行；本提案头部登记配套文档。
 8. **自审与验证**：两个仓库全量测试；渲染 A/B；内存记录；在决策日志写下结果。功能分支只推送，不合进任何常驻检出（与前置提案相同的理由：本包 `main` 一合入，旧工作区就报模块重名）。
 9. **落地（与前置提案、MachOSwiftSection 0.25.0 同一天）**：按前置提案决策日志里「落地那天要做的」清单执行，并插入本提案的分支——本包先合前置提案的分支、再合本提案的分支，发 2.0.0；MachOSwiftSection 同样先后合入 `next`，随 0.25.0 发布；两份提案各自取号、改 Implemented，MachOSwiftSection 的提案索引各加一行跨仓库链接。
 
@@ -659,3 +659,10 @@ public final class SymbolIndexStore: Sendable {
 | 2026-11-18 | C/C++ store 的 `containsSymbol` 与 `offset(ofSymbolNamed:)` 只认有偏移的名字 | 只被调试条目提到、行只是占位的名字不算这个镜像定义的符号，两个查询都答「没有」。Swift store 的同名查询不变。 |
 | 2026-11-18 | 包装读取器的测试放进 `MachOKitExtensionsTests` | 替身 `ForwardingReader` 就在那个 target 里，给它加一个 `MachOSymbols` 依赖，比复制 131 行替身省事；它测的也正是「读取器类型的判断能看穿包装」在符号索引上的效果。 |
 | 2026-11-18 | 第 3 步完成 | 新增 C/C++ `SymbolIndexStore`（驱逐组 `.symbolStore`）与 `MachOFoundation`。本包全部测试通过：`MachOKitExtensionsTests` 47 个、`MachOSymbolsTests` 等其余 target 合计 63 个（Ultra，Xcode 27.2）。 |
+| 2026-11-18 | 第 4 步与第 5 步的机械改名合成一个提交 | 本包带上 `MachOSymbols` 后，MachOSwiftSection 只要还有自己的 `MachOSymbols` target，依赖图里就有两个同名模块，SwiftPM 拒绝解析；删掉五个迁走的模块与把 `MachOSymbols` 改名为 `SwiftSymbols`（连同 `SymbolIndexStore` → `SwiftSymbolIndexStore`、驱逐组与依赖键改名）必须一起做才编得过。第 5 步后半（改用 `SymbolSweep`）与第 6 步改到了同一批测试文件，也合成一个提交。 |
+| 2026-11-18 | `DependencyClosureTests` 移进 `SwiftLayoutTests` 而不是 `IntegrationTests` | MachOSwiftSection 规定 `IntegrationTests` 永远不跑（只供维护者人工查看），放进去这条有断言的测试就没人跑了。它要 dlopen SymbolTestsCore 与兄弟框架，`SwiftLayoutTests` 已有同类的 `DependencyClosureLayoutTests`。 |
+| 2026-11-18 | MachOSwiftSection 里几处补 `@_spi(Internals) import MachOSymbols` | 删掉 Swift 侧的 `NlistProtocol` 扩展与通用符号表后，`SwiftThunkAnalysis` 的 `MachOThunkEnvironment.swift`（用 `isDebuggingEntry`）与 9 个测试文件要从本包取这些 SPI 接口。符号表普查测试原来直接读 `SymbolTable` 的内部存储，改用本包新加的 SPI 属性 `retainedByteCount` / `privateNameByteCount`。 |
+| 2026-11-18 | CI 的单线程协作池一步不再覆盖 `SharedCache` | 那一步（2026-09-29 死锁事故后加的）原本在单线程池上重跑 `SharedCacheResolveTests` 等，防止测试在池线程上阻塞等待。这几个 suite 随 `SharedCache` 迁进本包，而本包没有 CI，这层防护现在只在本地跑测试时生效。MachOSwiftSection 的那一步只留 `ConcurrentDefinitionPrintingTests`。后续项：给本包加 macOS CI，或至少在本地跑一次 `LIBDISPATCH_COOPERATIVE_POOL_STRICT=1` 的 `MachOCachesTests`。 |
+| 2026-11-18 | MachOSwiftSection 文档同步 | `Modules/MachOSymbols.md` 改为 `SwiftSymbols.md`，`MachOCaches.md` 与 `MachODependencies.md` 删除并改为链接本包的实现说明；AGENTS.md、README（安装示例的版本改为 0.25.0，`SwiftSymbols` 从这一版才有）、术语表、ProjectMap 等约 30 份描述现状的文档改了名字与路径。历史记录（`ProjectEvolutionLog.md`、`ReviewAdjudications.md`、已落地的提案、旧迁移计划、更新日志）保持原样，其中约 30 处链接因此指向已删除或改名的文件。愿景 `ReverseEngineeringWithoutIDA.md` 第 6 条「新代码先写在 `Sources/MachO/` 下」的策略已过时但属于方向性内容，留给用户决定。 |
+| 2026-11-18 | 第 4–7 步完成 | MachOSwiftSection 全量测试（`--skip IntegrationTests`）全部通过（Ultra，Xcode 27.2）。第一次跑时 800 处失败都是功能 worktree 里没有编好的 SymbolTestsCore 夹具：夹具不进 git，从 `next` 的检出复制（两边夹具源码只差一行被改名改到的注释，二进制相同）。 |
+| 2026-11-18 | 内存记录 | macOS 27.2 的 AppKit 有 161,089 个 C/C++/ObjC 名字：缓存里读出的 `MachOFile` 符号表 11.1 MB（复制的名字 7.9 MB）、偏移索引 360,328 个键（至少 8.6 MB）；进程内 `MachOImage` 符号表 3.2 MB（零拷贝）、180,164 个键（至少 4.3 MB）；有序偏移各 1.4 MB。文件的每行同时登记原始地址与规范化偏移，C/C++ store 用不到前者，给 `SymbolOffsetIndexing` 加一档「只登记规范化偏移」能省约一半，记为后续项。数字写进 `Internal/SymbolIndex.md`，普查留作测试 `symbolIndexCensusOfALargeImage`。 |

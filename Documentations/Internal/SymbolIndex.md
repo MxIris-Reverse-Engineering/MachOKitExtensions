@@ -65,6 +65,17 @@ routing 有三个要求，正好是两个 store 在采集里不同的地方：�
 - 缓存是 `SharedCache<Storage>(evictionGroup: .symbolStore)`，没有任何 indexer 认领它；镜像不再需要时由调用方 `remove(for:)`。键按 `SharedCacheKey`：同一个文件（同一 `LC_UUID`）的两个 `MachOFile` 实例共享一份索引，包装读取器与它包着的读取器也共享。
 - 2.0.0 不 demangle C++：要可读的名字暂时用 MachOKit 的 `demangledName`。结构化的 C++ 归类（按类、命名空间、成员）计划在 2.1.0 引入 LLVM 的 `ItaniumDemangle`，另有提案。
 
+## 内存（2026-11-18，macOS 27.2 的 AppKit，`symbolIndexCensusOfALargeImage`）
+
+| 读取器 | 行数 | 符号表（其中复制的名字） | 偏移索引的键 | 有序偏移 |
+|---|---|---|---|---|
+| 本机 dyld 缓存里的 `MachOFile` | 161,089 | 11.1 MB（7.9 MB） | 360,328 个，至少 8.6 MB | 1.4 MB |
+| 进程内的 `MachOImage` | 161,089 | 3.2 MB（0） | 180,164 个，至少 4.3 MB | 1.4 MB |
+
+- 文件的名字要复制进私有缓冲，进程内的缓存镜像零拷贝，差出 7.9 MB。
+- 文件的每一行同时登记在原始地址与规范化偏移下，偏移索引的键是镜像的两倍。C/C++ store 的查询只按规范化偏移问，原始地址的键对它没有用：给 `SymbolOffsetIndexing` 加一档「只登记规范化偏移」可以省下约一半，留作后续。
+- 「至少」是键与桶本身的字节数，不含 `Dictionary` 的空槽与元数据。
+
 ## 契约与坑
 
 - **Swift 侧不要写裸的 `SymbolIndexStore`**：MachOSwiftSection 的 Swift store 叫 `SwiftSymbolIndexStore`，两者的查询方法同名，写错名字会悄悄编到 C/C++ store 上、查不到任何 Swift 名字。MachOSwiftSection 的 `SymbolIndexStoreNamingScanTests` 扫源码钉住。

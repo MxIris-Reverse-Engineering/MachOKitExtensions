@@ -144,3 +144,35 @@ struct SymbolIndexStoreTests {
         #expect(rebuilt !== first)
     }
 }
+
+extension SymbolIndexStoreTests {
+    /// How large the index of a framework-scale image is, read out of the
+    /// host's dyld shared cache as a file and loaded in this process. Prints
+    /// the census; asserts only that each reader indexed something, and that
+    /// the loaded image's names stayed in its string table.
+    @Test func symbolIndexCensusOfALargeImage() throws {
+        let appKitPath = "/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit"
+        let hostCache = try #require(FullDyldCache.cachedHost)
+        let appKitFile = try #require(hostCache.machOFile(by: .path(appKitPath)))
+        try #require(dlopen(appKitPath, RTLD_NOW) != nil)
+        let appKitImage = try #require(MachOImage(name: "AppKit"))
+
+        var censusLines: [String] = []
+        func census(of storage: SymbolIndexStore.Storage, label: String) {
+            let swept = storage.sweptSymbols
+            let symbolTable = swept.symbolTable
+            let offsetIndexByteCount = swept.rowsByOffset.count * (MemoryLayout<Int>.stride + MemoryLayout<SymbolRowBucket>.stride)
+            let sortedOffsetsByteCount = swept.sortedCanonicalOffsets.count * MemoryLayout<Int>.stride
+            censusLines.append("\(label): \(symbolTable.rowCount) rows, table \(symbolTable.retainedByteCount) bytes (copied names \(symbolTable.privateNameByteCount)), \(swept.rowsByOffset.count) offsets (≥ \(offsetIndexByteCount) bytes), sorted offsets \(sortedOffsetsByteCount) bytes")
+        }
+        let fileStorage = try #require(Self.store.storage(in: appKitFile))
+        let imageStorage = try #require(Self.store.storage(in: appKitImage))
+        census(of: fileStorage, label: "AppKit, MachOFile from the host cache")
+        census(of: imageStorage, label: "AppKit, MachOImage in this process")
+        print("C, C++ and Objective-C symbol index census —\n" + censusLines.joined(separator: "\n"))
+
+        #expect(fileStorage.sweptSymbols.symbolTable.rowCount > 0)
+        #expect(imageStorage.sweptSymbols.symbolTable.rowCount > 0)
+        #expect(imageStorage.sweptSymbols.symbolTable.privateNameByteCount == 0)
+    }
+}
