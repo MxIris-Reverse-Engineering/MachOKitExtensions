@@ -623,7 +623,7 @@ public final class SymbolIndexStore: Sendable {
 6. **MachOSwiftSection 的命名收尾**（已完成，与第 5 步后半同一个提交） —— 改动地图步骤 6 各行。
    - 行为：`ContinuousIntegrationTestFilterTests` 通过；重新生成的 `AllFixtureSuites.swift` 与改名后的模块一致；全量测试通过。
 7. **文档**（已完成） —— 改动地图步骤 7 各行；本提案头部登记配套文档。
-8. **自审与验证**：两个仓库全量测试；渲染 A/B；内存记录；在决策日志写下结果。功能分支只推送，不合进任何常驻检出（与前置提案相同的理由：本包 `main` 一合入，旧工作区就报模块重名）。
+8. **自审与验证**（已完成）：两个仓库全量测试；渲染 A/B；内存记录；在决策日志写下结果。功能分支只推送，不合进任何常驻检出（与前置提案相同的理由：本包 `main` 一合入，旧工作区就报模块重名）。
 9. **落地（与前置提案、MachOSwiftSection 0.25.0 同一天）**：按前置提案决策日志里「落地那天要做的」清单执行，并插入本提案的分支——本包先合前置提案的分支、再合本提案的分支，发 2.0.0；MachOSwiftSection 同样先后合入 `next`，随 0.25.0 发布；两份提案各自取号、改 Implemented，MachOSwiftSection 的提案索引各加一行跨仓库链接。
 
 **收尾时必须判断两件事**（判断结果写进决策日志）：
@@ -666,3 +666,5 @@ public final class SymbolIndexStore: Sendable {
 | 2026-11-18 | MachOSwiftSection 文档同步 | `Modules/MachOSymbols.md` 改为 `SwiftSymbols.md`，`MachOCaches.md` 与 `MachODependencies.md` 删除并改为链接本包的实现说明；AGENTS.md、README（安装示例的版本改为 0.25.0，`SwiftSymbols` 从这一版才有）、术语表、ProjectMap 等约 30 份描述现状的文档改了名字与路径。历史记录（`ProjectEvolutionLog.md`、`ReviewAdjudications.md`、已落地的提案、旧迁移计划、更新日志）保持原样，其中约 30 处链接因此指向已删除或改名的文件。愿景 `ReverseEngineeringWithoutIDA.md` 第 6 条「新代码先写在 `Sources/MachO/` 下」的策略已过时但属于方向性内容，留给用户决定。 |
 | 2026-11-18 | 第 4–7 步完成 | MachOSwiftSection 全量测试（`--skip IntegrationTests`）全部通过（Ultra，Xcode 27.2）。第一次跑时 800 处失败都是功能 worktree 里没有编好的 SymbolTestsCore 夹具：夹具不进 git，从 `next` 的检出复制（两边夹具源码只差一行被改名改到的注释，二进制相同）。 |
 | 2026-11-18 | 内存记录 | macOS 27.2 的 AppKit 有 161,089 个 C/C++/ObjC 名字：缓存里读出的 `MachOFile` 符号表 11.1 MB（复制的名字 7.9 MB）、偏移索引 360,328 个键（至少 8.6 MB）；进程内 `MachOImage` 符号表 3.2 MB（零拷贝）、180,164 个键（至少 4.3 MB）；有序偏移各 1.4 MB。文件的每行同时登记原始地址与规范化偏移，C/C++ store 用不到前者，给 `SymbolOffsetIndexing` 加一档「只登记规范化偏移」能省约一半，记为后续项。数字写进 `Internal/SymbolIndex.md`，普查留作测试 `symbolIndexCensusOfALargeImage`。 |
+| 2026-11-18 | 渲染 A/B 全部一致 | 基线是本提案在 MachOSwiftSection 功能分支上的第一个提交（迁移分支并入同一个 `origin/next`，依赖迁移分支的本包），候选是本提案的功能分支；两侧用 Xcode 27.2 各自 release 预构建后带 `--skip-build` 跑，不用基线缓存。归档缓存（macOS 26.6、15.5）24 对、模拟器运行时（iOS 15.5、16.4、17.5、26.5）里的独立文件 36 对、进程内镜像 24 对，共 84 对逐字节一致。本包全量测试与 MachOSwiftSection 全量测试（`--skip IntegrationTests`）都通过（Ultra）。 |
+| 2026-11-18 | 实现完成，待用户看过后收尾 | 落地步骤 1–8 完成，第 9 步（与前置提案、MachOSwiftSection 0.25.0 同一天落地）属于收尾。文档判断：实现说明三份已写并登记在头部；调用方契约（偏移口径、`closestSymbols` 不设上限、`isExported` 三态、`remove(for:)` 由调用方负责）写在 `SymbolIndexStore` 的文档注释里，不另写使用指南；新术语 routing、sweep 在 `Internal/SymbolIndex.md` 里定义，本包暂不建术语表，MachOSwiftSection 的术语表已同步。功能分支只推送，按前置提案的理由不合进任何常驻检出。 |
