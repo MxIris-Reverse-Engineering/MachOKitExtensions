@@ -101,7 +101,7 @@ struct CPlusPlusSymbolIndexStoreTests {
 
     @Test func functionWithALocalClassIsAFunctionScope() throws {
         let image = try Self.fixtureImage()
-        let function = try Self.scope(named: "fixture::localThing()")
+        let function = try Self.scope(named: "fixture::localThing(int)")
         #expect(function.kind == .function)
         #expect(function.baseName == "localThing")
         #expect(Self.store.childScopes(of: function, in: image).map(\.name).contains("Local"))
@@ -112,12 +112,12 @@ struct CPlusPlusSymbolIndexStoreTests {
     /// operator.
     @Test func lambdaScopeIsAType() throws {
         let image = try Self.fixtureImage()
-        let inlineFunction = try Self.scope(named: "fixture::withLambda()")
+        let inlineFunction = try Self.scope(named: "fixture::withLambda(int)")
         let lambda = try #require(Self.store.childScopes(of: inlineFunction, in: image).first { $0.name.hasPrefix("'lambda'") })
         #expect(lambda.kind == .type)
         #expect(lambda.evidence.contains(.mangledAsType))
 
-        let function = try Self.scope(named: "fixture::localThing()")
+        let function = try Self.scope(named: "fixture::localThing(int)")
         let clangClosure = try #require(Self.store.childScopes(of: function, in: image).first { $0.name == "$_0" })
         #expect(clangClosure.kind == .type)
         #expect(clangClosure.evidence == [.qualifiedMemberFunction])

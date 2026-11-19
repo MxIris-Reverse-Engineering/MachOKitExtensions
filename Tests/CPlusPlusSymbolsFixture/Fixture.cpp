@@ -83,19 +83,20 @@ template int twice<int>(int);
 
 // A local class and a lambda inside a function. clang names a closure type in
 // a function that is neither inline nor a template `$_0`, not Itanium's
-// `'lambda'`.
-FIXTURE_KEEP int localThing() {
+// `'lambda'`. The lambdas take the function's argument: with a constant one,
+// an optimized build folds the call and drops the call operator.
+FIXTURE_KEEP int localThing(int seed) {
     struct Local {
         FIXTURE_KEEP int get() { return 9; }
     };
     auto addOne = [](int value) __attribute__((noinline)) { return value + 1; };
-    return Local().get() + addOne(10);
+    return Local().get() + addOne(seed);
 }
 
 // A lambda inside an inline function: its closure type has the Itanium name.
-inline FIXTURE_KEEP int withLambda() {
+inline FIXTURE_KEEP int withLambda(int seed) {
     auto addTwo = [](int value) __attribute__((noinline)) { return value + 2; };
-    return addTwo(20);
+    return addTwo(seed);
 }
 
 // The standard library, instantiated here.
@@ -136,7 +137,7 @@ extern "C" int CPlusPlusSymbolsFixtureTouchEverything(void) {
     total += Token::count() + consume(nullptr) + take(nullptr);
     total += Box<int>{13}.get() + Box<char>{1}.get();
     total += twice(7);
-    total += localThing() + withLambda();
+    total += localThing(total) + withLambda(total);
     total += sumOfVector();
     total += callHidden();
     total += fixtureUnparsable();

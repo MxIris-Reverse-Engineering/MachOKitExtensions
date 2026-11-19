@@ -484,9 +484,9 @@ public final class CPlusPlusSymbolIndexStore: @unchecked Sendable {
 ```
 
 - **自己的采集。** `CPlusPlusSymbolTableRouting`：语言是 `.cPlusPlus` 的进 `.symbols`（`.byOffset`），其余一概不收；`mayReferenceStringTablesOfLoadedImages` 为 `false`，与 C/C++ 索引一样，只对 dyld shared cache 里的镜像零拷贝。C++ 的判定先于任何注册的语言，所以这个索引不看注册表的代数，也不会因为有语言注册而重建。
-- **常驻的内容。** `Storage` 保存：采集结果；作用域数组（每个作用域一条：路径的最后一段、`baseName`、父作用域编号、种类、证据、按名字排序的子作用域编号、按偏移排序的行号）；限定名到作用域编号的字典；每行的作用域编号与种类；未能解析的行号。全局作用域固定是第 0 号。
-- **建树。** 逐行解析，按作用域路径逐段查找或插入，记下这一行的作用域、种类与它带来的证据。当作类型用到的路径先攒着，全部行处理完以后，只给树里已有的作用域加 `.usedAsType`，其余丢掉。最后为每个作用域定种类。
-- **并行。** 先串行实现，在第 4 步按普查数字决定要不要按行分块、每块一个解析器并行解析。树的合并在解析之后串行做，结果与串行一致。
+- **常驻的内容。** `Storage` 保存：采集结果；作用域数组（每个作用域一条：做好的 `CPlusPlusScope` 值、父作用域编号、按名字排序的子作用域编号、按偏移排序的成员行号）；限定名到作用域编号的字典；未能解析的行号。全局作用域固定是第 0 号。每行属于哪个作用域只体现在那个作用域的成员行号里，不另存。
+- **建树。** 逐行解析，按作用域路径逐段查找或插入，把这一行记进它的作用域、累积它带来的证据。当作类型用到的路径先攒着，全部行处理完以后，只给树里已有的作用域加 `.usedAsType`，其余丢掉。最后为每个作用域定种类。
+- **并行。** 串行实现。第 4 步的普查在 release 下量得 JavaScriptCore 的 34,951 个 C++ 名字建树约 0.15 秒，不需要并行。
 - **查询结果当场解析。** `members(of:in:)`、`symbols(for:in:)`、`symbol(named:in:)` 用行号取出名字，再解析一次，组成 `CPlusPlusSymbol`。`scope(named:)` 查字典；`childScopes(of:)` 先按 `path` 定位作用域（同一个镜像里，同一路径只对应一个作用域），再读它的子作用域编号。
 - **锁与驱逐。** 与 `SymbolIndexStore` 相同：`SharedCache` 自己带锁，驱逐组 `.cPlusPlusSymbolStore`，不主动驱逐，调用方用 `remove(for:)` 释放。
 
@@ -592,7 +592,8 @@ guard 变量、`thread_local` 变量与块由第 2 步的固定名字覆盖，�
    - 行为：`unparsedSymbolsListNamesTheDemanglerRejects`
    - 行为：`indexIsBuiltOnFirstQueryAndDroppedByRemove`
    - 行为：`registeringALanguageDoesNotRebuildTheIndex`
-4. **普查与成本** —— 第 16 行。在 JavaScriptCore 上（进程内与从 cache 读出各一次，release）记录 C++ 行数、作用域数、各种类的作用域数、未能解析的名字数、建树耗时与常驻字节，写进实现说明与决策日志；据此决定要不要并行解析。
+4. **普查与成本**（已完成） —— 第 16 行。在 JavaScriptCore 上（进程内与从 cache 读出各一次，release）记录 C++ 行数、作用域数、各种类的作用域数、未能解析的名字数、建树耗时与常驻字节，写进实现说明与决策日志；据此决定要不要并行解析。
+   - 行为：`cPlusPlusSymbolIndexCensusOfALargeImage`，其中断言未能解析的名字系统 `__cxa_demangle` 也解析不了。
    - 行为：本包全量测试 debug 与 `swift test -c release` 都通过。
 5. **文档** —— 第 17–19 行。
 6. **落地（与 `draft-split-symbol-language` 同一天，3.0.0）**：本分支先并入那时的拆分分支或 `next`，重跑全量测试（含 release）；随拆分的落地顺序发本包 3.0.0；两份提案各自取号、改 Implemented。
@@ -618,3 +619,4 @@ guard 变量、`thread_local` 变量与块由第 2 步的固定名字覆盖，�
 | 2026-11-19 | 顺带修正：符号表里的 C++ block 名字判成 C++ | 编夹具名字时发现：clang 给 C++ 函数里的 block 起名 `___Z…_block_invoke`，Mach-O 符号表再加 Darwin 的下划线，成了 `____Z…`；`SymbolLanguage.isItaniumMangled` 只认 `__Z` 与 `___Z`，这类名字一直被判成 C。0003 起（2.0.0）就是这样，属基线已有的问题；本提案要把 block 归到外层函数下，所以在这条分支上修：先给 `cPlusPlusNamesAreRecognizedWithoutRegistration` 加上 `____Z9withBlockv_block_invoke` 并确认失败，再让判断也认 `____Z`，`MachOSymbolsTests` 全部通过。`Internal/SymbolIndex.md` 同步。本包别处没有同样的前缀判断（`CPlusPlusDemangling` 四种写法都认）。 |
 | 2026-11-19 | 第 2 步完成 | `CPlusPlusSymbolName` 与内部的 `CPlusPlusDemangler` 落地，17 个名字用例全部通过；测试名字取自 clang 21（Xcode 27.2）给小段 C++ 生成的符号表。比提案多了三个用例：无名类型的 typeinfo 放在全局、线程局部例程取变量的作用域、成员函数模板里的 lambda 路径穿过该函数。 |
 | 2026-11-19 | 第 3 步完成 | `CPlusPlusScope`、`CPlusPlusSymbol`、`CPlusPlusSymbolIndexStore` 与 C++ 夹具落地，`CPlusPlusSymbolsTests` 全部 41 个测试通过（debug，Ultra）。实现时定下的细节：construction vtable 的基类（`Middle-in-Derived` 的 `Middle`）记作「当作类型用到」，完整类拿 `.virtualTable`；`scope(named: "")` 返回全局作用域；`unparsedSymbols` 按偏移排序；`CPlusPlusSymbol` 的构造器不公开；限定名重复时取先建的作用域（实际不会发生，只是不让建表崩溃）。夹具发现 clang 给普通函数里的 lambda 起名 `$_0` 而不是 Itanium 的 `'lambda'`，这种闭包类型靠 `const` 的调用运算符判成类型；测试两种都覆盖，夹具多了一个放 lambda 的内联函数。比提案多一个用例：`virtualInheritanceShowsVirtualTableTablesAndThunks`。 |
+| 2026-11-19 | 第 4 步完成；不并行 | 普查（Ultra，release，macOS 27.2 的 JavaScriptCore）：34,951 个 C++ 名字，100 个未能解析（都是 clang 的 `$_N` 闭包名套在模板实参里，系统 `__cxa_demangle` 同样解析不了，测试断言了这一点），7,010 个作用域（类型 3,910、未定 2,117、函数 967、命名空间 16）；建树约 0.15 秒（debug 约 1 秒）；从 cache 读出的文件符号表 4.7 MB（复制的名字 4.0 MB）、进程内镜像 0.7 MB（零拷贝），偏移索引分别不少于 1.6 MB 与 0.8 MB，作用域树约 4.1 MB。建树已经够快，按提案的约定保持串行。release 全量测试第一次跑时，夹具里那个 `$_0` lambda 因为参数是常量被折叠掉、符号消失；两个放 lambda 的函数改为接收运行时参数后，debug 与 release 都通过。 |
