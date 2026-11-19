@@ -1,7 +1,7 @@
 # MachODependencies：依赖闭包与定位器
 
 > 实现说明，随代码维护。读者：维护者。
-> 模块 2026-11 由 MachOSwiftSection 迁入本包（提案 [draft-move-macho-infrastructure-modules](../Evolutions/draft-move-macho-infrastructure-modules.md)）；设计来自 MachOSwiftSection 提案 [0017-macho-dependencies-module](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0017-macho-dependencies-module.md)。下文的消费者都在 MachOSwiftSection 里。
+> 模块 2026-11 由 MachOSwiftSection 迁入本包（提案 [0003-move-macho-infrastructure-modules](../Evolutions/0003-move-macho-infrastructure-modules.md)）；设计来自 MachOSwiftSection 提案 [0017-macho-dependencies-module](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0017-macho-dependencies-module.md)。下文的消费者都在 MachOSwiftSection 里。
 
 ## 模块定位
 

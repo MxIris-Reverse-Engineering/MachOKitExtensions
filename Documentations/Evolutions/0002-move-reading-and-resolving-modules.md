@@ -1,6 +1,6 @@
-# Draft - 把 MachOReading 与 MachOResolving 迁入本包
+# 0002 - 把 MachOReading 与 MachOResolving 迁入本包
 
-- **状态**: In Progress
+- **状态**: Implemented
 - **作者**: JH
 - **创建日期**: 2026-11-11
 - **最后更新**: 2026-11-19
@@ -256,9 +256,9 @@ remote: .package(
 5. **本包，提交三**：单字母泛型参数改为全名，不改任何调用方写法；`swift build` 通过。**已完成**：顺带把两处单字母参数名 `i` 与 `InProcessContext` 的参数名 `ptr` 改成全名，同样只是内部名字。
 6. **本包，测试与文档**：建 `MachOReadingTests`（两个测试），跑本包全部测试；搬实现说明，改 README 与索引。**已完成**：`MachOReadingTests` 的 5 个测试与原有的 30 个全部通过；实现说明见 `Internal/ReadingContextAbstraction.md`。
 7. **MachOSwiftSection 功能分支**（本地依赖指向本包的功能分支）：删两个 target、改依赖、删 `ConcurrentFileMappingTests.swift`、改文档。跑全部测试（不含 `IntegrationTests`），再做渲染 A/B：以切换前的 `next` 为基线，三条读取路径的输出逐字节一致。**已完成**：Xcode 26.6 下 2835 个测试只有一个计时测试在整套负载下超时（单独跑通过，基线上同样超时）；渲染 A/B 以 `origin/next` 为基线，dyld cache 24 对、模拟器上的独立文件 48 对、进程内镜像 24 对，共 96 对全部逐字节一致。
-8. **MachOObjCSection**：放宽版本范围，打 tag。**范围放宽已落地**：2026-11-12 合入 MachOObjCSection 的 `next` 并推送；打 tag 属于发版，等用户决定。
-9. **切换当天**：本包合入 `main` 并打 2.0.0；MachOSwiftSection 把下限改为远端 2.0.0 与第 8 步的 tag，合入 `next`；本提案在本包落地编号，MachOSwiftSection 的提案索引加跨仓库行。同一天还要合 MachOObjCSection 的范围放宽与 swift-decompiler 的迁移（它跟 MachOSwiftSection 的 `next`，要先于 `next` 删废弃写法合入）。注意：本包 `main` 一合入，`MxIris-Reverse-Engineering.xcworkspace` 与 MachOKitUI 的根目录就会报模块重名——它们配的是 MachOSwiftSection 的 `main`（0.24.0，仍自带同名模块），要到 MachOSwiftSection 发版、`main` 也切过去才恢复；`-Next` 工作区与 RuntimeViewer 配的是 `next`，不受影响。
-10. **MachOSwiftSection 发版**（原定 0.25.0），Changelog 写明搬迁。
+8. **MachOObjCSection**：放宽版本范围，打 tag。**范围放宽已落地**：2026-11-12 合入 MachOObjCSection 的 `next` 并推送；打 tag 属于发版，等用户决定。**已发 0.8.207**（2026-11-19，排在本包 2.0.0 之后，见决策日志）。
+9. **切换当天**：**已完成**（2026-11-19）。本包合入 `main` 并打 2.0.0；MachOSwiftSection 把下限改为远端 2.0.0 与第 8 步的 tag，合入 `next`；本提案在本包落地编号，MachOSwiftSection 的提案索引加跨仓库行。同一天还要合 MachOObjCSection 的范围放宽与 swift-decompiler 的迁移（它跟 MachOSwiftSection 的 `next`，要先于 `next` 删废弃写法合入）。注意：本包 `main` 一合入，`MxIris-Reverse-Engineering.xcworkspace` 与 MachOKitUI 的根目录就会报模块重名——它们配的是 MachOSwiftSection 的 `main`（0.24.0，仍自带同名模块），要到 MachOSwiftSection 发版、`main` 也切过去才恢复；`-Next` 工作区与 RuntimeViewer 配的是 `next`，不受影响。
+10. **MachOSwiftSection 发版**：**已完成**，0.25.0 的 Changelog 写明搬迁。
 11. **后续**：MachOKitUI 的提案。
 
 **收尾时必须判断两件事**（判断结果写进决策日志）：
@@ -296,5 +296,6 @@ remote: .package(
 | 2026-11-12 | 更正上一行 | 「不会中途报模块重名」说错了：本包 `main` 一合入，`MxIris-Reverse-Engineering.xcworkspace` 与 MachOKitUI 根目录就会报模块重名，要到 MachOSwiftSection 的 `main` 也切过去（它发 0.25.0）才恢复，落地步骤 9 写的才对。 |
 | 2026-11-12 | 先落地 swift-decompiler 与 MachOObjCSection | 正式收尾时这两步不依赖发版：swift-decompiler 迁完后对新旧 MachOSwiftSection 都能编，MachOObjCSection 接受本包 1.x 与 2.x。两者都已 `--no-ff` 合入各自的集成分支并推送，功能分支与 worktree 已删。MachOObjCSection 落地前补跑了全部测试：`MachOObjCSectionTests` 在 `setUp` 读本机 `Downloads` 里的一个文件，读不到就强制解包而崩溃，`ObjCMetadataSourceTests` 的测试进程随之异常退出；在它 `next` 的独立检出上跑同两个 target 结果相同，是基线已有的问题。本包与 MachOSwiftSection 的落地要先发版（本包 2.0.0、MachOObjCSection 新 tag），而 MachOSwiftSection 的本地 `next` 上还有另一个等用户验收、未推送的功能，所以停下来问用户。 |
 | 2026-11-12 | 本包与 MachOSwiftSection 等 MachOSwiftSection 0.25.0 一起落地 | 用户选择。理由：现在发本包 2.0.0 没有受益者——MachOKitUI 要用这两个模块，也得等 MachOSwiftSection 发出不再自带它们的 0.25.0；而本包 `main` 一合入，主工作区与 MachOKitUI 根目录就报模块重名，直到 0.25.0。两个功能分支与 worktree 保留。当天核对：MachOSwiftSection 远端 `next` 又进了 44 个提交，没有动这两个模块、没有新增旧读取写法，功能分支合进去没有冲突。A/B 的基线检出与依赖沙盒已过时，已删除。落地那天要做的：把那时的 `next` 合进 MachOSwiftSection 功能分支并重编、重跑全量测试与 A/B（新代码可能调用了已删的旧写法）；给 MachOObjCSection 打 tag（版本线 0.8.2xx，眼下最新是 0.8.206），本包合入 `main` 并发 2.0.0；MachOSwiftSection 把 MachOObjCSection 的下限改成那个 tag 后合入 `next`，随 0.25.0 发布；最后本提案取号、改 Implemented，MachOSwiftSection 的提案索引加跨仓库行。 |
-| 2026-11-19 | 落地顺序改为本包 2.0.0 先于 MachOObjCSection 的 tag | 推翻 2026-11-11「默认做法」里「先给 MachOObjCSection 打 tag 再发本包 2.0.0」。MachOSwiftSection 的提案 [move-cross-reference-layers](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/draft-move-cross-reference-layers.md) 要在 MachOObjCSection 里新增 `ObjCCodeReferences`，它依赖本包 2.0.0 才有的 `MachOCodeReferences`，所以 MachOObjCSection 的 tag 只能在本包 2.0.0 之后打；那个版本（0.8.207）同时把本包的下限从 1.2.0 抬到 2.0.0。新的顺序：本包 2.0.0 → MachOObjCSection 0.8.207 → MachOSwiftSection 0.25.0，三份提案同一天落地 |
+| 2026-11-19 | 落地顺序改为本包 2.0.0 先于 MachOObjCSection 的 tag | 推翻 2026-11-11「默认做法」里「先给 MachOObjCSection 打 tag 再发本包 2.0.0」。MachOSwiftSection 的提案 [0098 move-cross-reference-layers](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0098-move-cross-reference-layers.md) 要在 MachOObjCSection 里新增 `ObjCCodeReferences`，它依赖本包 2.0.0 才有的 `MachOCodeReferences`，所以 MachOObjCSection 的 tag 只能在本包 2.0.0 之后打；那个版本（0.8.207）同时把本包的下限从 1.2.0 抬到 2.0.0。新的顺序：本包 2.0.0 → MachOObjCSection 0.8.207 → MachOSwiftSection 0.25.0，三份提案同一天落地 |
 | 2026-11-19 | 落地那天加跑 release 配置的测试 | 在 2026-11-12 那行的清单之外加一步：本包与 MachOSwiftSection 都用 `swift test -c release` 跑一次（MachOSwiftSection 加 `--skip IntegrationTests`）。起因是第二份搬迁提案的分支在 release 下编不过测试、debug 却能过，详见那份提案的决策日志。用户批准。 |
+| 2026-11-19 | Implemented，编号 0002，随 2.0.0 落地 | 与 0003、MachOSwiftSection 的 0098（交叉引用的核心层与 ObjC 层迁出）同一天落地。三条分支本来就是叠着的：MachOSwiftSection 的提案在本包开的 `feature/move-cross-reference-layers` 已经包含两份搬迁分支与 `main` 的全部提交，把它快进到 `main` 后打 2.0.0；随后 MachOObjCSection 发 0.8.207，MachOSwiftSection 发 0.25.0。落地前本包用 Xcode 26.6 跑了 `swift test -c release`，161 个测试全部通过；MachOSwiftSection 那边的 release 与 debug 全量测试记在 0098。2026-11-11 列为后续项的 `readersOfOneCacheFileShareOneMapping` 已经解决：本包 `main` 上的 `b6266fa` 让一份 dyld cache 的各个文件共用一张 sub-cache 表（复现测试在 `1edc77f`），这个测试随第 7 步搬进本包，这次 release 运行里通过。收尾判断：配套文档就是已登记的 `ReadingContextAbstraction.md`，不另写使用指南；本包不建术语表，`ReadingContext`、reader wrapper 等词条留在 MachOSwiftSection 的术语表。第 11 步（MachOKitUI 的提案）仍是后续项。 |

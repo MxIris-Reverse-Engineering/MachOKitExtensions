@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Draft - 把 MachOSwiftSection 剩余的 MachO 基础模块迁入本包，并拆出 C/C++ 符号索引</title>
+<title>0003 - 把 MachOSwiftSection 剩余的 MachO 基础模块迁入本包，并拆出 C/C++ 符号索引</title>
 <style>
 :root {
   --bg: #ffffff; --fg: #1d1d1f; --muted: #6e6e73; --line: #d2d2d7; --panel: #f5f5f7;
@@ -66,13 +66,13 @@ ol li, ul li { margin: 3px 0; }
 <body>
 <main>
 
-<h1>Draft - 把 MachOSwiftSection 剩余的 MachO 基础模块迁入本包，并拆出 C/C++ 符号索引</h1>
+<h1>0003 - 把 MachOSwiftSection 剩余的 MachO 基础模块迁入本包，并拆出 C/C++ 符号索引</h1>
 <p class="meta">
-  <span>状态：<span class="badge">In Progress</span></span>
-  <span>对应提案最后更新：<strong>2026-11-18</strong></span>
+  <span>状态：<span class="badge">Implemented</span></span>
+  <span>对应提案最后更新：<strong>2026-11-19</strong></span>
   <span>创建：2026-11-18</span>
   <span>作者：JH</span>
-  <span>原文：<code>draft-move-macho-infrastructure-modules.md</code></span>
+  <span>原文：<code>0003-move-macho-infrastructure-modules.md</code></span>
 </p>
 
 <nav class="toc panel">
@@ -88,7 +88,7 @@ ol li, ul li { margin: 3px 0; }
 <p><strong>头部信息</strong></p>
 <ul>
 <li><strong>所属愿景</strong>：无</li>
-<li><strong>关联提案</strong>：本包 <a href="draft-move-reading-and-resolving-modules.md">draft-move-reading-and-resolving-modules</a>（前置：先把 <code>MachOReading</code> / <code>MachOResolving</code> 迁进本包；本提案的功能分支从它的功能分支切出，两者同一天落地）；MachOSwiftSection <a href="https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0001-symbol-name-offsetization.md">0001 symbol-name-offsetization</a>（符号表的紧凑行与零拷贝名字）、<a href="https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0017-macho-dependencies-module.md">0017 macho-dependencies-module</a>、<a href="https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0018-self-contained-abi-layer.md">0018 self-contained-abi-layer</a>（<code>MachOBase</code> 这一层能看到什么）、<a href="https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0053-shared-cache-composition-and-eviction-registry.md">0053 shared-cache-composition-and-eviction-registry</a>（<code>SharedCache</code> 与驱逐登记）、<a href="https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0055-group-sources-by-layer.md">0055 group-sources-by-layer</a></li>
+<li><strong>关联提案</strong>：本包 <a href="0002-move-reading-and-resolving-modules.md">0002-move-reading-and-resolving-modules</a>（前置：先把 <code>MachOReading</code> / <code>MachOResolving</code> 迁进本包；本提案的功能分支从它的功能分支切出，两者同一天落地）；MachOSwiftSection <a href="https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0001-symbol-name-offsetization.md">0001 symbol-name-offsetization</a>（符号表的紧凑行与零拷贝名字）、<a href="https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0017-macho-dependencies-module.md">0017 macho-dependencies-module</a>、<a href="https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0018-self-contained-abi-layer.md">0018 self-contained-abi-layer</a>（<code>MachOBase</code> 这一层能看到什么）、<a href="https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0053-shared-cache-composition-and-eviction-registry.md">0053 shared-cache-composition-and-eviction-registry</a>（<code>SharedCache</code> 与驱逐登记）、<a href="https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0055-group-sources-by-layer.md">0055 group-sources-by-layer</a></li>
 <li><strong>实现分支 / PR</strong>：本包与 MachOSwiftSection 各一条 <code>feature/move-macho-infrastructure-modules</code>，分别从两边的 <code>feature/move-reading-and-resolving-modules</code> 切出，worktree 在各自的 <code>.worktrees/&lt;项目名&gt;-MoveMachOInfrastructureModules</code></li>
 <li><strong>配套文档</strong>：实现说明 <a href="../Internal/SymbolIndex.md">Internal/SymbolIndex.md</a>（符号表、采集与 C/C++ 符号索引）、<a href="../Internal/SharedCache.md">Internal/SharedCache.md</a>、<a href="../Internal/DependencyResolution.md">Internal/DependencyResolution.md</a>（后两份由 MachOSwiftSection 的模块文档改写）</li>
 </ul>
@@ -96,7 +96,7 @@ ol li, ul li { margin: 3px 0; }
 
 <h2 id="decide">要你定</h2>
 <div class="panel">
-<p>提案已批准，落地步骤 1–8 已完成，等与前置提案、MachOSwiftSection 0.25.0 同一天落地。实现中冒出的两件事已由用户定下（愿景第 6 条改写；本包加 CI 另写提案），见决策日志。写提案时由我定下的做法（可推翻）：</p>
+<p>已落地（Implemented，编号 0003）：2026-11-19 与前置提案 0002 同一天落地，随本包 2.0.0、MachOSwiftSection 0.25.0 发布，落地步骤 1–9 全部完成。实现与落地中由用户定下的事（愿景第 6 条改写；本包加 CI 另写提案；落地前加跑 release 配置的测试；RuntimeViewer 落地那天一起改），见决策日志。写提案时由我定下的做法（可推翻）：</p>
 <ul>
 <li><code>SymbolLanguage</code> 放在本包，Swift 前缀也由它判断（C/C++ store 要排除 Swift 名字）</li>
 <li>C/C++ store 把 ObjC 名字当作 C 一样收</li>
@@ -406,7 +406,7 @@ MachOPointers   ──&gt; MachOKitExtensions, MachOReading, MachOResolving</cod
 <h3>非目标</h3>
 <ul>
 <li>C++ 名字的 demangle（转字符串或结构化归类）与 LLVM <code>ItaniumDemangle</code> 的引入：放到 2.1.0，另写提案。2.0.0 的 C/C++ store 只给原始名字和语言；要可读名字的调用方暂时继续用 MachOKit 的 <code>demangledName</code>。</li>
-<li>不迁 <code>Utilities</code>、<code>MachOMacros</code>、<code>ARM64InstructionDecoding</code> 及任何 Swift 层模块。</li>
+<li>不迁 <code>Utilities</code>、<code>MachOMacros</code>、<code>ARM64InstructionDecoding</code> 及任何 Swift 层模块。（2026-11-19 更正：<code>ARM64InstructionDecoding</code> 随交叉引用的核心层一起迁入本包，由 MachOSwiftSection 的 <a href="https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0098-move-cross-reference-layers.md">0098 move-cross-reference-layers</a> 负责，见决策日志。）</li>
 <li>不让 <code>MachOKitExtensions</code> 模块再导出任何迁入的模块（避免与 MachOObjCSection 的 <code>Relative*Pointer</code>、与 MachOKit 的 <code>Symbol</code> / <code>SymbolProtocol</code> 歧义）。</li>
 <li>不合并 <code>SharedCache</code> 与本包已有的 <code>MachOCacheStorage</code>：前者是跨实例、按镜像身份共享的缓存加驱逐登记，后者挂在单个 <code>MachOFile</code> 实例上；合不合并以后另议。</li>
 <li>不改迁入模块的 API 与行为。例外只有：上面列出的可见性提升、<code>MachOBase</code> 不再导出 <code>Utilities</code>、<code>SymbolTable</code> 在纯 C 镜像上不再零拷贝。</li>
@@ -703,7 +703,7 @@ let store = SwiftSymbolIndexStore.shared
 <li><strong>本包内</strong>：<code>MachOKitExtensionsTests</code> 多两个搬来的测试文件；其余 target 不受影响。</li>
 <li><strong>MachOSwiftSection</strong>：见源码兼容性；改动大部分是机械的 import 与类型改名。</li>
 <li><strong>MachOKitUI</strong>：<code>MachOSwiftSectionDetailBuilder.swift:9</code> 要改 <code>import SwiftSymbols</code>（在 <code>#if SwiftSection</code> 里）。它现在的版本范围只会解析到 MachOSwiftSection 0.24.x，所以远端构建不受影响；用本地依赖、开 SwiftSection trait 构建时，从落地那天到它升级本包 2.0.0 之前会报找不到 <code>resolvesSymbolUsingIndexStore</code>——与前置提案已经记下的「本地依赖会报模块重名」是同一个窗口，随同一份 MachOKitUI 提案解决。</li>
-<li><strong>RuntimeViewer</strong>：<code>import Utilities</code> 与 <code>offsetEnumerated()</code> 靠 <code>MachOSwiftSection</code> 再导出 <code>Utilities</code>；改为由 ABI 模块直接再导出，链不断，预计不用改。落地时编译确认。</li>
+<li><strong>RuntimeViewer</strong>：要改。<code>next</code> 的 <code>RuntimeViewerCore/Package.swift:269</code> 从 MachOSwiftSection 取 <code>MachODependencies</code> product，迁移后这个 product 只在本包，解析直接失败；要改为从本包取，并把本包加为直接依赖（本地 <code>../../MachOKitExtensions</code>，远端从 2.0.0 起），相关的 <code>Package.resolved</code> 随之加上本包。它的远端依赖跟 MachOSwiftSection 的 <code>next</code> 分支，所以要与 MachOSwiftSection 的 <code>next</code> 合入搬迁分支同一天改。<code>import Utilities</code> 与 <code>offsetEnumerated()</code> 靠 <code>MachOSwiftSection</code> 再导出 <code>Utilities</code>，改为由 ABI 模块直接再导出后链不断，这部分不用改。（2026-11-19 更正，见决策日志。）</li>
 <li><strong>swift-decompiler</strong>：经 <code>import MachOSwiftSection</code> 与 Swift 层模块的再导出用到 <code>DependencySearchPath</code>、<code>InProcessContext</code>，再导出链不变，预计不用改。落地时编译确认。</li>
 <li><strong>REAgent</strong>：钉死 MachOSwiftSection 0.15.2，不受影响。</li>
 <li><strong>MachOObjCSection</strong>：不受影响；前置提案已把它对本包的范围放宽到 3.0.0 之前。</li>
@@ -786,7 +786,7 @@ let store = SwiftSymbolIndexStore.shared
 <ul><li>行为：<code>ContinuousIntegrationTestFilterTests</code> 通过；重新生成的 <code>AllFixtureSuites.swift</code> 与改名后的模块一致；全量测试通过。</li></ul></li>
 <li><strong>文档</strong>（已完成） —— 改动地图步骤 7 各行；本提案头部登记配套文档。</li>
 <li><strong>自审与验证</strong>（已完成）：两个仓库全量测试；渲染 A/B；内存记录；在决策日志写下结果。功能分支只推送，不合进任何常驻检出（与前置提案相同的理由：本包 <code>main</code> 一合入，旧工作区就报模块重名）。</li>
-<li><strong>落地（与前置提案、MachOSwiftSection 0.25.0 同一天）</strong>：按前置提案决策日志里「落地那天要做的」清单执行，并插入本提案的分支——本包先合前置提案的分支、再合本提案的分支，发 2.0.0；MachOSwiftSection 同样先后合入 <code>next</code>，随 0.25.0 发布；两份提案各自取号、改 Implemented，MachOSwiftSection 的提案索引各加一行跨仓库链接。</li>
+<li><strong>落地（与前置提案、MachOSwiftSection 0.25.0 同一天）</strong>：<strong>已完成</strong>（2026-11-19）。按前置提案决策日志里「落地那天要做的」清单执行，并插入本提案的分支——本包先合前置提案的分支、再合本提案的分支，发 2.0.0；MachOSwiftSection 同样先后合入 <code>next</code>，随 0.25.0 发布；两份提案各自取号、改 Implemented，MachOSwiftSection 的提案索引各加一行跨仓库链接。同一天改 RuntimeViewer 的 <code>next</code>：<code>MachODependencies</code> 改从本包取、加本包依赖、更新 <code>Package.resolved</code>，编译确认（见「下游影响」）。</li>
 </ol>
 <p><strong>收尾时必须判断两件事</strong>（判断结果写进决策日志）：</p>
 <ul>
@@ -835,6 +835,11 @@ let store = SwiftSymbolIndexStore.shared
 <tr><td>2026-11-18</td><td>实现完成，待用户看过后收尾</td><td>落地步骤 1–8 完成，第 9 步（与前置提案、MachOSwiftSection 0.25.0 同一天落地）属于收尾。文档判断：实现说明三份已写并登记在头部；调用方契约（偏移口径、<code>closestSymbols</code> 不设上限、<code>isExported</code> 三态、<code>remove(for:)</code> 由调用方负责）写在 <code>SymbolIndexStore</code> 的文档注释里，不另写使用指南；新术语 routing、sweep 在 <code>Internal/SymbolIndex.md</code> 里定义，本包暂不建术语表，MachOSwiftSection 的术语表已同步。功能分支只推送，按前置提案的理由不合进任何常驻检出。</td></tr>
 <tr><td>2026-11-18</td><td>愿景第 6 条改为「通用代码直接写进本包」</td><td>用户决定。MachOSwiftSection 愿景 <code>ReverseEngineeringWithoutIDA.md</code> 原写「新的通用代码先在 <code>Sources/MachO/</code> 下写成独立模块，等读取层迁移落定后再搬」；整个 Mach-O 层已迁入本包、那个分组已不存在，改为不依赖 Swift 元数据的通用代码直接写进本包。在 MachOSwiftSection 的功能分支上提交。</td></tr>
 <tr><td>2026-11-18</td><td>本包加 CI 另写提案</td><td>用户决定：给本包加 macOS 的 GitHub Actions 工作流，跑全量测试并在单线程协作池上重跑 <code>SharedCache</code> 的几个 suite，补回迁移丢掉的那层防护。不在本提案的分支里做，记为后续项。</td></tr>
+<tr><td>2026-11-19</td><td>MachOSwiftSection 的功能分支再次并入 <code>origin/next</code>，冲突已解</td><td>MachOSwiftSection 的提案 <a href="https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0098-move-cross-reference-layers.md">0098 move-cross-reference-layers</a> 要叠在本提案上做，它的第 0 步把 <code>origin/next</code>（当时落后 13 个提交，正是 0097 离线交叉引用的全部实现）合进了 MachOSwiftSection 的 <code>feature/move-macho-infrastructure-modules</code>，用 merge、不 rebase。冲突在 <code>Package.swift</code>、<code>MachOThunkEnvironment.swift</code>、<code>AGENTS.md</code>、<code>AccessorThunkResolutionExplained.md</code>、<code>SwiftSectionKit.md</code>、愿景与 <code>MachOCaches.md</code>：两边的改动都保留；<code>MachOCaches.md</code> 在本提案里已搬来本包，那边保持删除，<code>origin/next</code> 对它的一行改动（<code>thunkResolution</code> 组里 <code>CacheImageResolver</code> 换成 <code>CacheImageLocator</code>）由那份提案补到本包的 <code>SharedCache.md</code>。原计划「落地当天再把 <code>next</code> 合进来解冲突」不再需要，但此前的全量测试与 84 对渲染 A/B 不再覆盖这条分支，要重新验证，结果记在那份提案里</td></tr>
+<tr><td>2026-11-19</td><td><code>ARM64InstructionDecoding</code> 也迁入本包</td><td>更正「不迁」一节的第一条。交叉引用的核心层（迁来后叫 <code>MachOCodeReferences</code>）与地址解析（<code>MachOAddressResolution</code>）都离不开它，它不依赖任何 Swift 的东西，名字不变、作为独立 product 迁来。由 MachOSwiftSection 的 <a href="https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0098-move-cross-reference-layers.md">0098 move-cross-reference-layers</a> 负责，随本包 2.0.0 一起发</td></tr>
+<tr><td>2026-11-19</td><td>落地前的验证加上 release 配置的测试</td><td>MachOSwiftSection 的搬迁分支用 Xcode 26.6（Swift 6.3）、release 配置编不过测试：本提案第 5 步改写的 <code>SymbolTableEquivalenceTests.swift</code> 里，<code>&amp;&amp;</code> 右侧的自动闭包捕获了非 Sendable 的指针，release 下报「sending 'nameC' risks causing data races」。debug 能编过；此前的全量测试走 debug，渲染 A/B 只用 release 编了命令行工具，都没覆盖到。修复（先把前缀判断算进局部变量，行为不变）在 MachOSwiftSection 的 <code>feature/move-cross-reference-layers</code> 上，随它同日落地，不另摘到本提案的分支（用户决定）。落地那天，本包与 MachOSwiftSection 除 debug 全量测试外，都再用 <code>swift test -c release</code> 跑一次（MachOSwiftSection 加 <code>--skip IntegrationTests</code>，与它 CI 的 release 任务一致）；用户批准。</td></tr>
+<tr><td>2026-11-19</td><td>RuntimeViewer 要跟着改，落地那天一起改</td><td>在沙盒里用合并后的分支编 RuntimeViewer 的 <code>next</code> 时发现：它的 <code>RuntimeViewerCore/Package.swift:269</code> 写着 <code>.product(name: "MachODependencies", package: "MachOSwiftSection")</code>，迁移后解析失败（「product 'MachODependencies' … not found in package 'MachOSwiftSection'」）。「下游影响」原写「预计不用改」，据此更正。查过所有下游的依赖清单，从 MachOSwiftSection 取被迁走 product 的只有这一处；源码里 13 处 <code>import MachODependencies</code> 不用改。RuntimeViewer 的远端依赖跟 MachOSwiftSection 的 <code>next</code> 分支，所以要与 MachOSwiftSection 的 <code>next</code> 合入搬迁分支同一天改；远端模式要等本包 2.0.0 才能解析，所以不提前开分支（用户决定）。</td></tr>
+<tr><td>2026-11-19</td><td>Implemented，编号 0003，随 2.0.0 落地</td><td>与 0002 同日落地，做法见 0002 的同日一行。2026-11-19 合入 <code>origin/next</code> 之后欠下的重新验证，由 MachOSwiftSection 的 0098 在叠在本分支之上的候选上补齐：debug 全量 2,901 个测试通过，84 对渲染 A/B 逐字节一致，release 测试的结果也记在那里。RuntimeViewer 的清单按第 9 步同日改。收尾判断：三份实现说明（<code>SymbolIndex.md</code>、<code>SharedCache.md</code>、<code>DependencyResolution.md</code>）已登记为配套文档，调用方契约写在 <code>SymbolIndexStore</code> 的文档注释里，不另写使用指南；「routing」「sweep」「零拷贝行」只在 <code>SymbolIndex.md</code> 里解释，本包不建术语表，MachOSwiftSection 术语表的相关词条已改指 <code>SwiftSymbolIndexStore</code> 与本包的 <code>SymbolSweep</code>。后续项：给本包加 CI 的提案；MachOKitUI 的提案。</td></tr>
 </table>
 </div>
 </details>

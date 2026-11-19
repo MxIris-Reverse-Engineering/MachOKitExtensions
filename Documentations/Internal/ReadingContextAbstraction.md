@@ -1,6 +1,6 @@
 # 读取层：ReadingContext 与 Resolvable
 
-> 提案：[把 MachOReading 与 MachOResolving 迁入本包](../Evolutions/draft-move-reading-and-resolving-modules.md)。这两个模块在 2.0.0 之前是 MachOSwiftSection 的 target，当时的演进记在它的提案里：0057 reading-context-migration（读取接口收成 `ReadingContext` 一份）、0075 wrapped-reader-recognition（看穿包装类型）、0088 machofile-performance（文件读取改用 MachOKit 的映射）。ABI 层与上层怎么用这一层，见 MachOSwiftSection 的 `Documentations/Internal/ReadingContextAbstraction.md`。
+> 提案：[把 MachOReading 与 MachOResolving 迁入本包](../Evolutions/0002-move-reading-and-resolving-modules.md)。这两个模块在 2.0.0 之前是 MachOSwiftSection 的 target，当时的演进记在它的提案里：0057 reading-context-migration（读取接口收成 `ReadingContext` 一份）、0075 wrapped-reader-recognition（看穿包装类型）、0088 machofile-performance（文件读取改用 MachOKit 的映射）。ABI 层与上层怎么用这一层，见 MachOSwiftSection 的 `Documentations/Internal/ReadingContextAbstraction.md`。
 
 ## 两个模块各管什么
 

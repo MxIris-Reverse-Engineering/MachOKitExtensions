@@ -2,7 +2,7 @@
 
 从 Mach-O 文件里离线读出「一次调用最终落到哪」所需的几样东西：一个镜像的地址空间（`ImageAddressSpace`）、调用途经的跳板链（`StubChainResolver`）、任意指针槽里装着谁（`SlotResolver`），以及 dyld shared cache 里某个地址属于哪个镜像（`CacheImageLocator`）。不认识 Swift、ObjC 的任何元数据。
 
-- 来历：MachOSwiftSection 提案 0097 把它从那边的 `SwiftThunkAnalysis` 抽成 `CodeAddressResolution`，accessor thunk 读取与交叉引用的文件模式共用；提案 [move-cross-reference-layers](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/draft-move-cross-reference-layers.md) 把它搬来本包，改名 `MachOAddressResolution`，随 2.0.0 发布。
+- 来历：MachOSwiftSection 提案 0097 把它从那边的 `SwiftThunkAnalysis` 抽成 `CodeAddressResolution`，accessor thunk 读取与交叉引用的文件模式共用；提案 [0098 move-cross-reference-layers](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0098-move-cross-reference-layers.md) 把它搬来本包，改名 `MachOAddressResolution`，随 2.0.0 发布。
 - 依赖：MachOKit、`MachOKitExtensions`、`MachOReading`（`MachOFile.readElements`）、[ARM64InstructionDecoding](ARM64InstructionDecoding.md)（跳板形状）。
 - 使用方：本包的 [MachOCodeReferences](MachOCodeReferences.md)（文件模式）；MachOSwiftSection 的 `SwiftThunkAnalysis`（`MachOThunkEnvironment` 经它读槽、读桩、找 cache 镜像）与 `SwiftDeclarationRendering`（导出表偏移换地址）。
 - 接口都是 `@_spi(Internals) public`，只给这些使用方用，不承诺稳定。

@@ -1,7 +1,7 @@
 # MachOSymbols：符号表、采集与 C/C++ 符号索引
 
 > 实现说明，随代码维护。读者：维护者。
-> 2026-11 由 MachOSwiftSection 的 `MachOSymbols` 拆出（提案 [draft-move-macho-infrastructure-modules](../Evolutions/draft-move-macho-infrastructure-modules.md)）。Swift 那一半——demangle、按成员 / 类型 / witness 归类——留在 MachOSwiftSection，模块名 `SwiftSymbols`，说明见它的 [SwiftSymbols.md](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Internal/Modules/SwiftSymbols.md)。
+> 2026-11 由 MachOSwiftSection 的 `MachOSymbols` 拆出（提案 [0003-move-macho-infrastructure-modules](../Evolutions/0003-move-macho-infrastructure-modules.md)）。Swift 那一半——demangle、按成员 / 类型 / witness 归类——留在 MachOSwiftSection，模块名 `SwiftSymbols`，说明见它的 [SwiftSymbols.md](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Internal/Modules/SwiftSymbols.md)。
 
 ## 模块定位
 
