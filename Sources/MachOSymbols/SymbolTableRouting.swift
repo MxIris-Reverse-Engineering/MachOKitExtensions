@@ -17,8 +17,8 @@ public protocol SymbolTableRouting: Sendable {
     /// Asked once for each defined symbol-table entry and once for each
     /// export-trie entry; an import is never offered. `name` is the
     /// NUL-terminated name as the symbol table spells it, valid only for the
-    /// duration of the call; `language` is ``SymbolLanguage`` read from it
-    /// already.
+    /// duration of the call; `language` is its ``SymbolLanguage``, as the
+    /// registry the sweep was given classifies it.
     func table(forSymbolNamed name: UnsafePointer<CChar>, language: SymbolLanguage) -> Table?
 
     /// How the sweep files `table`'s rows by offset, beyond by name.

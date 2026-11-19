@@ -11,7 +11,7 @@ import MachOResolving
 /// let store = SymbolIndexStore.shared
 /// let mainOffset = store.offset(ofSymbolNamed: "_main", in: machOFile)
 /// let enclosingName = store.closestSymbols(at: instructionOffset, in: machOFile)?.symbols.first?.name
-/// let language = SymbolLanguage(ofSymbolNamed: someSymbol.name)   // .cPlusPlus, .objectiveC, …
+/// let language = SymbolLanguage(ofSymbolNamed: someSymbol.name)   // .cPlusPlus, .c, or a registered language
 /// ```
 ///
 /// Swift names are left out — MachOSwiftSection keeps them, demangled, in a
@@ -30,11 +30,18 @@ import MachOResolving
 /// be unloaded, so its names are copied. Nothing evicts an index on its own:
 /// call ``remove(for:)`` when an image is no longer of interest.
 public final class SymbolIndexStore: Sendable {
-    public static let shared = SymbolIndexStore()
+    public static let shared = SymbolIndexStore(languageRegistry: .shared)
 
     private let cache = SharedCache<Storage>(evictionGroup: .symbolStore)
 
-    private init() {}
+    /// Which languages count as some other package's, and stay out.
+    private let languageRegistry: SymbolLanguageRegistry
+
+    /// A store of its own, classifying through `languageRegistry` — for
+    /// tests; everything else uses ``shared``.
+    init(languageRegistry: SymbolLanguageRegistry) {
+        self.languageRegistry = languageRegistry
+    }
 
     /// The symbols at exactly `offset`, in the order the symbol table lists
     /// them; `nil` when none sits there.
@@ -98,7 +105,7 @@ public final class SymbolIndexStore: Sendable {
     }
 
     func storage(in machO: some MachORepresentableWithCache) -> Storage? {
-        cache.storage(in: machO) { Storage(sweeping: $0) }
+        cache.storage(in: machO) { Storage(sweeping: $0, languageRegistry: languageRegistry) }
     }
 }
 
@@ -107,8 +114,8 @@ extension SymbolIndexStore {
     final class Storage: Sendable {
         let sweptSymbols: SweptSymbolTable
 
-        init(sweeping machO: some MachORepresentableWithCache) {
-            self.sweptSymbols = SymbolSweep(sweeping: machO, routing: NonSwiftSymbolTableRouting())[.symbols]
+        init(sweeping machO: some MachORepresentableWithCache, languageRegistry: SymbolLanguageRegistry) {
+            self.sweptSymbols = SymbolSweep(sweeping: machO, routing: CAndCPlusPlusSymbolTableRouting(), languageRegistry: languageRegistry)[.symbols]
         }
 
         func symbols(at offset: Int) -> Symbols? {
@@ -150,16 +157,16 @@ extension SymbolIndexStore {
     }
 }
 
-/// Files every name but a Swift one into one offset-indexed table. Names of
-/// an image outside the shared cache are copied: a pure C image can be
-/// unloaded.
-struct NonSwiftSymbolTableRouting: SymbolTableRouting {
+/// Files C and C++ names into one offset-indexed table, and every registered
+/// language's nowhere. Names of an image outside the shared cache are copied:
+/// a pure C image can be unloaded.
+struct CAndCPlusPlusSymbolTableRouting: SymbolTableRouting {
     enum Table: Hashable, Sendable {
         case symbols
     }
 
     func table(forSymbolNamed name: UnsafePointer<CChar>, language: SymbolLanguage) -> Table? {
-        language == .swift ? nil : .symbols
+        language == .c || language == .cPlusPlus ? .symbols : nil
     }
 
     func offsetIndexing(in table: Table) -> SymbolOffsetIndexing {

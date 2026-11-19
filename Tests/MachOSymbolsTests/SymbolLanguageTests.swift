@@ -1,56 +1,22 @@
 import Foundation
 import Testing
 import MachOKit
-@_spi(Internals) import MachOSymbols
+@_spi(Internals) @testable import MachOSymbols
 
 @Suite
 struct SymbolLanguageTests {
-    @Test(arguments: [
-        "$s7SwiftUI4TextVMn",
-        "_$s7SwiftUI4TextVMn",
-        "$S7SwiftUI4TextVMn",
-        "_$S7SwiftUI4TextVMn",
-        "$e4Main3FooV",
-        "_$e4Main3FooV",
-        "_T0So8NSObjectC",
-        "@__swiftmacro_4Main3FooV10ObservablefMm_",
-    ])
-    func symbolLanguageClassifiesSwiftManglingPrefixes(name: String) {
-        #expect(SymbolLanguage(ofSymbolNamed: name) == .swift)
-    }
-
-    @Test(arguments: [
-        "_symbolic _____ 7SwiftUI4TextV",
-        "_default assoc type _____y_____",
-    ])
-    func symbolLanguageClassifiesSymbolicManglingNamesAsSwift(name: String) {
-        #expect(SymbolLanguage(ofSymbolNamed: name) == .swift)
-    }
-
     @Test(arguments: [
         "__ZN4llvm5Value4dumpEv",
         "__ZNSt3__16vectorIiNS_9allocatorIiEEE9push_backEOi",
         "___ZN2CA6Render7Context6commitEv_block_invoke",
     ])
-    func symbolLanguageClassifiesItaniumNamesAsCPlusPlus(name: String) {
-        #expect(SymbolLanguage(ofSymbolNamed: name) == .cPlusPlus)
+    func cPlusPlusNamesAreRecognizedWithoutRegistration(name: String) {
+        #expect(SymbolLanguage(ofSymbolNamed: name, registry: SymbolLanguageRegistry()) == .cPlusPlus)
     }
 
-    @Test(arguments: [
-        "-[NSView setNeedsDisplay:]",
-        "+[NSColor redColor]",
-        "_OBJC_CLASS_$_NSView",
-        "_OBJC_METACLASS_$_NSView",
-        "_OBJC_IVAR_$_NSView._frame",
-        "__OBJC_$_INSTANCE_METHODS_NSView",
-        "l_OBJC_PROTOCOL_$_NSCopying",
-        "L_OBJC_SELECTOR_REFERENCES_",
-        "_objc_msgSend$setNeedsDisplay:",
-    ])
-    func symbolLanguageClassifiesMethodImplementationsAndRuntimeSymbolsAsObjectiveC(name: String) {
-        #expect(SymbolLanguage(ofSymbolNamed: name) == .objectiveC)
-    }
-
+    /// Without a registration, every name C++ mangling does not claim is C —
+    /// Swift and Objective-C names included: their packages define and
+    /// register those languages.
     @Test(arguments: [
         "_malloc",
         "_main",
@@ -60,21 +26,73 @@ struct SymbolLanguageTests {
         "-",
         "+x",
         "_Z",
-        "__swift_FORCE_LOAD_$_swiftCompatibility56",
         "ltmp0",
-        "_OBJ",
+        "$s7SwiftUI4TextVMn",
+        "_$s7SwiftUI4TextVMn",
+        "_symbolic _____ 7SwiftUI4TextV",
+        "-[NSView setNeedsDisplay:]",
+        "_OBJC_CLASS_$_NSView",
     ])
-    func symbolLanguageFallsBackToC(name: String) {
-        #expect(SymbolLanguage(ofSymbolNamed: name) == .c)
+    func unclaimedNamesAreC(name: String) {
+        #expect(SymbolLanguage(ofSymbolNamed: name, registry: SymbolLanguageRegistry()) == .c)
     }
 
-    @Test func descriptionsNameTheLanguages() {
-        #expect([SymbolLanguage.c, .cPlusPlus, .objectiveC, .swift].map(\.description) == ["C", "C++", "Objective-C", "Swift"])
+    @Test func registeredLanguageClaimsTheNamesItRecognizes() {
+        let registry = SymbolLanguageRegistry()
+        registry.register(.objectiveCRuntimeStandIn, where: StandInRecognition.isObjectiveCRuntimeSymbol)
+        #expect(SymbolLanguage(ofSymbolNamed: "_OBJC_CLASS_$_NSView", registry: registry) == .objectiveCRuntimeStandIn)
+        #expect(SymbolLanguage(ofSymbolNamed: "_OBJC_IVAR_$_NSView._frame", registry: registry) == .objectiveCRuntimeStandIn)
+        #expect(SymbolLanguage(ofSymbolNamed: "_malloc", registry: registry) == .c)
+        #expect(registry.registeredLanguages == [.objectiveCRuntimeStandIn])
+    }
+
+    @Test func cPlusPlusIsDecidedBeforeRegisteredRecognizers() {
+        let registry = SymbolLanguageRegistry()
+        registry.register(.swiftStandIn, where: { _ in true })
+        #expect(SymbolLanguage(ofSymbolNamed: "__ZN4llvm5Value4dumpEv", registry: registry) == .cPlusPlus)
+        #expect(SymbolLanguage(ofSymbolNamed: "_malloc", registry: registry) == .swiftStandIn)
+    }
+
+    @Test func earlierRegistrationWinsAnOverlap() {
+        let registry = SymbolLanguageRegistry()
+        registry.register(.objectiveCRuntimeStandIn, where: StandInRecognition.isObjectiveCRuntimeSymbol)
+        registry.register(.swiftStandIn, where: { _ in true })
+        #expect(SymbolLanguage(ofSymbolNamed: "_OBJC_CLASS_$_NSView", registry: registry) == .objectiveCRuntimeStandIn)
+        #expect(SymbolLanguage(ofSymbolNamed: "_malloc", registry: registry) == .swiftStandIn)
+        #expect(registry.registeredLanguages == [.objectiveCRuntimeStandIn, .swiftStandIn])
+    }
+
+    @Test func registeringALanguageTwiceKeepsTheFirstRecognizer() {
+        let registry = SymbolLanguageRegistry()
+        registry.register(.swiftStandIn, where: StandInRecognition.isSwiftSymbol)
+        let generationAfterFirstRegistration = registry.generation
+        registry.register(.swiftStandIn, where: { _ in true })
+        #expect(SymbolLanguage(ofSymbolNamed: "_$s7SwiftUI4TextVMn", registry: registry) == .swiftStandIn)
+        #expect(SymbolLanguage(ofSymbolNamed: "_malloc", registry: registry) == .c)
+        #expect(registry.registeredLanguages == [.swiftStandIn])
+        #expect(registry.generation == generationAfterFirstRegistration)
+    }
+
+    @Test func registeringABuiltInLanguageIsAProgrammerError() async {
+        await #expect(processExitsWith: .failure) {
+            SymbolLanguageRegistry().register(.c, where: { _ in true })
+        }
+        await #expect(processExitsWith: .failure) {
+            SymbolLanguageRegistry().register(.cPlusPlus, where: { _ in true })
+        }
+    }
+
+    @Test func descriptionIsTheRawValue() {
+        #expect(SymbolLanguage.c.description == "C")
+        #expect(SymbolLanguage.cPlusPlus.description == "C++")
+        #expect(SymbolLanguage(rawValue: "Rust").description == "Rust")
+        #expect(SymbolLanguage(rawValue: "C") == .c)
+        #expect(SymbolLanguage(rawValue: "C++") == .cPlusPlus)
     }
 
     /// The `String` form and the in-place byte form give one answer for
-    /// every name of a real image, and the images this process has loaded
-    /// carry names of every language.
+    /// every name of a real image. Nothing registers on the shared registry
+    /// in this test process, so only C and C++ are seen.
     @Test func stringAndByteClassificationAgreeOnEveryNameOfARealImage() throws {
         var languagesSeen: Set<SymbolLanguage> = []
         var mismatchCount = 0
@@ -90,6 +108,6 @@ struct SymbolLanguageTests {
             }
         }
         #expect(mismatchCount == 0)
-        #expect(languagesSeen == [.c, .cPlusPlus, .objectiveC, .swift])
+        #expect(languagesSeen == [.c, .cPlusPlus])
     }
 }

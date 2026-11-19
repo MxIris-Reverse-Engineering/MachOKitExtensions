@@ -4,12 +4,13 @@ import MachOKit
 import MachOKitExtensions
 @_spi(Internals) @testable import MachOSymbols
 
-/// Files C++ names under `.cPlusPlus`, Objective-C names under `.objectiveC`
-/// (not indexed by offset) and C names under `.other`; Swift names nowhere.
+/// Files C++ names under `.cPlusPlus`, the Objective-C runtime stand-in's
+/// names under `.objectiveCRuntime` (not indexed by offset) and C names under
+/// `.other`. Sweeps with it use ``StandInRecognition/objectiveCRuntimeRegistry``.
 private struct LanguageRouting: SymbolTableRouting {
     enum Table: Hashable, Sendable {
         case cPlusPlus
-        case objectiveC
+        case objectiveCRuntime
         case other
     }
 
@@ -19,19 +20,19 @@ private struct LanguageRouting: SymbolTableRouting {
         switch language {
         case .cPlusPlus:
             .cPlusPlus
-        case .objectiveC:
-            .objectiveC
-        case .swift:
-            nil
+        case .objectiveCRuntimeStandIn:
+            .objectiveCRuntime
         default:
             .other
         }
     }
 
     func offsetIndexing(in table: Table) -> SymbolOffsetIndexing {
-        table == .objectiveC ? .nameOnly : .byOffset
+        table == .objectiveCRuntime ? .nameOnly : .byOffset
     }
 }
+
+private let languageRegistry = StandInRecognition.objectiveCRuntimeRegistry
 
 /// Files every name, Swift included, under one offset-indexed table, keeping
 /// its offsets in order when asked to.
@@ -78,22 +79,36 @@ struct SymbolSweepTests {
     }
 
     @Test func sweepFilesEachNameIntoTheTableItsRoutingChooses() throws {
-        let sweep = SymbolSweep(sweeping: try Self.loadedImage(named: "Foundation"), routing: LanguageRouting(mayReferenceStringTablesOfLoadedImages: false))
+        let sweep = SymbolSweep(sweeping: try Self.loadedImage(named: "Foundation"), routing: LanguageRouting(mayReferenceStringTablesOfLoadedImages: false), languageRegistry: languageRegistry)
         let expectedLanguagesByTable: [(LanguageRouting.Table, Set<SymbolLanguage>)] = [
             (.cPlusPlus, [.cPlusPlus]),
-            (.objectiveC, [.objectiveC]),
+            (.objectiveCRuntime, [.objectiveCRuntimeStandIn]),
             (.other, [.c]),
         ]
         for (table, expectedLanguages) in expectedLanguagesByTable {
             let symbolTable = sweep[table].symbolTable
             var misfiledCount = 0
-            for row in 0 ..< symbolTable.rowCount where !expectedLanguages.contains(SymbolLanguage(ofSymbolNamed: symbolTable.materializedName(atRow: UInt32(row)))) {
+            for row in 0 ..< symbolTable.rowCount where !expectedLanguages.contains(SymbolLanguage(ofSymbolNamed: symbolTable.materializedName(atRow: UInt32(row)), registry: languageRegistry)) {
                 misfiledCount += 1
             }
             #expect(misfiledCount == 0, "\(table)")
         }
-        #expect(sweep[.objectiveC].symbolTable.rowCount > 0)
+        #expect(sweep[.objectiveCRuntime].symbolTable.rowCount > 0)
         #expect(sweep[.other].symbolTable.rowCount > 0)
+    }
+
+    /// The same image swept with and without the stand-in registered: its
+    /// Objective-C runtime names leave the C table only when the registry the
+    /// sweep is given knows them.
+    @Test func sweepClassifiesThroughTheRegistryItIsGiven() throws {
+        let foundation = try Self.loadedImage(named: "Foundation")
+        let routing = LanguageRouting(mayReferenceStringTablesOfLoadedImages: false)
+        let withStandIn = SymbolSweep(sweeping: foundation, routing: routing, languageRegistry: languageRegistry)
+        let withoutStandIn = SymbolSweep(sweeping: foundation, routing: routing, languageRegistry: SymbolLanguageRegistry())
+        let runtimeNameCount = withStandIn[.objectiveCRuntime].symbolTable.rowCount
+        try #require(runtimeNameCount > 0)
+        #expect(withoutStandIn[.objectiveCRuntime].symbolTable.rowCount == 0)
+        #expect(withoutStandIn[.other].symbolTable.rowCount == withStandIn[.other].symbolTable.rowCount + runtimeNameCount)
     }
 
     @Test func sweepSkipsImportedSymbols() throws {
@@ -108,9 +123,9 @@ struct SymbolSweepTests {
     }
 
     @Test func tableNotIndexedByOffsetHasNoOffsetRows() throws {
-        let sweep = SymbolSweep(sweeping: try Self.loadedImage(named: "Foundation"), routing: LanguageRouting(mayReferenceStringTablesOfLoadedImages: false))
-        #expect(sweep[.objectiveC].symbolTable.rowCount > 0)
-        #expect(sweep[.objectiveC].rowsByOffset.isEmpty)
+        let sweep = SymbolSweep(sweeping: try Self.loadedImage(named: "Foundation"), routing: LanguageRouting(mayReferenceStringTablesOfLoadedImages: false), languageRegistry: languageRegistry)
+        #expect(sweep[.objectiveCRuntime].symbolTable.rowCount > 0)
+        #expect(sweep[.objectiveCRuntime].rowsByOffset.isEmpty)
         #expect(!sweep[.other].rowsByOffset.isEmpty)
     }
 
@@ -147,13 +162,13 @@ struct SymbolSweepTests {
     /// an offset the symbol table did not list.
     @Test func mappedAndDecodedLegsYieldTheSameTable() throws {
         let image = try Self.loadedImage(named: "Foundation")
-        let symbolTable = SymbolSweep(sweeping: image, routing: LanguageRouting(mayReferenceStringTablesOfLoadedImages: true))[.other].symbolTable
+        let symbolTable = SymbolSweep(sweeping: image, routing: LanguageRouting(mayReferenceStringTablesOfLoadedImages: true), languageRegistry: languageRegistry)[.other].symbolTable
 
         var expectedOffsetByName: [String: Int] = [:]
-        for symbol in image.symbols where !symbol.nlist.isExternal && !symbol.nlist.isDebuggingEntry && SymbolLanguage(ofSymbolNamed: symbol.name) == .c {
+        for symbol in image.symbols where !symbol.nlist.isExternal && !symbol.nlist.isDebuggingEntry && SymbolLanguage(ofSymbolNamed: symbol.name, registry: languageRegistry) == .c {
             expectedOffsetByName[symbol.name] = symbol.offset
         }
-        for exportedSymbol in image.exportedSymbols where SymbolLanguage(ofSymbolNamed: exportedSymbol.name) == .c {
+        for exportedSymbol in image.exportedSymbols where SymbolLanguage(ofSymbolNamed: exportedSymbol.name, registry: languageRegistry) == .c {
             if let offset = exportedSymbol.offset, expectedOffsetByName[exportedSymbol.name] == nil {
                 expectedOffsetByName[exportedSymbol.name] = offset
             }
@@ -172,7 +187,7 @@ struct SymbolSweepTests {
 
     @Test func nameLookupFindsEveryRowByBinarySearch() throws {
         for routing in [LanguageRouting(mayReferenceStringTablesOfLoadedImages: true), LanguageRouting(mayReferenceStringTablesOfLoadedImages: false)] {
-            let symbolTable = SymbolSweep(sweeping: try Self.loadedImage(named: "Foundation"), routing: routing)[.other].symbolTable
+            let symbolTable = SymbolSweep(sweeping: try Self.loadedImage(named: "Foundation"), routing: routing, languageRegistry: languageRegistry)[.other].symbolTable
             try #require(symbolTable.rowCount > 0)
             var mismatchCount = 0
             for row in 0 ..< symbolTable.rowCount where symbolTable.row(forName: symbolTable.materializedName(atRow: UInt32(row))) != UInt32(row) {
@@ -243,15 +258,15 @@ struct SymbolSweepTests {
     @Test func cacheImageRowsPointIntoTheMappedStringTable() throws {
         let image = try Self.loadedImage(named: "Foundation")
         try #require(image.header.isInDyldCache)
-        let sweep = SymbolSweep(sweeping: image, routing: LanguageRouting(mayReferenceStringTablesOfLoadedImages: false))
+        let sweep = SymbolSweep(sweeping: image, routing: LanguageRouting(mayReferenceStringTablesOfLoadedImages: false), languageRegistry: languageRegistry)
         #expect(sweep[.other].symbolTable.mappedStringTableBase != nil)
     }
 
     @Test func imageOutsideTheCacheCopiesNamesUnlessTheRoutingAllowsMapping() throws {
         let image = MachOImage.current()
         try #require(!image.header.isInDyldCache)
-        let copying = SymbolSweep(sweeping: image, routing: LanguageRouting(mayReferenceStringTablesOfLoadedImages: false))[.other].symbolTable
-        let mapping = SymbolSweep(sweeping: image, routing: LanguageRouting(mayReferenceStringTablesOfLoadedImages: true))[.other].symbolTable
+        let copying = SymbolSweep(sweeping: image, routing: LanguageRouting(mayReferenceStringTablesOfLoadedImages: false), languageRegistry: languageRegistry)[.other].symbolTable
+        let mapping = SymbolSweep(sweeping: image, routing: LanguageRouting(mayReferenceStringTablesOfLoadedImages: true), languageRegistry: languageRegistry)[.other].symbolTable
         try #require(copying.rowCount > 0)
         #expect(copying.mappedStringTableBase == nil)
         #expect(mapping.mappedStringTableBase != nil)

@@ -27,6 +27,9 @@ import MachOKitExtensions
 /// Rows of an in-process image point into its string table instead of
 /// copying names when the image cannot be unloaded — see
 /// ``SymbolTableRouting/mayReferenceStringTablesOfLoadedImages``.
+///
+/// Each name's ``SymbolLanguage``, which the routing gets, comes from the
+/// registry the sweep is given, as it stood when the sweep began.
 @_spi(Internals)
 public struct SymbolSweep<Routing: SymbolTableRouting>: Sendable {
     private let sweptTablesByTable: [Routing.Table: SweptSymbolTable]
@@ -39,7 +42,13 @@ public struct SymbolSweep<Routing: SymbolTableRouting>: Sendable {
         sweptTablesByTable[table] ?? emptyTable
     }
 
-    public init(sweeping machO: some MachORepresentableWithCache, routing: Routing) {
+    public init(sweeping machO: some MachORepresentableWithCache, routing: Routing, languageRegistry: SymbolLanguageRegistry = .shared) {
+        self.init(sweeping: machO, routing: routing, classifier: languageRegistry.classifier())
+    }
+
+    /// Sweeps classifying every name with `classifier`, one registry's
+    /// registrations at one moment.
+    init(sweeping machO: some MachORepresentableWithCache, routing: Routing, classifier: SymbolLanguageClassifier) {
         let machOImage = machO.asMachOImage
         let mappedSymbols64 = machOImage?.symbols64
         let mappedSymbols32 = machOImage?.symbols32
@@ -60,7 +69,7 @@ public struct SymbolSweep<Routing: SymbolTableRouting>: Sendable {
         func collectMappedSymbolRows(_ mappedSymbols: some Sequence<MachOImage.Symbol>, stringBase: UnsafeRawPointer) {
             for symbol in mappedSymbols where !symbol.nlist.isExternal {
                 let nameC = symbol.nameC
-                guard let table = routing.table(forSymbolNamed: nameC, language: SymbolLanguage(ofSymbolNameBytes: nameC)) else { continue }
+                guard let table = routing.table(forSymbolNamed: nameC, language: classifier.language(ofSymbolNameBytes: nameC)) else { continue }
                 let name = String(cString: nameC)
                 let offset = symbol.offset
                 if referencesMappedNames {
@@ -98,7 +107,7 @@ public struct SymbolSweep<Routing: SymbolTableRouting>: Sendable {
             let symbolValueOffsetConverter = SymbolValueOffsetConverter(for: machO)
             for symbol in machO.symbols where !symbol.nlist.isExternal {
                 let name = symbol.name
-                guard let table = name.withCString({ routing.table(forSymbolNamed: $0, language: SymbolLanguage(ofSymbolNameBytes: $0)) }) else { continue }
+                guard let table = name.withCString({ routing.table(forSymbolNamed: $0, language: classifier.language(ofSymbolNameBytes: $0)) }) else { continue }
                 let rawOffset = symbol.offset
                 accumulators[table, default: makeAccumulator(for: table)].collectSymbol(
                     named: name,
@@ -121,7 +130,7 @@ public struct SymbolSweep<Routing: SymbolTableRouting>: Sendable {
         for exportedSymbol in machO.exportedSymbols {
             hasExportInformation = true
             let name = exportedSymbol.name
-            guard let table = name.withCString({ routing.table(forSymbolNamed: $0, language: SymbolLanguage(ofSymbolNameBytes: $0)) }) else { continue }
+            guard let table = name.withCString({ routing.table(forSymbolNamed: $0, language: classifier.language(ofSymbolNameBytes: $0)) }) else { continue }
             accumulators[table, default: makeAccumulator(for: table)].collectExportedSymbol(
                 named: name,
                 rawOffset: exportedSymbol.offset,

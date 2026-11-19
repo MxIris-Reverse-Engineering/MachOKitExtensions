@@ -1,6 +1,6 @@
 # Draft - 符号语言的判断归各自的包：本包只认 C 与 C++，Swift 与 Objective-C 在加载时注册
 
-- **状态**: Accepted
+- **状态**: In Progress
 - **作者**: JH
 - **创建日期**: 2026-11-19
 - **最后更新**: 2026-11-19
@@ -476,7 +476,7 @@ constructor 写进 `Sources/MachOObjCSectionC/symbol_language_registration.c`，
 
 ## 落地步骤
 
-1. **`SymbolLanguage` 与注册表** —— 改动地图本包第 1、2、6 行。
+1. **`SymbolLanguage` 与注册表**（已完成；采集按注册表判语言、store 可指定注册表两项也在这一步，见决策日志） —— 改动地图本包第 1、2、6 行。
    - 行为：`cPlusPlusNamesAreRecognizedWithoutRegistration`
    - 行为：`unclaimedNamesAreC`
    - 行为：`registeredLanguageClaimsTheNamesItRecognizes`
@@ -534,3 +534,6 @@ constructor 写进 `Sources/MachOObjCSectionC/symbol_language_registration.c`，
 | 2026-11-19 | 共识确认，开始写提案 | 用户确认上述决策，并接受这些默认做法：用 C constructor 而不用 `+load`；MachOSwiftSection 用 `@c`，MachOObjCSection 保持 6.2 工具版本、用 `@_cdecl`；`SymbolLanguage` 以字符串 `rawValue` 开放构造；先判 C++、再按注册顺序问识别器、都不认领算 C；C++ 归类另写提案、同日落地；原型确认后删除。 |
 | 2026-11-19 | 写提案时定下的做法 | 未单独提问、写进简报供用户推翻：注册表是带 `.shared` 的类（测试用独立实例），API 为 `register(_:where:)`；同一语言重复注册保留第一次的识别器；注册 `.c`、`.cPlusPlus` 视为程序员错误；Swift 索引直接用自己的判断、不经注册表；索引记下注册表代数、查询时不符就重建，`.shared` 上注册时另外立即清空；`SymbolOffsetIndexing` 新增 `.sortedOffsetsOnly`；ObjC 的 constructor 放进已有的 `MachOObjCSectionC`。 |
 | 2026-11-19 | 状态 → Accepted | 用户批准，开始实现。 |
+| 2026-11-19 | 开始实现 | 三个仓库各从 `next` 切 `feature/split-symbol-language`。本包的 `next` 只在公司那台本地、上面还有别的会话未推送的提交，提案提交在 `next` 上但不推送 `next`，随功能分支推到远端。 |
+| 2026-11-19 | 「采集按注册表判语言」与「store 可指定注册表」提前到第 1 步 | `SymbolSweepTests` 与普查测试要给采集、store 传入自己的注册表（本包测试进程里没人注册语言，不能动共享注册表），不提前第 1 步就编不过测试。第 2 步只剩 `.sortedOffsetsOnly`。 |
+| 2026-11-19 | AppKit 普查改用注册了 Swift 与 ObjC 替身的注册表 | 第 1 步后普查断言「进程内镜像的名字全留在字符串表里」失败：本包测试进程没人注册 Swift，Swift 名字按 C 收进索引，其中只出现在导出表里的名字要复制。这是新设计下的预期行为；普查要量的是生产环境的构成（链接了两个下游、索引只剩 C/C++），所以改用替身注册表。`storeNeverContainsSwiftNames` 改为 `storeFilesUnregisteredLanguagesAsC`：没有注册时 Swift 名字照 C 收。 |

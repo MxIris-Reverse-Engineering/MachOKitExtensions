@@ -3,115 +3,61 @@
 ///
 /// ```swift
 /// SymbolLanguage(ofSymbolNamed: "__ZN4llvm5Value4dumpEv")   // .cPlusPlus
-/// SymbolLanguage(ofSymbolNamed: "-[NSView setNeedsDisplay:]") // .objectiveC
-/// SymbolLanguage(ofSymbolNamed: "$s7SwiftUI4TextVMn")        // .swift
-/// SymbolLanguage(ofSymbolNamed: "_malloc")                    // .c
+/// SymbolLanguage(ofSymbolNamed: "_malloc")                  // .c
+/// SymbolLanguage(ofSymbolNamed: "$s7SwiftUI4TextVMn")       // .swift once SwiftSymbols is linked, .c before
 /// ```
 ///
-/// A struct with static members rather than an enum: more languages may be
-/// told apart later (Rust's `__R…`, say), and a caller should not have to
-/// switch over every one of them.
-public struct SymbolLanguage: Hashable, Sendable, CustomStringConvertible {
-    private enum Kind: Hashable, Sendable {
-        case c
-        case cPlusPlus
-        case objectiveC
-        case swift
+/// This package tells C++ (Itanium) names apart and calls every name nobody
+/// claims C. Every other language is the package's that owns it, to define
+/// as a static member and to register with ``SymbolLanguageRegistry`` when
+/// its image loads: MachOSwiftSection's `SwiftSymbols` adds `.swift`,
+/// MachOObjCSection adds `.objectiveC`.
+///
+/// A struct with static members rather than an enum, so that a language can
+/// be added from outside this package and a caller never switches over all of
+/// them.
+public struct SymbolLanguage: RawRepresentable, Hashable, Sendable, CustomStringConvertible {
+    /// The language's name as a person reads it — `"C"`, `"C++"`, `"Swift"`.
+    /// Two values with the same name are the same language, so a name, once
+    /// published, is part of the language's identity.
+    public let rawValue: String
+
+    public init(rawValue: String) {
+        self.rawValue = rawValue
     }
 
-    private let kind: Kind
-
-    private init(kind: Kind) {
-        self.kind = kind
-    }
-
-    /// A name no other language claims: plain C, assembler labels, and
-    /// anything unrecognized.
-    public static let c = SymbolLanguage(kind: .c)
+    /// A name no registered language and no C++ mangling claims: plain C,
+    /// assembler labels, and anything unrecognized — including the names of
+    /// a language whose package is not in the process.
+    public static let c = SymbolLanguage(rawValue: "C")
 
     /// An Itanium-mangled name: `__Z…`, or `___Z…` for a block inside a C++
-    /// function.
-    public static let cPlusPlus = SymbolLanguage(kind: .cPlusPlus)
+    /// function. Decided before any registered language is asked.
+    public static let cPlusPlus = SymbolLanguage(rawValue: "C++")
 
-    /// An Objective-C method implementation (`-[…]`, `+[…]`) or a symbol of
-    /// the Objective-C runtime (`_OBJC_…`, `__OBJC_…`, `l_OBJC_…`,
-    /// `L_OBJC_…`, `_objc_msgSend$…`).
-    public static let objectiveC = SymbolLanguage(kind: .objectiveC)
-
-    /// A Swift-mangled name (`$s`, `_$s`, `$S`, `_$S`, `$e`, `_$e`, `_T0`,
-    /// `@__swiftmacro_`) or a name the Swift compiler emits for the linker to
-    /// de-duplicate (`_symbolic `, `_default assoc type `).
-    ///
-    /// The mangling prefixes are exactly the ones swift-demangling's
-    /// `isSwiftSymbol` accepts; MachOSwiftSection pins the two equal over a
-    /// real symbol table, since this package does not depend on the
-    /// demangler.
-    public static let swift = SymbolLanguage(kind: .swift)
+    public var description: String {
+        rawValue
+    }
 
     /// The language of `name`, a symbol name as the symbol table spells it
-    /// (with the leading underscore C names carry on Darwin).
-    public init(ofSymbolNamed name: String) {
-        self = name.withCString { SymbolLanguage(ofSymbolNameBytes: $0) }
+    /// (with the leading underscore C names carry on Darwin), as `registry`
+    /// tells languages apart.
+    public init(ofSymbolNamed name: String, registry: SymbolLanguageRegistry = .shared) {
+        self = name.withCString { registry.language(ofSymbolNameBytes: $0) }
     }
 
     /// The language of the NUL-terminated name at `name`, read in place —
     /// the form a sweep over an image's string table uses, so that no
     /// `String` is made for a name nobody keeps.
     @_spi(Internals)
-    public init(ofSymbolNameBytes name: UnsafePointer<CChar>) {
-        self.init(kind: Self.kind(ofSymbolNameBytes: name))
+    public init(ofSymbolNameBytes name: UnsafePointer<CChar>, registry: SymbolLanguageRegistry = .shared) {
+        self = registry.language(ofSymbolNameBytes: name)
     }
 
-    public var description: String {
-        switch kind {
-        case .c:
-            "C"
-        case .cPlusPlus:
-            "C++"
-        case .objectiveC:
-            "Objective-C"
-        case .swift:
-            "Swift"
-        }
-    }
-
-    private static func kind(ofSymbolNameBytes name: UnsafePointer<CChar>) -> Kind {
-        switch UInt8(bitPattern: name.pointee) {
-        case UInt8(ascii: "$"):
-            if hasPrefix(name, "$s") || hasPrefix(name, "$S") || hasPrefix(name, "$e") {
-                return .swift
-            }
-        case UInt8(ascii: "@"):
-            if hasPrefix(name, "@__swiftmacro_") {
-                return .swift
-            }
-        case UInt8(ascii: "-"), UInt8(ascii: "+"):
-            if UInt8(bitPattern: name[1]) == UInt8(ascii: "[") {
-                return .objectiveC
-            }
-        case UInt8(ascii: "_"):
-            if hasPrefix(name, "_$s") || hasPrefix(name, "_$S") || hasPrefix(name, "_$e") || hasPrefix(name, "_T0")
-                || hasPrefix(name, "_symbolic ") || hasPrefix(name, "_default assoc type ") {
-                return .swift
-            }
-            if hasPrefix(name, "__Z") || hasPrefix(name, "___Z") {
-                return .cPlusPlus
-            }
-            if hasPrefix(name, "_OBJC_") || hasPrefix(name, "__OBJC_") || hasPrefix(name, "_objc_msgSend$") {
-                return .objectiveC
-            }
-        case UInt8(ascii: "l"):
-            if hasPrefix(name, "l_OBJC_") {
-                return .objectiveC
-            }
-        case UInt8(ascii: "L"):
-            if hasPrefix(name, "L_OBJC_") {
-                return .objectiveC
-            }
-        default:
-            break
-        }
-        return .c
+    /// Whether `name` is Itanium-mangled: the one language this package
+    /// recognizes itself.
+    static func isItaniumMangled(_ name: UnsafePointer<CChar>) -> Bool {
+        hasPrefix(name, "__Z") || hasPrefix(name, "___Z")
     }
 
     /// Whether the NUL-terminated `name` starts with `prefix`. Never reads

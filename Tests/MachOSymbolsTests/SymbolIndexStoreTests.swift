@@ -86,31 +86,21 @@ struct SymbolIndexStoreTests {
         #expect(closest.contains { $0.name == "__mh_execute_header" })
     }
 
-    /// libswiftCore is mostly Swift names; the store keeps none of them, and
-    /// keeps its C names.
-    @Test func storeNeverContainsSwiftNames() throws {
+    /// Nothing registers Swift on the shared registry in this test process,
+    /// so the shared store files libswiftCore's Swift names as C.
+    @Test func storeFilesUnregisteredLanguagesAsC() throws {
         let swiftCore = try Self.loadedImage(named: "libswiftCore")
         var swiftNameCount = 0
         var filedSwiftNameCount = 0
-        var cNameCount = 0
-        var filedCNameCount = 0
-        for symbol in swiftCore.symbols where !symbol.nlist.isExternal && !symbol.nlist.isDebuggingEntry {
-            let isFiled = Self.store.containsSymbol(named: symbol.name, in: swiftCore)
-            switch SymbolLanguage(ofSymbolNamed: symbol.name) {
-            case .swift:
-                swiftNameCount += 1
-                if isFiled { filedSwiftNameCount += 1 }
-            case .c:
-                cNameCount += 1
-                if isFiled { filedCNameCount += 1 }
-            default:
-                break
+        for symbol in swiftCore.symbols where !symbol.nlist.isExternal && !symbol.nlist.isDebuggingEntry
+            && symbol.name.withCString(StandInRecognition.isSwiftSymbol) {
+            swiftNameCount += 1
+            if Self.store.containsSymbol(named: symbol.name, in: swiftCore) {
+                filedSwiftNameCount += 1
             }
         }
         #expect(swiftNameCount > 0)
-        #expect(filedSwiftNameCount == 0)
-        #expect(cNameCount > 0)
-        #expect(filedCNameCount == cNameCount)
+        #expect(filedSwiftNameCount == swiftNameCount)
     }
 
     @Test func storeAnswersIsExportedTriState() throws {
@@ -150,7 +140,13 @@ extension SymbolIndexStoreTests {
     /// host's dyld shared cache as a file and loaded in this process. Prints
     /// the census; asserts only that each reader indexed something, and that
     /// the loaded image's names stayed in its string table.
+    ///
+    /// Measured with Swift and Objective-C runtime names registered, as in a
+    /// process that links MachOSwiftSection and MachOObjCSection: without
+    /// them, Swift names an image only exports count as C, and their names
+    /// are copied.
     @Test func symbolIndexCensusOfALargeImage() throws {
+        let store = SymbolIndexStore(languageRegistry: StandInRecognition.swiftAndObjectiveCRuntimeRegistry)
         let appKitPath = "/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit"
         let hostCache = try #require(FullDyldCache.cachedHost)
         let appKitFile = try #require(hostCache.machOFile(by: .path(appKitPath)))
@@ -165,11 +161,11 @@ extension SymbolIndexStoreTests {
             let sortedOffsetsByteCount = swept.sortedCanonicalOffsets.count * MemoryLayout<Int>.stride
             censusLines.append("\(label): \(symbolTable.rowCount) rows, table \(symbolTable.retainedByteCount) bytes (copied names \(symbolTable.privateNameByteCount)), \(swept.rowsByOffset.count) offsets (≥ \(offsetIndexByteCount) bytes), sorted offsets \(sortedOffsetsByteCount) bytes")
         }
-        let fileStorage = try #require(Self.store.storage(in: appKitFile))
-        let imageStorage = try #require(Self.store.storage(in: appKitImage))
+        let fileStorage = try #require(store.storage(in: appKitFile))
+        let imageStorage = try #require(store.storage(in: appKitImage))
         census(of: fileStorage, label: "AppKit, MachOFile from the host cache")
         census(of: imageStorage, label: "AppKit, MachOImage in this process")
-        print("C, C++ and Objective-C symbol index census —\n" + censusLines.joined(separator: "\n"))
+        print("C and C++ symbol index census —\n" + censusLines.joined(separator: "\n"))
 
         #expect(fileStorage.sweptSymbols.symbolTable.rowCount > 0)
         #expect(imageStorage.sweptSymbols.symbolTable.rowCount > 0)
