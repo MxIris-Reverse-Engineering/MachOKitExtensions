@@ -2,7 +2,7 @@
 /// symbol under.
 ///
 /// A store keeps the names of one family of symbols — this package's
-/// ``SymbolIndexStore`` the C, C++ and Objective-C ones, MachOSwiftSection's
+/// ``SymbolIndexStore`` the C and C++ ones, MachOSwiftSection's
 /// Swift store the Swift ones — and builds on the same sweep by handing it a
 /// routing. Each table the routing names gets its own rows, offset index,
 /// export facts and local-symbol fact.

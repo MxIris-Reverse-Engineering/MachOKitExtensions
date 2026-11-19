@@ -159,7 +159,8 @@ extension SymbolIndexStoreTests {
             let symbolTable = swept.symbolTable
             let offsetIndexByteCount = swept.rowsByOffset.count * (MemoryLayout<Int>.stride + MemoryLayout<SymbolRowBucket>.stride)
             let sortedOffsetsByteCount = swept.sortedCanonicalOffsets.count * MemoryLayout<Int>.stride
-            censusLines.append("\(label): \(symbolTable.rowCount) rows, table \(symbolTable.retainedByteCount) bytes (copied names \(symbolTable.privateNameByteCount)), \(swept.rowsByOffset.count) offsets (≥ \(offsetIndexByteCount) bytes), sorted offsets \(sortedOffsetsByteCount) bytes")
+            let boundaryOffsetsByteCount = storage.boundaryOffsets.count * MemoryLayout<Int>.stride
+            censusLines.append("\(label): \(symbolTable.rowCount) rows, table \(symbolTable.retainedByteCount) bytes (copied names \(symbolTable.privateNameByteCount)), \(swept.rowsByOffset.count) offsets (≥ \(offsetIndexByteCount) bytes), sorted offsets \(sortedOffsetsByteCount) bytes, \(storage.boundaryOffsets.count) boundary offsets \(boundaryOffsetsByteCount) bytes")
         }
         let fileStorage = try #require(store.storage(in: appKitFile))
         let imageStorage = try #require(store.storage(in: appKitImage))
@@ -170,5 +171,99 @@ extension SymbolIndexStoreTests {
         #expect(fileStorage.sweptSymbols.symbolTable.rowCount > 0)
         #expect(imageStorage.sweptSymbols.symbolTable.rowCount > 0)
         #expect(imageStorage.sweptSymbols.symbolTable.privateNameByteCount == 0)
+    }
+}
+
+extension SymbolIndexStoreTests {
+    /// Defined, non-debug symbols of `image` that `recognizes` accepts.
+    private static func definedSymbols(of image: MachOImage, where recognizes: (UnsafePointer<CChar>) -> Bool) -> [MachOImage.Symbol] {
+        image.symbols.filter { !$0.nlist.isExternal && !$0.nlist.isDebuggingEntry && $0.name.withCString(recognizes) }
+    }
+
+    /// libswiftCore is mostly Swift names; with Swift registered the store
+    /// keeps none of them, and keeps every other name.
+    @Test func storeLeavesRegisteredLanguagesOut() throws {
+        let store = SymbolIndexStore(languageRegistry: StandInRecognition.swiftRegistry)
+        let swiftCore = try Self.loadedImage(named: "libswiftCore")
+        let swiftSymbols = Self.definedSymbols(of: swiftCore, where: StandInRecognition.isSwiftSymbol)
+        let otherSymbols = Self.definedSymbols(of: swiftCore, where: { !StandInRecognition.isSwiftSymbol($0) })
+        try #require(!swiftSymbols.isEmpty && !otherSymbols.isEmpty)
+        #expect(swiftSymbols.filter { store.containsSymbol(named: $0.name, in: swiftCore) }.isEmpty)
+        #expect(otherSymbols.allSatisfy { store.containsSymbol(named: $0.name, in: swiftCore) })
+    }
+
+    /// At the start of a Swift function no C symbol shares, the nearest
+    /// symbol is the Swift one: the store answers `nil`, not the C function
+    /// before it. Without the registration it answers the Swift symbol.
+    @Test func closestSymbolsAnswersNilInsideAnotherLanguagesCode() throws {
+        let store = SymbolIndexStore(languageRegistry: StandInRecognition.swiftRegistry)
+        let swiftCore = try Self.loadedImage(named: "libswiftCore")
+        let swiftOffsets = Set(Self.definedSymbols(of: swiftCore, where: StandInRecognition.isSwiftSymbol).map(\.offset)).sorted()
+        let swiftOnlyOffsets = swiftOffsets.prefix(2000).filter { store.symbols(for: $0, in: swiftCore) == nil }
+        try #require(!swiftOnlyOffsets.isEmpty)
+        let answeredOffsets = swiftOnlyOffsets.filter { store.closestSymbols(at: $0, in: swiftCore) != nil }
+        #expect(answeredOffsets.isEmpty, "\(answeredOffsets.prefix(3))")
+
+        let unregistered = SymbolIndexStore(languageRegistry: SymbolLanguageRegistry())
+        let firstSwiftOnlyOffset = try #require(swiftOnlyOffsets.first)
+        #expect(unregistered.closestSymbols(at: firstSwiftOnlyOffset, in: swiftCore)?.offset == firstSwiftOnlyOffset)
+    }
+
+    /// Where a C name and a registered language's name share an offset (an
+    /// alias), the C name answers — the boundary does not hide it.
+    @Test func closestSymbolsPrefersCAtAnOffsetSharedWithABoundary() throws {
+        var sharedOffsetCandidate: (image: MachOImage, offset: Int, claimedName: String)?
+        for imageName in ["Foundation", "libc++", "libswiftCore", "libsystem_c"] {
+            guard let image = MachOImage(name: imageName) else { continue }
+            var namesByOffset: [Int: Set<String>] = [:]
+            for symbol in Self.definedSymbols(of: image, where: { !SymbolLanguage.isItaniumMangled($0) }) {
+                namesByOffset[symbol.offset, default: []].insert(symbol.name)
+            }
+            if let offset = namesByOffset.keys.sorted().first(where: { namesByOffset[$0]!.count >= 2 }) {
+                sharedOffsetCandidate = (image, offset, namesByOffset[offset]!.sorted()[0])
+                break
+            }
+        }
+        let (image, sharedOffset, claimedName) = try #require(sharedOffsetCandidate, "no loaded image has two names at one offset")
+        let registry = SymbolLanguageRegistry()
+        registry.register(.swiftStandIn, where: { String(cString: $0) == claimedName })
+        let store = SymbolIndexStore(languageRegistry: registry)
+
+        let closest = try #require(store.closestSymbols(at: sharedOffset, in: image))
+        #expect(closest.offset == sharedOffset)
+        #expect(!closest.isEmpty)
+        #expect(!closest.contains { $0.name == claimedName })
+        #expect(!store.containsSymbol(named: claimedName, in: image))
+    }
+
+    @Test func indexBuiltBeforeARegistrationIsRebuiltOnItsNextQuery() throws {
+        let registry = SymbolLanguageRegistry()
+        let store = SymbolIndexStore(languageRegistry: registry)
+        let swiftCore = try Self.loadedImage(named: "libswiftCore")
+        let swiftName = try #require(Self.definedSymbols(of: swiftCore, where: StandInRecognition.isSwiftSymbol).first?.name)
+        let built = try #require(store.storage(in: swiftCore))
+        #expect(store.containsSymbol(named: swiftName, in: swiftCore))
+
+        registry.register(.swiftStandIn, where: StandInRecognition.isSwiftSymbol)
+        let rebuilt = try #require(store.storage(in: swiftCore))
+        #expect(rebuilt !== built)
+        #expect(!store.containsSymbol(named: swiftName, in: swiftCore))
+    }
+
+    /// A registration drops every index on the store's next query, not just
+    /// the queried image's: the others would answer with a stale language.
+    @Test func registeringDropsEveryBuiltIndexOnTheStoresNextQuery() throws {
+        let registry = SymbolLanguageRegistry()
+        let store = SymbolIndexStore(languageRegistry: registry)
+        let curl = try Self.machOFile(atPath: "/usr/bin/curl")
+        let swiftCore = try Self.loadedImage(named: "libswiftCore")
+        store.prepare(in: curl)
+        store.prepare(in: swiftCore)
+        #expect(store.contains(in: curl))
+
+        registry.register(.swiftStandIn, where: StandInRecognition.isSwiftSymbol)
+        store.prepare(in: swiftCore)
+        #expect(!store.contains(in: curl))
+        #expect(store.contains(in: swiftCore))
     }
 }
