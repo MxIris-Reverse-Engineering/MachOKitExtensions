@@ -1,6 +1,6 @@
 # Draft - C++ 符号的结构化归类：按作用域整理一个镜像的 C++ 符号
 
-- **状态**: Accepted
+- **状态**: In Progress
 - **作者**: JH
 - **创建日期**: 2026-11-19
 - **最后更新**: 2026-11-19
@@ -36,7 +36,7 @@
 - 正本在 `libcxxabi/src/demangle`，`llvm/include/llvm/Demangle` 是用 `cp-to-llvm.sh` 拷过去的副本（该目录的 `README.txt`）。系统的 `__cxa_demangle` 就是它。
 - 文件：`ItaniumDemangle.h`（约 190 KB、6212 行）、`ItaniumNodes.def`、`StringViewExtras.h`、`Utility.h`、`DemangleConfig.h`。除 C++ 标准库外，只有 `DemangleConfig.h` 引用了上一级目录的 `../abort_message.h`，用来定义 `_LIBCPP_VERBOSE_ABORT`（`DemangleConfig.h:17-19`）。需要 C++17（`std::string_view`）。
 - libcxxabi 版的 `DEMANGLE_NAMESPACE_BEGIN` 是 `namespace { namespace itanium_demangle {`（`DemangleConfig.h:115`）：匿名命名空间、内部链接，同一进程里的系统 libc++abi 或别人链接的 LLVM 不会与它撞符号。LLVM 那份放在 `llvm::itanium_demangle`，是外部链接。
-- 解析器 `ManglingParser<Alloc>` 是纯头文件模板，但分配器不在头文件里：`BumpPointerAllocator` 与 `DefaultAllocator` 写在 `libcxxabi/src/cxa_demangle.cpp:290-366`（LLVM 的 `lib/Demangle/ItaniumDemangle.cpp:289-365` 有同样一份）。
+- 解析器 `ManglingParser<Alloc>` 是纯头文件模板，但分配器不在头文件里：`BumpPointerAllocator` 与 `DefaultAllocator` 写在 `libcxxabi/src/cxa_demangle.cpp:290-366`（LLVM 的 `lib/Demangle/ItaniumDemangle.cpp:289-365` 有同样一份）。头文件声明了 `parse_discriminator`，定义同样在 `cxa_demangle.cpp:31-58`（实现时链接失败才发现，见决策日志）。
 - `parse()` 同时接受 `_Z` 与 `__Z`、`___Z` 与 `____Z`（`ItaniumDemangle.h:6161-6187`），符号表在 Darwin 上的写法不用先去掉下划线。名字后面跟 `.` 的部分包成 `DotSuffix`（`.cold.1` 之类）。
 - AST 有 88 种节点（`ItaniumNodes.def`），其中三十多种是表达式。归类用得到的有：`FunctionEncoding`（`Ret`、`Name`、`Params`、`CVQuals`、`RefQual`，`ItaniumDemangle.h:952`）；`NestedName`（`Qual`、`Name`）；`LocalName`（`Encoding`、`Entity`）；`NameWithTemplateArgs`；`CtorDtorName`（`IsDtor`、`Variant`，`:1757`）；`AbiTagAttr`、`ModuleEntity`；`SpecialName`（一段前缀文字加一个子节点，`:1042`）与 `CtorVtableSpecialName`（`:1058`）；`ClosureTypeName`、`UnnamedTypeName`；`SpecialSubstitution`（`St`、`Sa`、`Ss`……）。
 - `SpecialName` 的前缀文字：`vtable for `、`VTT for `、`typeinfo for `、`typeinfo name for `、`covariant return thunk to `、`virtual thunk to `、`non-virtual thunk to `、`guard variable for `、`reference temporary for `、`thread-local wrapper routine for `、`thread-local initialization routine for `、`template parameter object for `、`initializer for module `、`invocation function for block in `（`ItaniumDemangle.h:5519-5640`、`:6187`）。
@@ -65,7 +65,7 @@
 
 ## 提议方案
 
-1. **引入 `ItaniumDemangle`，原样、不改文件。** 新 C++ target `CPlusPlusDemangling`：`ItaniumDemangle/` 子目录放 libcxxabi 的五个文件与 `LICENSE.TXT`，一字不改。`DemangleConfig.h` 要的 `../abort_message.h` 由本包在上一级目录提供一份小头文件，只定义 `__abort_message`（打印后 `abort()`）。分配器照抄 `cxa_demangle.cpp:290-366`，带出处注释。以后更新解析器，只要把五个文件整份换掉。
+1. **引入 `ItaniumDemangle`，原样、不改文件。** 新 C++ target `CPlusPlusDemangling`：`ItaniumDemangle/` 子目录放 libcxxabi 的五个文件与 `LICENSE.TXT`，一字不改。`DemangleConfig.h` 要的 `../abort_message.h` 由本包在上一级目录提供一份小头文件，只定义 `__abort_message`（打印后 `abort()`）。`parse_discriminator` 与分配器照抄 `cxa_demangle.cpp:31-58`、`:290-366`，带出处注释。以后更新解析器，只要把五个文件整份换掉。
 2. **对 Swift 只露 C 接口。** `CPlusPlusDemangling` 的公开头文件是纯 C：一个可重复使用的不透明解析器对象。每次解析之后，用取值函数读出种类、作用域的各段、基本名、模板实参、参数、返回类型、限定、构造或析构的变体号、点后缀、完整的可读名字，以及名字里「当作类型用到」的各个作用域路径。字符串都指向解析器内部的缓冲区，下一次解析前有效。遍历 AST 的代码写在 `CPlusPlusDemangling.cpp` 里，照 `ItaniumPartialDemangler` 的走法。
 3. **`CPlusPlusSymbolName`：一个名字拆开后的样子。** 值类型，`init?(mangledName:)` 接受符号表的写法（`__Z…`、`___Z…`），解析不了时返回 `nil`。字段见详细设计。种类 `Kind` 是 struct 加静态成员：函数、构造、析构、变量，以及十几种特殊名字（vtable、typeinfo、thunk、guard 变量……）。
 4. **特殊名字按「它说的是谁」归位。** 说的是一个类型的（vtable、VTT、typeinfo、typeinfo name），作用域路径就是这个类型本身，因为它算这个类型的成员。construction vtable 归到被构造的那个完整类。说的是一个函数或变量的（各种 thunk、guard 变量、reference temporary、两种线程局部例程），取那个函数或变量的作用域与基本名。块的调用函数取外层函数的作用域与基本名。说的不是具名实体的（模板参数对象、模块初始化函数、关于指针或内置类型的 typeinfo），放在全局作用域。
@@ -93,7 +93,7 @@
 | `Sources/CPlusPlusDemangling/ItaniumDemangle/`（`ItaniumDemangle.h`、`ItaniumNodes.def`、`StringViewExtras.h`、`Utility.h`、`DemangleConfig.h`、`LICENSE.TXT`） | 新增 | 从 libcxxabi `src/demangle` 原样拷入，不改 | 解析器 | 1 |
 | `Sources/CPlusPlusDemangling/abort_message.h` | 新增 | 只定义 `__abort_message`，供 `DemangleConfig.h` 的 `#include "../abort_message.h"` | 不改引入的文件 | 1 |
 | `Sources/CPlusPlusDemangling/include/CPlusPlusDemangling.h` | 新增 | 纯 C 接口：解析器的创建、销毁、解析与取值函数，种类、作用域段种类、限定的常量 | Swift 不开 C++ 互操作 | 1 |
-| `Sources/CPlusPlusDemangling/CPlusPlusDemangling.cpp` | 新增 | 分配器（照抄 `cxa_demangle.cpp:290-366`）；解析器对象；遍历 AST 拆字段、收集当作类型用到的作用域路径 | 同上 | 1 |
+| `Sources/CPlusPlusDemangling/CPlusPlusDemangling.cpp` | 新增 | `parse_discriminator` 与分配器（照抄 `cxa_demangle.cpp:31-58`、`:290-366`）；解析器对象；遍历 AST 拆字段、收集当作类型用到的作用域路径 | 同上 | 1 |
 | `Sources/CPlusPlusSymbols/CPlusPlusSymbolName.swift` · `CPlusPlusSymbolName`、`Kind`、`FunctionQualifiers` | 新增 | 一个名字拆开后的值类型，经 C 接口填字段 | 单个名字的解析入口 | 2 |
 | `Sources/CPlusPlusSymbols/CPlusPlusDemangler.swift` · `CPlusPlusDemangler`（internal） | 新增 | 包住 C 解析器对象：`deinit` 销毁，`parse(_:)` 返回只在闭包内有效的结果读取器；同时产出给索引用的作用域证据 | `CPlusPlusSymbolName` 与索引的建表共用 | 2 |
 | `Sources/CPlusPlusSymbols/CPlusPlusScope.swift` · `CPlusPlusScope`、`Kind`、`Evidence` | 新增 | 作用域的值类型，含 `.global` | 树的节点 | 3 |
@@ -545,7 +545,7 @@ public final class CPlusPlusSymbolIndexStore: @unchecked Sendable {
 
 ## 落地步骤
 
-1. **引入解析器与 C 接口** —— 改动地图第 1–5、13 行。
+1. **引入解析器与 C 接口**（已完成） —— 改动地图第 1–5、13 行。
    - 行为：`demanglerParsesTheSymbolTableSpellingOfAnItaniumName`
    - 行为：`demanglerRejectsANameThatIsNotItaniumMangled`
    - 行为：`demanglerReadsNothingAfterAFailedParse`
@@ -606,3 +606,6 @@ public final class CPlusPlusSymbolIndexStore: @unchecked Sendable {
 | 2026-11-19 | 只从符号名归类，不读 RTTI | 用户选择。RTTI 与 vtable 的内容以后另写提案。否决：同时读 RTTI 拿基类（范围与测试翻倍，3.0.0 会更晚）。 |
 | 2026-11-19 | 写提案时定下的做法 | 未单独提问、写进简报供用户推翻：引入 libcxxabi 那份（匿名命名空间、不改文件，`abort_message.h` 由本包提供），对 Swift 只露 C 接口，不开 C++ 互操作；新模块 `CPlusPlusSymbols`，不进 `MachOFoundation`；独立的 store 与采集，第一次查询时建树，不随语言注册重建；解析结果不常驻，查询时再解析；模板的每个特化各是一个作用域，用 `baseName` 列在一起；当作类型用到的证据只加给树里已有的作用域；完整可读名字与 `__cxa_demangle` 同源；测试用专门的 C++ 夹具；实现分支从 `feature/split-symbol-language` 切出。 |
 | 2026-11-19 | 状态 → Accepted | 用户批准，开始实现。 |
+| 2026-11-19 | 开始实现，叠在拆分分支上 | 功能分支 `feature/cplusplus-symbol-classification` 从 `origin/feature/split-symbol-language` 切出：本提案与拆分同日落地，实现也建立在拆分后的 `SymbolLanguage` 上。Ultra 上本包没有 `next`，提案直接提交在功能分支上。 |
+| 2026-11-19 | 另照抄 `parse_discriminator` | `ItaniumDemangle.h` 声明了它，定义在 libc++abi 的 `cxa_demangle.cpp:31-58`，第一次链接时报未定义符号。与分配器一样照抄进 `CPlusPlusDemangling.cpp`、带出处注释；引入的五个文件仍与原文件逐字节相同（`cmp` 核对）。 |
+| 2026-11-19 | 第 1 步完成 | 解析器与 C 接口的 4 个测试通过（Ultra，Xcode 27.2）：进程内 libc++ 的每个 C++ 名字，本包的完整可读名字与系统 `__cxa_demangle` 逐字一致，解析失败的也一致。 |

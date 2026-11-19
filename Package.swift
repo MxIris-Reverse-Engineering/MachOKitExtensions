@@ -262,6 +262,24 @@ let package = Package(
                 "ARM64InstructionDecoding",
             ]
         ),
+        // LLVM's Itanium demangler, vendored verbatim from libc++abi under
+        // `ItaniumDemangle/` (Apache-2.0 WITH LLVM-exception), behind a plain
+        // C interface, so that Swift reads C++ names without C++
+        // interoperability.
+        .target(
+            name: "CPlusPlusDemangling",
+            exclude: [
+                "ItaniumDemangle/ItaniumNodes.def",
+                "ItaniumDemangle/LICENSE.TXT",
+            ]
+        ),
+        .testTarget(
+            name: "CPlusPlusSymbolsTests",
+            dependencies: [
+                "CPlusPlusDemangling",
+                "MachOKit",
+            ]
+        ),
         .testTarget(
             name: "MachOAddressResolutionTests",
             dependencies: [
@@ -332,5 +350,7 @@ let package = Package(
                 "MachOKit",
             ]
         ),
-    ]
+    ],
+    // `ItaniumDemangle.h` is C++17.
+    cxxLanguageStandard: .cxx17
 )
