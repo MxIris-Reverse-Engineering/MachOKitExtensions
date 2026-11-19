@@ -551,16 +551,19 @@ public final class CPlusPlusSymbolIndexStore: @unchecked Sendable {
    - 行为：`demanglerReadsNothingAfterAFailedParse`
    - 行为：`demangledNameMatchesSystemCxaDemangleForEveryCPlusPlusNameOfLibCPlusPlus`（进程内的 `libc++.1.dylib`；有差异就逐条查明原因并记进决策日志）
    - 引入的五个文件与 libcxxabi 原文件逐字节相同：提交前用 `cmp` 核对，不写成测试；核对方法写进实现说明的「更新解析器」一节。
-2. **`CPlusPlusSymbolName`** —— 第 6、7、14 行。
+2. **`CPlusPlusSymbolName`**（已完成） —— 第 6、7、14 行。
    - 行为：`functionNameSplitsIntoScopePathBaseNameAndParameters`
    - 行为：`templateArgumentsStayInsideTheirScopeComponent`
    - 行为：`constQualifiedMemberFunctionReportsItsQualifiers`
    - 行为：`constructorAndDestructorKeepTheirVariant`
    - 行为：`namesAboutATypeEndTheirScopePathWithThatType`
+   - 行为：`typeInfoOfATypeWithoutANameSitsAtGlobalScope`
    - 行为：`constructionVirtualTableBelongsToTheCompleteClass`
    - 行为：`thunksTakeTheScopeAndBaseNameOfTheFunctionTheyReach`
    - 行为：`guardVariableTakesTheScopeOfItsVariable`
+   - 行为：`threadLocalWrapperTakesTheScopeOfItsVariable`
    - 行为：`localEntityScopePathRunsThroughItsFunction`
+   - 行为：`lambdaInsideAMemberFunctionRunsThroughThatFunction`
    - 行为：`blockInvocationTakesTheScopeOfItsFunction`
    - 行为：`functionTemplateSpecializationReportsItsReturnType`
    - 行为：`dotSuffixIsKeptApartFromTheName`
@@ -610,3 +613,4 @@ public final class CPlusPlusSymbolIndexStore: @unchecked Sendable {
 | 2026-11-19 | 另照抄 `parse_discriminator` | `ItaniumDemangle.h` 声明了它，定义在 libc++abi 的 `cxa_demangle.cpp:31-58`，第一次链接时报未定义符号。与分配器一样照抄进 `CPlusPlusDemangling.cpp`、带出处注释；引入的五个文件仍与原文件逐字节相同（`cmp` 核对）。 |
 | 2026-11-19 | 第 1 步完成 | 解析器与 C 接口的 4 个测试通过（Ultra，Xcode 27.2）：进程内 libc++ 的每个 C++ 名字，本包的完整可读名字与系统 `__cxa_demangle` 逐字一致，解析失败的也一致。 |
 | 2026-11-19 | 顺带修正：符号表里的 C++ block 名字判成 C++ | 编夹具名字时发现：clang 给 C++ 函数里的 block 起名 `___Z…_block_invoke`，Mach-O 符号表再加 Darwin 的下划线，成了 `____Z…`；`SymbolLanguage.isItaniumMangled` 只认 `__Z` 与 `___Z`，这类名字一直被判成 C。0003 起（2.0.0）就是这样，属基线已有的问题；本提案要把 block 归到外层函数下，所以在这条分支上修：先给 `cPlusPlusNamesAreRecognizedWithoutRegistration` 加上 `____Z9withBlockv_block_invoke` 并确认失败，再让判断也认 `____Z`，`MachOSymbolsTests` 全部通过。`Internal/SymbolIndex.md` 同步。本包别处没有同样的前缀判断（`CPlusPlusDemangling` 四种写法都认）。 |
+| 2026-11-19 | 第 2 步完成 | `CPlusPlusSymbolName` 与内部的 `CPlusPlusDemangler` 落地，17 个名字用例全部通过；测试名字取自 clang 21（Xcode 27.2）给小段 C++ 生成的符号表。比提案多了三个用例：无名类型的 typeinfo 放在全局、线程局部例程取变量的作用域、成员函数模板里的 lambda 路径穿过该函数。 |

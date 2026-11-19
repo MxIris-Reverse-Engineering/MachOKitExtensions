@@ -126,6 +126,13 @@ let package = Package(
             name: "MachOCodeReferences",
             targets: ["MachOCodeReferences"]
         ),
+        // C++ symbol names taken apart, and an image's C++ symbols arranged
+        // by the scopes they sit in. Not part of `MachOFoundation`: it
+        // carries a C++ demangler that most clients have no use for.
+        .library(
+            name: "CPlusPlusSymbols",
+            targets: ["CPlusPlusSymbols"]
+        ),
     ],
     dependencies: [
         .package(
@@ -273,9 +280,21 @@ let package = Package(
                 "ItaniumDemangle/LICENSE.TXT",
             ]
         ),
+        .target(
+            name: "CPlusPlusSymbols",
+            dependencies: [
+                "MachOKit",
+                "MachOKitExtensions",
+                "MachOResolving",
+                "MachOCaches",
+                "MachOSymbols",
+                "CPlusPlusDemangling",
+            ]
+        ),
         .testTarget(
             name: "CPlusPlusSymbolsTests",
             dependencies: [
+                "CPlusPlusSymbols",
                 "CPlusPlusDemangling",
                 "MachOKit",
             ]
