@@ -34,6 +34,9 @@ MachOSwiftSection keeps what is Swift-specific, its Swift symbol index included.
 | `MachOSymbols` | `SymbolIndexStore`, an index of an image's C, C++ and Objective-C symbols by offset, by nearest offset, by name and by export status; `SymbolLanguage`, which tells a symbol name's language from its leading bytes |
 | `MachOBase` | `MachOKitExtensions`, `MachOReading`, `MachOResolving` and `MachOPointers` as one import |
 | `MachOFoundation` | `MachOBase`, `MachOSymbols` and `MachODependencies` as one import |
+| `ARM64InstructionDecoding` | Hand decoders for the few A64 encodings MachOSwiftSection's analyses read, and the trampoline shapes the linker and the dyld cache builder emit. Its interface is the `Internals` SPI, for MachOSwiftSection |
+| `MachOAddressResolution` | Where a call from a Mach-O file leads, read offline: an image's address space, the stubs and stub islands on the way, what a pointer slot holds, the cache image an address lies in. `Internals` SPI, for MachOSwiftSection |
+| `MachOCodeReferences` | The language-free core of MachOSwiftSection's cross-reference analysis: image memory, function tables, the instruction scan and the recognizer extension point its Objective-C and Swift layers plug into. `Internals` SPI, for MachOSwiftSection and MachOObjCSection; the analyzer itself is MachOSwiftSection's `CrossReferenceAnalysis` |
 
 ## What the MachOKitExtensions module provides
 
@@ -98,8 +101,9 @@ let language = SymbolLanguage(ofSymbolNamed: "__ZN4llvm5Value4dumpEv")   // .cPl
 ```
 
 2.0.0 adds the `MachOReading`, `MachOResolving`, `MachOPointers`, `MachOCaches`,
-`MachODependencies`, `MachOSymbols`, `MachOBase` and `MachOFoundation` products and changes
-nothing in the `MachOKitExtensions` module, which re-exports none of them. It is a major version
+`MachODependencies`, `MachOSymbols`, `MachOBase` and `MachOFoundation` products, and the
+`ARM64InstructionDecoding`, `MachOAddressResolution` and `MachOCodeReferences` products of
+MachOSwiftSection's cross-reference analysis, and changes nothing in the `MachOKitExtensions` module, which re-exports none of them. It is a major version
 because MachOSwiftSection 0.24 and earlier declare modules of those same names, and SwiftPM refuses a package graph with two modules of one
 name: a `from: "1.x"` requirement keeps such a MachOSwiftSection from ever resolving together
 with this release.
@@ -132,7 +136,9 @@ MachOKit, [AssociatedObject](https://github.com/p-x9/AssociatedObject) — which
 [swift-object-association](https://github.com/p-x9/swift-object-association) on
 non-Objective-C platforms — and, for `MachOReading`, [swift-fileio](https://github.com/p-x9/swift-fileio),
 which MachOKit depends on already. `InProcessContext` reads this process's own Mach-O images, so
-it exists on Darwin only.
+it exists on Darwin only, as do the parts of `MachOCodeReferences` that read this
+process (`CodeImageSet.inProcess`, `InProcessCrossReferenceMemory`); its file mode is
+platform-neutral, though it has not been built on Linux.
 
 ## License
 
