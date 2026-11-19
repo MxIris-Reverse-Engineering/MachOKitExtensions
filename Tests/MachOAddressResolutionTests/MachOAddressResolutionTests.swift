@@ -14,8 +14,11 @@ import MachOReading
 struct MachOAddressResolutionTests {
     private static let appKitInstallName = "/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit"
 
+    /// The running system's dyld shared cache, read from its file.
+    private static let runningCachePath = "/System/Volumes/Preboot/Cryptexes/OS/System/Library/dyld/dyld_shared_cache_arm64e"
+
     private func runningCache() throws -> DyldCache {
-        try DyldCache(path: .current)
+        try DyldCache(url: URL(fileURLWithPath: Self.runningCachePath))
     }
 
     private func appKitFile() throws -> MachOFile {
