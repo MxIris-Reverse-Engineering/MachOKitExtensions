@@ -156,7 +156,7 @@ struct MachOAddressResolutionTests {
         let locator = try #require(CacheImageLocator(cacheOf: machO))
         let textAddress = try #require(machO.segments64.first { $0.segmentName == "__TEXT" }).vmaddr
         #expect(locator.imagePath(containing: UInt64(textAddress) &+ 0x100) == Self.appKitInstallName)
-        let libobjc = try #require(cache.machOFile(by: .name("libobjc.A.dylib")), "the running system's cache has no libobjc")
+        let libobjc = try #require(cache.machOFile(by: .path("/usr/lib/libobjc.A.dylib")), "the running system's cache has no libobjc")
         let libobjcText = try #require(libobjc.segments64.first { $0.segmentName == "__TEXT" }).vmaddr
         let libobjcImage = try #require(locator.image(containing: UInt64(libobjcText) &+ 0x100))
         #expect(libobjcImage.imagePath == "/usr/lib/libobjc.A.dylib")
