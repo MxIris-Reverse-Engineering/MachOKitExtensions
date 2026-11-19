@@ -28,6 +28,24 @@
 
 各子系统的分工、关键契约、文件模式、引用路线、地址符号化与吞吐实测，写在 MachOSwiftSection 的 [Modules/CrossReferenceAnalysis.md](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Internal/Modules/CrossReferenceAnalysis.md)：三层的代码一起演进，那份文档是它们的总说明，这里不重复。
 
+## 吞吐
+
+搬来之后量过一次（2026-11-19，JHs-Mac-Studio-Ultra，macOS 27.2，Xcode 26.6，release，MachOSwiftSection 的 `ScanThroughputBenchmarkTests`）。两侧交替各跑三轮、每项取最好：基线是 MachOSwiftSection 的 `origin/next`（三层都还在那边），候选是三个仓库的 `feature/move-cross-reference-layers`（同时包含两份搬迁提案）。
+
+| 操作 | 基线 | 候选 |
+|---|---|---|
+| 进程内：建分析器 | 0.056 秒 | 0.055 秒 |
+| 进程内：每个镜像都建整表（约 1.30 亿条引用） | 2.67 秒 | 2.53 秒 |
+| 进程内：`init` 的调用者（预筛 2,880 个镜像 + 扫描） | 0.035 + 1.71 秒 | 0.034 + 1.53 秒 |
+| 进程内：`makeKeyAndOrderFront:` 的调用者（105 个镜像） | 0.059 + 0.317 秒 | 0.058 + 0.293 秒 |
+| 归档 macOS 27.2 cache 文件：建分析器 | 0.158 秒 | 0.154 秒 |
+| 文件：进程里第一次查 `makeKeyAndOrderFront:` / `init` 的调用者 | 0.50 / 1.88 秒 | 0.47 / 1.68 秒 |
+| 文件：每个镜像都建整表（128,120,075 条引用，两侧相同） | 2.75 秒 | 2.51 秒 |
+| 文件：`init` 的调用者 | 0.045 + 1.74 秒 | 0.044 + 1.53 秒 |
+| 文件：`makeKeyAndOrderFront:` 的调用者 | 0.115 + 0.325 秒 | 0.113 + 0.301 秒 |
+
+跨包、改成 SPI 没有让扫描变慢，各项反而快了 1% 到 11%；候选同时带着两份搬迁提案的改动，没有追是哪一处带来的。进程内整表的引用数两侧差 18,250 条，是因为进程内也扫测试进程自己的镜像，而两侧的测试二进制本来就不同；只扫 cache 的文件模式逐条数一致，三个大镜像的整表摘要也一致。
+
 ## 测试
 
 - `MachOCodeReferencesTests`：`CoreOnlyScanTests`（核心单独扫描、`IndirectCallEvidence` 只剩三项）、`MalformedExportTrieTests`（导出树里畸形的长度不让读越界或陷入，在子进程里跑）、`SourceScanTests`（上面三条源码扫描）。要带 dyld shared cache 的 arm64 进程的那几条在别处跳过。
