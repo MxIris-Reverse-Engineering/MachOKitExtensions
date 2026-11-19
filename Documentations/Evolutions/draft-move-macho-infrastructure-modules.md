@@ -554,7 +554,7 @@ public final class SymbolIndexStore: Sendable {
 - **本包内**：`MachOKitExtensionsTests` 多两个搬来的测试文件；其余 target 不受影响。
 - **MachOSwiftSection**：见源码兼容性；改动大部分是机械的 import 与类型改名。
 - **MachOKitUI**：`MachOSwiftSectionDetailBuilder.swift:9` 要改 `import SwiftSymbols`（在 `#if SwiftSection` 里）。它现在的版本范围只会解析到 MachOSwiftSection 0.24.x，所以远端构建不受影响；用本地依赖、开 SwiftSection trait 构建时，从落地那天到它升级本包 2.0.0 之前会报找不到 `resolvesSymbolUsingIndexStore`——与前置提案已经记下的「本地依赖会报模块重名」是同一个窗口，随同一份 MachOKitUI 提案解决。
-- **RuntimeViewer**：`import Utilities` 与 `offsetEnumerated()` 靠 `MachOSwiftSection` 再导出 `Utilities`；改为由 ABI 模块直接再导出，链不断，预计不用改。落地时编译确认。
+- **RuntimeViewer**：要改。`next` 的 `RuntimeViewerCore/Package.swift:269` 从 MachOSwiftSection 取 `MachODependencies` product，迁移后这个 product 只在本包，解析直接失败；要改为从本包取，并把本包加为直接依赖（本地 `../../MachOKitExtensions`，远端从 2.0.0 起），相关的 `Package.resolved` 随之加上本包。它的远端依赖跟 MachOSwiftSection 的 `next` 分支，所以要与 MachOSwiftSection 的 `next` 合入搬迁分支同一天改。`import Utilities` 与 `offsetEnumerated()` 靠 `MachOSwiftSection` 再导出 `Utilities`，改为由 ABI 模块直接再导出后链不断，这部分不用改。（2026-11-19 更正，见决策日志。）
 - **swift-decompiler**：经 `import MachOSwiftSection` 与 Swift 层模块的再导出用到 `DependencySearchPath`、`InProcessContext`，再导出链不变，预计不用改。落地时编译确认。
 - **REAgent**：钉死 MachOSwiftSection 0.15.2，不受影响。
 - **MachOObjCSection**：不受影响；前置提案已把它对本包的范围放宽到 3.0.0 之前。
@@ -624,7 +624,8 @@ public final class SymbolIndexStore: Sendable {
    - 行为：`ContinuousIntegrationTestFilterTests` 通过；重新生成的 `AllFixtureSuites.swift` 与改名后的模块一致；全量测试通过。
 7. **文档**（已完成） —— 改动地图步骤 7 各行；本提案头部登记配套文档。
 8. **自审与验证**（已完成）：两个仓库全量测试；渲染 A/B；内存记录；在决策日志写下结果。功能分支只推送，不合进任何常驻检出（与前置提案相同的理由：本包 `main` 一合入，旧工作区就报模块重名）。
-9. **落地（与前置提案、MachOSwiftSection 0.25.0 同一天）**：按前置提案决策日志里「落地那天要做的」清单执行，并插入本提案的分支——本包先合前置提案的分支、再合本提案的分支，发 2.0.0；MachOSwiftSection 同样先后合入 `next`，随 0.25.0 发布；两份提案各自取号、改 Implemented，MachOSwiftSection 的提案索引各加一行跨仓库链接。
+9. **落地（与前置提案、MachOSwiftSection 0.25.0 同一天）**：按前置提案决策日志里「落地那天要做的」清单执行，并插入本提案的分支——本包先合前置提案的分支、再合本提案的分支，发 2.0.0；MachOSwiftSection 同样先后合入 `next`，随 0.25.0 发布；两份提案各自取号、改 Implemented，MachOSwiftSection 的提案索引各加一行跨仓库链接。同一天改 RuntimeViewer 的 `next`：`MachODependencies` 改从本包取、加本包依赖、更新 `Package.resolved`，编译确认（见「下游影响」）。
+
 
 **收尾时必须判断两件事**（判断结果写进决策日志）：
 
@@ -673,3 +674,4 @@ public final class SymbolIndexStore: Sendable {
 | 2026-11-19 | MachOSwiftSection 的功能分支再次并入 `origin/next`，冲突已解 | MachOSwiftSection 的提案 [move-cross-reference-layers](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/draft-move-cross-reference-layers.md) 要叠在本提案上做，它的第 0 步把 `origin/next`（当时落后 13 个提交，正是 0097 离线交叉引用的全部实现）合进了 MachOSwiftSection 的 `feature/move-macho-infrastructure-modules`，用 merge、不 rebase。冲突在 `Package.swift`、`MachOThunkEnvironment.swift`、`AGENTS.md`、`AccessorThunkResolutionExplained.md`、`SwiftSectionKit.md`、愿景与 `MachOCaches.md`：两边的改动都保留；`MachOCaches.md` 在本提案里已搬来本包，那边保持删除，`origin/next` 对它的一行改动（`thunkResolution` 组里 `CacheImageResolver` 换成 `CacheImageLocator`）由那份提案补到本包的 `SharedCache.md`。原计划「落地当天再把 `next` 合进来解冲突」不再需要，但此前的全量测试与 84 对渲染 A/B 不再覆盖这条分支，要重新验证，结果记在那份提案里 |
 | 2026-11-19 | `ARM64InstructionDecoding` 也迁入本包 | 更正「不迁」一节的第一条。交叉引用的核心层（迁来后叫 `MachOCodeReferences`）与地址解析（`MachOAddressResolution`）都离不开它，它不依赖任何 Swift 的东西，名字不变、作为独立 product 迁来。由 MachOSwiftSection 的 [move-cross-reference-layers](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/draft-move-cross-reference-layers.md) 负责，随本包 2.0.0 一起发 |
 | 2026-11-19 | 落地前的验证加上 release 配置的测试 | MachOSwiftSection 的搬迁分支用 Xcode 26.6（Swift 6.3）、release 配置编不过测试：本提案第 5 步改写的 `SymbolTableEquivalenceTests.swift` 里，`&&` 右侧的自动闭包捕获了非 Sendable 的指针，release 下报「sending 'nameC' risks causing data races」。debug 能编过；此前的全量测试走 debug，渲染 A/B 只用 release 编了命令行工具，都没覆盖到。修复（先把前缀判断算进局部变量，行为不变）在 MachOSwiftSection 的 `feature/move-cross-reference-layers` 上，随它同日落地，不另摘到本提案的分支（用户决定）。落地那天，本包与 MachOSwiftSection 除 debug 全量测试外，都再用 `swift test -c release` 跑一次（MachOSwiftSection 加 `--skip IntegrationTests`，与它 CI 的 release 任务一致）；用户批准。 |
+| 2026-11-19 | RuntimeViewer 要跟着改，落地那天一起改 | 在沙盒里用合并后的分支编 RuntimeViewer 的 `next` 时发现：它的 `RuntimeViewerCore/Package.swift:269` 写着 `.product(name: "MachODependencies", package: "MachOSwiftSection")`，迁移后解析失败（「product 'MachODependencies' … not found in package 'MachOSwiftSection'」）。「下游影响」原写「预计不用改」，据此更正。查过所有下游的依赖清单，从 MachOSwiftSection 取被迁走 product 的只有这一处；源码里 13 处 `import MachODependencies` 不用改。RuntimeViewer 的远端依赖跟 MachOSwiftSection 的 `next` 分支，所以要与 MachOSwiftSection 的 `next` 合入搬迁分支同一天改；远端模式要等本包 2.0.0 才能解析，所以不提前开分支（用户决定）。 |
