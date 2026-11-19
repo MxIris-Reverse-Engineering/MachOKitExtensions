@@ -241,9 +241,10 @@ uint32_t CPlusPlusDemanglerGetFunctionQualifiers(const CPlusPlusDemangler *deman
 /// 0 to 5 for a constructor (C0–C5) or destructor (D0–D5); -1 otherwise.
 int32_t CPlusPlusDemanglerGetConstructorOrDestructorVariant(const CPlusPlusDemangler *demangler);
 
-/// Named types the signature uses as types: parameters, the return type,
-/// type template arguments, the class side of a member pointer. Each is a
-/// scope path, read component by component.
+/// Named types the name uses as types: parameters, the return type, type
+/// template arguments, the class side of a member pointer, and the base a
+/// construction vtable is for. Each is a scope path, read component by
+/// component; built-in types are left out.
 size_t CPlusPlusDemanglerGetReferencedTypeCount(const CPlusPlusDemangler *demangler);
 size_t CPlusPlusDemanglerGetReferencedTypeComponentCount(const CPlusPlusDemangler *demangler, size_t typeIndex);
 CPlusPlusDemanglerText CPlusPlusDemanglerGetReferencedTypeComponentName(CPlusPlusDemangler *demangler, size_t typeIndex, size_t componentIndex);
@@ -495,10 +496,11 @@ public final class CPlusPlusSymbolIndexStore: @unchecked Sendable {
 
 - 有构造函数的类；有虚函数的类（带 vtable 与 typeinfo），其中一个经虚继承（带 VTT、construction vtable 与 virtual thunk）；只有 const 成员函数的类；只有静态成员函数、按规则应是「未定」的类；只在别处的参数里出现的类；
 - 命名空间里的普通函数、两个特化的类模板、函数模板（带返回类型）；
-- 匿名命名空间、函数里的局部类与 lambda、局部静态变量（guard 变量）、`thread_local` 变量；
-- 一个块（`^{}`）。
+- 匿名命名空间、函数里的局部类与 lambda（普通函数里一个，clang 给它起名 `$_0`；内联函数里一个，用 Itanium 的 `'lambda'`）；
+- 用到标准库（`std::vector`），让 `std` 出现在树里；
+- 一个名字带 C++ 前缀、却不是 Itanium 名字的 C 函数（`__Z_fixture_unparsable`）。
 
-夹具的符号都标 `__attribute__((used))`，避免 release 构建把它们剥掉。另外导出一个 C 函数，测试用 `dladdr` 找到它所在的镜像，再按 `MachOImage` 读取。
+guard 变量、`thread_local` 变量与块由第 2 步的固定名字覆盖，夹具里不再放。夹具的符号都标 `__attribute__((used, noinline))`，避免 release 构建内联或链接器剥掉它们；另外导出两个 C 函数：一个让测试用 `dladdr` 找到夹具所在的镜像（再按 `MachOImage` 读取），一个把夹具的函数都调用一遍。
 
 ## 替代方案考量
 
@@ -569,11 +571,12 @@ public final class CPlusPlusSymbolIndexStore: @unchecked Sendable {
    - 行为：`dotSuffixIsKeptApartFromTheName`
    - 行为：`variableHasNoParametersOrQualifiers`
    - 行为：`unparsableNameGivesNil`
-3. **`CPlusPlusSymbolIndexStore`、作用域与夹具** —— 第 8–12、15 行。
+3. **`CPlusPlusSymbolIndexStore`、作用域与夹具**（已完成） —— 第 8–12、15 行。
    - 行为：`storeHoldsOnlyCPlusPlusNames`
    - 行为：`childScopesOfGlobalAreTheTopLevelScopes`
    - 行为：`scopeWithAConstructorIsAType`
    - 行为：`scopeWithAVirtualTableHasVirtualTableAndTypeInfoAmongItsMembers`
+   - 行为：`virtualInheritanceShowsVirtualTableTablesAndThunks`
    - 行为：`scopeWithOnlyConstMemberFunctionsIsAType`
    - 行为：`scopeOnlyUsedAsAParameterTypeIsAType`
    - 行为：`scopeWithOnlyStaticMemberFunctionsIsUndetermined`
@@ -614,3 +617,4 @@ public final class CPlusPlusSymbolIndexStore: @unchecked Sendable {
 | 2026-11-19 | 第 1 步完成 | 解析器与 C 接口的 4 个测试通过（Ultra，Xcode 27.2）：进程内 libc++ 的每个 C++ 名字，本包的完整可读名字与系统 `__cxa_demangle` 逐字一致，解析失败的也一致。 |
 | 2026-11-19 | 顺带修正：符号表里的 C++ block 名字判成 C++ | 编夹具名字时发现：clang 给 C++ 函数里的 block 起名 `___Z…_block_invoke`，Mach-O 符号表再加 Darwin 的下划线，成了 `____Z…`；`SymbolLanguage.isItaniumMangled` 只认 `__Z` 与 `___Z`，这类名字一直被判成 C。0003 起（2.0.0）就是这样，属基线已有的问题；本提案要把 block 归到外层函数下，所以在这条分支上修：先给 `cPlusPlusNamesAreRecognizedWithoutRegistration` 加上 `____Z9withBlockv_block_invoke` 并确认失败，再让判断也认 `____Z`，`MachOSymbolsTests` 全部通过。`Internal/SymbolIndex.md` 同步。本包别处没有同样的前缀判断（`CPlusPlusDemangling` 四种写法都认）。 |
 | 2026-11-19 | 第 2 步完成 | `CPlusPlusSymbolName` 与内部的 `CPlusPlusDemangler` 落地，17 个名字用例全部通过；测试名字取自 clang 21（Xcode 27.2）给小段 C++ 生成的符号表。比提案多了三个用例：无名类型的 typeinfo 放在全局、线程局部例程取变量的作用域、成员函数模板里的 lambda 路径穿过该函数。 |
+| 2026-11-19 | 第 3 步完成 | `CPlusPlusScope`、`CPlusPlusSymbol`、`CPlusPlusSymbolIndexStore` 与 C++ 夹具落地，`CPlusPlusSymbolsTests` 全部 41 个测试通过（debug，Ultra）。实现时定下的细节：construction vtable 的基类（`Middle-in-Derived` 的 `Middle`）记作「当作类型用到」，完整类拿 `.virtualTable`；`scope(named: "")` 返回全局作用域；`unparsedSymbols` 按偏移排序；`CPlusPlusSymbol` 的构造器不公开；限定名重复时取先建的作用域（实际不会发生，只是不让建表崩溃）。夹具发现 clang 给普通函数里的 lambda 起名 `$_0` 而不是 Itanium 的 `'lambda'`，这种闭包类型靠 `const` 的调用运算符判成类型；测试两种都覆盖，夹具多了一个放 lambda 的内联函数。比提案多一个用例：`virtualInheritanceShowsVirtualTableTablesAndThunks`。 |

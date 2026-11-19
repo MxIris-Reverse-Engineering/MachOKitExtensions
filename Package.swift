@@ -291,11 +291,21 @@ let package = Package(
                 "CPlusPlusDemangling",
             ]
         ),
+        // C++ code with known symbols for the C++ symbol index tests. Not a
+        // product.
+        .target(
+            name: "CPlusPlusSymbolsFixture",
+            path: "Tests/CPlusPlusSymbolsFixture"
+        ),
         .testTarget(
             name: "CPlusPlusSymbolsTests",
             dependencies: [
                 "CPlusPlusSymbols",
                 "CPlusPlusDemangling",
+                "CPlusPlusSymbolsFixture",
+                "MachOSymbols",
+                "MachOResolving",
+                "MachOKitExtensions",
                 "MachOKit",
             ]
         ),
