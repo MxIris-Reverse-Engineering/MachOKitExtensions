@@ -5,10 +5,13 @@ import MachOKit
 
 @Suite
 struct SymbolLanguageTests {
+    /// A block inside a C++ function is named `___Z…_block_invoke`; a Mach-O
+    /// symbol table adds the Darwin underscore, `____Z…`, as clang emits it.
     @Test(arguments: [
         "__ZN4llvm5Value4dumpEv",
         "__ZNSt3__16vectorIiNS_9allocatorIiEEE9push_backEOi",
         "___ZN2CA6Render7Context6commitEv_block_invoke",
+        "____Z9withBlockv_block_invoke",
     ])
     func cPlusPlusNamesAreRecognizedWithoutRegistration(name: String) {
         #expect(SymbolLanguage(ofSymbolNamed: name, registry: SymbolLanguageRegistry()) == .cPlusPlus)

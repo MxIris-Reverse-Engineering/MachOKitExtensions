@@ -31,8 +31,9 @@ public struct SymbolLanguage: RawRepresentable, Hashable, Sendable, CustomString
     /// a language whose package is not in the process.
     public static let c = SymbolLanguage(rawValue: "C")
 
-    /// An Itanium-mangled name: `__Z…`, or `___Z…` for a block inside a C++
-    /// function. Decided before any registered language is asked.
+    /// An Itanium-mangled name: `__Z…`, or `____Z…_block_invoke` for a block
+    /// inside a C++ function (`___Z…` without the Darwin underscore). Decided
+    /// before any registered language is asked.
     public static let cPlusPlus = SymbolLanguage(rawValue: "C++")
 
     public var description: String {
@@ -57,7 +58,7 @@ public struct SymbolLanguage: RawRepresentable, Hashable, Sendable, CustomString
     /// Whether `name` is Itanium-mangled: the one language this package
     /// recognizes itself.
     static func isItaniumMangled(_ name: UnsafePointer<CChar>) -> Bool {
-        hasPrefix(name, "__Z") || hasPrefix(name, "___Z")
+        hasPrefix(name, "__Z") || hasPrefix(name, "___Z") || hasPrefix(name, "____Z")
     }
 
     /// Whether the NUL-terminated `name` starts with `prefix`. Never reads

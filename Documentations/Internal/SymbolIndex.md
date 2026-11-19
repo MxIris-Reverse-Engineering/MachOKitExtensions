@@ -37,7 +37,7 @@
 
 只看名字开头的字节，不 demangle。`SymbolLanguage` 是以字符串 `rawValue`（给人看的语言名）为身份的 struct，别的包在扩展里加静态成员。一个名字的语言按这个顺序定：
 
-1. **C++**（本包内置）：`__Z`、`___Z`（C++ 函数里的 block）。在任何注册的语言之前判，注册的识别器看不到这些名字。
+1. **C++**（本包内置）：`__Z`；C++ 函数里的 block 在符号表里是 `____Z…_block_invoke`（加了 Darwin 的下划线），不带这个下划线时是 `___Z…`，两种都认。在任何注册的语言之前判，注册的识别器看不到这些名字。
 2. **已注册的语言**，按注册顺序，第一个认领的胜出。目前有两门，前缀表都在各自的包里：
    - Swift：MachOSwiftSection 的 `SwiftSymbols`（`.swift`），前缀与 swift-demangling 的 `isSwiftSymbol` 等价，由它的 `SymbolTableEquivalenceTests` 在真实符号表上钉住。
    - Objective-C：MachOObjCSection（`.objectiveC`），`-[`、`+[`、`_OBJC_`、`__OBJC_`、`l_OBJC_`、`L_OBJC_`、`_objc_msgSend$`。
