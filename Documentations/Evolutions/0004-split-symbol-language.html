@@ -164,7 +164,7 @@ details[open] > summary { border-bottom: 1px solid var(--separator); }
   <h1><span class="proposal-number">0004</span> 符号语言的判断归各自的包：本包只认 C 与 C++，Swift 与 Objective-C 在加载时注册</h1>
   <dl class="meta">
     <div><dt>状态</dt><dd><span class="status status-implemented">Implemented</span></dd></div>
-    <div><dt>最后更新</dt><dd>2026-11-19</dd></div>
+    <div><dt>最后更新</dt><dd>2026-11-20</dd></div>
     <div><dt>项目类型</dt><dd>库</dd></div>
     <div><dt>原文</dt><dd><code>0004-split-symbol-language.md</code></dd></div>
   </dl>
@@ -598,7 +598,7 @@ details[open] > summary { border-bottom: 1px solid var(--separator); }
 <section id="log">
   <h2>决策日志</h2>
   <details>
-    <summary>23 条（网页里部分行合并），最近一条：状态 → Implemented，取号 0004</summary>
+    <summary>24 条（网页里部分行合并），最近一条：下游落地</summary>
     <div class="details-body">
       <div class="table-wrap">
       <table>
@@ -626,6 +626,7 @@ details[open] > summary { border-bottom: 1px solid var(--separator); }
           <tr><td class="numeric">2026-11-19</td><td>渲染 A/B 全部一致</td><td>Ultra 上 84 对逐字节一致（归档 cache、模拟器运行时文件、进程内镜像）。</td></tr>
           <tr><td class="numeric">2026-11-19</td><td>实现完成，待用户看过后收尾</td><td>落地等 C++ 结构化归类的提案；本包的分支在本地合进 <code>next</code>，另两个仓库的分支留到落地那天。</td></tr>
           <tr><td class="numeric">2026-11-19</td><td>状态 → Implemented，取号 0004</td><td>与 0005 同日随本包 3.0.0 落地：本包 <code>main</code> 快进到叠着两份提案的功能分支，打 3.0.0；MachOObjCSection、MachOSwiftSection 与 RuntimeViewer 在随后几步完成，结果补记在原文。</td></tr>
+          <tr><td class="numeric">2026-11-20</td><td>下游落地</td><td>MachOObjCSection 0.8.208（推 main 的 CI 三次没领到 macOS 机器，用户同意凭本机 Xcode 26.6 照 CI 步骤的结果打 tag，343 个测试通过）；MachOSwiftSection 0.26.0（只走远端依赖 debug 全量 2,905 个通过、release 只有已知的 5 条失败、渲染 A/B 84 对一致，PR #142 的必需检查通过）；swift-decompiler 带测试编译通过；RuntimeViewer 抬下限交给它自己的会话；本包在 Xcode 26.6 下 213 个测试通过。</td></tr>
         </tbody>
       </table>
       </div>

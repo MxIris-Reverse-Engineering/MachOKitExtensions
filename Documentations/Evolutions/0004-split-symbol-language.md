@@ -3,7 +3,7 @@
 - **状态**: Implemented
 - **作者**: JH
 - **创建日期**: 2026-11-19
-- **最后更新**: 2026-11-19
+- **最后更新**: 2026-11-20
 - **所属愿景**: 无
 - **关联提案**: 本包 [0003 move-macho-infrastructure-modules](0003-move-macho-infrastructure-modules.md)（引入 `SymbolLanguage`、`SymbolTableRouting` 与 C/C++ 符号索引）；本包 [0005-cplusplus-symbol-classification](0005-cplusplus-symbol-classification.md)（C++ 符号的结构化归类，与本提案同随 3.0.0 落地，见决策日志）
 - **实现分支 / PR**: 本包、MachOSwiftSection、MachOObjCSection 各一条 `feature/split-symbol-language`，worktree 在各自的 `.worktrees/<项目名>-SplitSymbolLanguage`
@@ -547,3 +547,4 @@ constructor 写进 `Sources/MachOObjCSectionC/symbol_language_registration.c`，
 | 2026-11-19 | 渲染 A/B 全部一致 | 在 Ultra 上跑。基线是 MachOSwiftSection 功能分支的起点（`next`）的 detached worktree，依赖本包 2.0.0 与 MachOObjCSection `next` 的导出（另一个沙盒）；候选是功能分支，依赖两个功能分支的导出；其余兄弟依赖两侧相同。两侧 release 预构建后带 `--skip-build`、`--no-baseline-cache` 跑：归档 cache（macOS 26.6、15.5）、模拟器运行时里的独立文件、进程内镜像，共 84 对逐字节一致。 |
 | 2026-11-19 | 实现完成，待用户看过后收尾 | 落地步骤 1–6 完成，第 7 步（与 C++ 结构化归类同日随 3.0.0 落地）属于收尾，要等那份提案。文档判断：实现说明改写了本包的 `Internal/SymbolIndex.md`，MachOObjCSection 新增 `Internal/ObjectiveCSymbolLanguage.md`，MachOSwiftSection 改了 `SwiftSymbols.md` 与 AGENTS.md；调用方契约（判定顺序、`rawValue` 即身份、`closestSymbols` 的 `nil`、索引内容随注册而变、加载时注册的接法）写在类型的文档注释与 README，不另写使用指南；「注册的语言」「边界」只在实现说明里定义，本包仍不建术语表。三个功能分支都已推送；本包的分支在本地合进 `next`，MachOSwiftSection 与 MachOObjCSection 的不合进各自的常驻检出（它们的本地依赖链接指向本包根目录的 2.0.0，合进去就编不过），留到落地那天。 |
 | 2026-11-19 | 状态 → Implemented，取号 0004 | 与 0005 同日随本包 3.0.0 落地：本包 `main` 快进到叠着两份提案的功能分支（`main` 是线性历史），打 3.0.0。MachOObjCSection 0.8.208、MachOSwiftSection 0.26.0 与 RuntimeViewer `next` 改下限在随后几步完成，结果补记在本表。文档判断沿用「实现完成」一行：实现说明改写了 `Internal/SymbolIndex.md`，调用方契约写在类型文档与 README，不另写使用指南，本包不建术语表。 |
+| 2026-11-20 | 下游落地 | MachOObjCSection 0.8.208：拆分分支并入 `next` 上的一个文档提交后合入，`main` 快进、打 tag。推 `main` 触发的 CI 三次都没领到 GitHub 的 macOS 机器，用户同意凭本机用 Xcode 26.6 照 CI 步骤跑出的结果打 tag（343 个测试通过）。MachOSwiftSection 0.26.0：撤掉联调时指向沙盒的依赖路径，MachOObjCSection 下限抬到 0.8.208；只走远端依赖时，debug 全量 2,905 个测试通过，release 只有已知的 5 条失败，渲染 A/B 84 对一致；PR #142 的必需检查通过后合入 `main`、打 tag。swift-decompiler 对合并后的 MachOSwiftSection `next` 带测试编译通过。RuntimeViewer `next` 抬下限交给它自己的会话。本包 3.0.0 另在 Xcode 26.6 下跑过全量，213 个测试通过。 |
