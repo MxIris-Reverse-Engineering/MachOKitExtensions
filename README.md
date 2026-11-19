@@ -17,7 +17,7 @@ Extracting the target into its own package breaks that cycle: both packages now 
 Since 2.0.0 the package also carries the rest of MachOSwiftSection's Mach-O layer as products of
 their own: the reading layer (`MachOReading`, `MachOResolving`), relative pointers, the per-image
 shared cache, dependency closures, and the language-neutral half of its symbol index, on which a
-new index of C, C++ and Objective-C symbols is built. A package can use them without depending on
+new index of C and C++ symbols is built. A package can use them without depending on
 MachOSwiftSection; MachOKitUI with its `SwiftSection` trait off is the first such package.
 MachOSwiftSection keeps what is Swift-specific, its Swift symbol index included.
 
@@ -31,7 +31,7 @@ MachOSwiftSection keeps what is Swift-specific, its Swift symbol index included.
 | `MachOPointers` | Relative and indirect pointers as Swift's runtime lays them out (`RelativeDirectPointer`, `RelativeIndirectablePointer`, their integer-pair forms, `SymbolOrElementPointer`), read through a `ReadingContext` |
 | `MachOCaches` | `SharedCache`: one lazily built value per image, shared by every caller, with an eviction registry (behind the `Internals` SPI) |
 | `MachODependencies` | The images a binary links, found in this process, on disk or in a dyld shared cache: `DependencyClosure`, `DependencySearchPath`, `FileDependencyLocator` |
-| `MachOSymbols` | `SymbolIndexStore`, an index of an image's C, C++ and Objective-C symbols by offset, by nearest offset, by name and by export status; `SymbolLanguage`, which tells a symbol name's language from its leading bytes |
+| `MachOSymbols` | `SymbolIndexStore`, an index of an image's C and C++ symbols by offset, by nearest offset, by name and by export status; `SymbolLanguage`, which tells a symbol name's language from its leading bytes — C++ here, every other language through `SymbolLanguageRegistry`, where the package that owns it registers it |
 | `MachOBase` | `MachOKitExtensions`, `MachOReading`, `MachOResolving` and `MachOPointers` as one import |
 | `MachOFoundation` | `MachOBase`, `MachOSymbols` and `MachODependencies` as one import |
 | `ARM64InstructionDecoding` | Hand decoders for the few A64 encodings MachOSwiftSection's analyses read, and the trampoline shapes the linker and the dyld cache builder emit. Its interface is the `Internals` SPI, for MachOSwiftSection |
@@ -87,8 +87,11 @@ let fromFile = try magic(at: 0, in: machOFile.context)
 let fromImage = try magic(at: 0, in: machOImage.context)
 ```
 
-The symbol index answers for C, C++ and Objective-C names; MachOSwiftSection's `SwiftSymbols`
-keeps the Swift ones:
+The symbol index answers for C and C++ names. Other languages are recognized by the packages that
+own them: MachOSwiftSection's `SwiftSymbols` registers Swift and MachOObjCSection registers
+Objective-C when their images load. The index then keeps only where those languages' symbols sit,
+so `closestSymbols` answers `nil` for an address inside their code rather than naming the C function
+before it. A language nobody registered counts as C:
 
 ```swift
 import MachOKit
@@ -100,6 +103,21 @@ let enclosing = store.closestSymbols(at: instructionOffset, in: machOFile)?.symb
 let language = SymbolLanguage(ofSymbolNamed: "__ZN4llvm5Value4dumpEv")   // .cPlusPlus
 ```
 
+A package that owns a language defines it and registers a recognizer for its names, once, before
+any classification runs — from a C target's `__attribute__((constructor))` that calls a Swift
+function exported with `@c`:
+
+```swift
+extension SymbolLanguage {
+    public static let rust = SymbolLanguage(rawValue: "Rust")
+}
+
+@c(rust_symbols_register_symbol_language)
+func registerRustSymbolLanguage() {
+    SymbolLanguageRegistry.shared.register(.rust, where: { name in strncmp(name, "__R", 3) == 0 })
+}
+```
+
 2.0.0 adds the `MachOReading`, `MachOResolving`, `MachOPointers`, `MachOCaches`,
 `MachODependencies`, `MachOSymbols`, `MachOBase` and `MachOFoundation` products, and the
 `ARM64InstructionDecoding`, `MachOAddressResolution` and `MachOCodeReferences` products of
@@ -107,6 +125,11 @@ MachOSwiftSection's cross-reference analysis, and changes nothing in the `MachOK
 because MachOSwiftSection 0.24 and earlier declare modules of those same names, and SwiftPM refuses a package graph with two modules of one
 name: a `from: "1.x"` requirement keeps such a MachOSwiftSection from ever resolving together
 with this release.
+
+3.0.0 takes the Swift and Objective-C rules out of `SymbolLanguage`: `.swift` is now defined by
+MachOSwiftSection's `SwiftSymbols` and `.objectiveC` by MachOObjCSection, each registered when its
+image loads. Code that compared a language with `.swift` or `.objectiveC` imports that module too.
+Without either package in the process, Swift and Objective-C names count as C.
 
 A type of your own that holds a reader and forwards every read to it declares what it wraps,
 so that whatever is worked out per reader kind — absolute pointers for an image mapped into

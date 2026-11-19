@@ -71,7 +71,7 @@
 2. **新增 `SymbolLanguageRegistry`。** 带 `.shared` 的 `final class`。`register(_:where:)` 登记一门语言和一个识别闭包；`registeredLanguages` 列出已登记的。名字的语言按顺序判定：本包内置的 C++ 判断 → 已注册的识别闭包（按注册顺序，第一个认领的胜出）→ 都不认领算 `.c`。`SymbolLanguage(ofSymbolNamed:)` 与采集默认用 `.shared`。
 3. **采集按注册表判语言，并能只留偏移。** `SymbolSweep` 开始时取一份注册表快照，逐名字判定时不再加锁。`SymbolOffsetIndexing` 新增 `.sortedOffsetsOnly`：这一档的表不存名字、不建行，只留升序去重的规范化偏移。
 4. **C/C++ 索引排除已注册的语言，但留边界。** routing 改为两张表：`.c` 与 `.cPlusPlus` 进 `.symbols`（照旧），其余（即已注册的语言）进 `.boundaries`（`.sortedOffsetsOnly`）。`closestSymbols` 同时在两张表的偏移里找；最近的是边界、且比最近的 C/C++ 偏移更靠后时答 `nil`。同一偏移两边都有时，C/C++ 符号胜出。
-5. **晚注册时清掉重建。** 注册表每次登记新语言都把「代数」加一，`.shared` 上的登记同时清空 `SymbolIndexStore.shared`。每个镜像的索引记下建它时的代数，查询时代数不符就丢弃重建——这样也覆盖「建索引途中有人注册」的竞态。
+5. **晚注册时清掉重建。** 注册表每次登记新语言都把「代数」加一。store 查询时发现代数比上次见到的新，就先清空整个缓存；每个镜像的索引还记下建它时的代数，取到的仍旧就丢弃重建——这样也覆盖「建索引途中有人注册」的竞态。
 6. **MachOSwiftSection**：`SwiftSymbols` 里新增 `SymbolLanguage.swift`、从本包搬来的 Swift 前缀判断，以及一个 `@c` 注册函数；新增 C target `SwiftSymbolsRegistration`，其 constructor 调用该函数，`SwiftSymbols` 依赖它。`SwiftSymbolTableRouting` 直接调用自己的判断，不经注册表。
 7. **MachOObjCSection**：`MachOObjCSection` 模块新增 `SymbolLanguage.objectiveC`、从本包搬来的 Objective-C 前缀判断与一个 `@_cdecl` 注册函数，并新增对本包 `MachOSymbols` 的依赖；constructor 放进已有的 C target `MachOObjCSectionC`。工具版本保持 6.2。
 8. **发版**：与 C++ 结构化归类（另写一份提案）一起发本包 3.0.0。同一天 MachOObjCSection 发一个要求本包 3.x 的 tag，MachOSwiftSection 发一个新的小版本，RuntimeViewer 的 `next` 把本包下限改为 3.0.0。
@@ -92,14 +92,14 @@
 | 文件 / 类型 | 动作 | 改什么 | 为什么 | 步骤 |
 |---|---|---|---|---|
 | `Sources/MachOSymbols/SymbolLanguage.swift` · `SymbolLanguage` | 修改 | 改为 `RawRepresentable`（`String`），公开 `init(rawValue:)`；删 `.objectiveC`、`.swift` 与它们的前缀判断，只留 C++ 判断；`init(ofSymbolNamed:registry:)` 与 SPI 的字节版构造经注册表判定；`description` 返回 `rawValue` | 语言归各自的包；让别的包能造新值 | 1 |
-| `Sources/MachOSymbols/SymbolLanguageRegistry.swift` · `SymbolLanguageRegistry` | 新增 | `.shared`、`init()`、`register(_:where:)`、`registeredLanguages`；SPI 的快照与按字节判定；代数；`.shared` 登记时清空 `SymbolIndexStore.shared` | 别的包注册语言的入口 | 1 |
+| `Sources/MachOSymbols/SymbolLanguageRegistry.swift` · `SymbolLanguageRegistry` | 新增 | `.shared`、`init()`、`register(_:where:)`、`registeredLanguages`；内部的快照（`SymbolLanguageClassifier`）与代数 | 别的包注册语言的入口 | 1 |
 | `Sources/MachOSymbols/SymbolTableRouting.swift` · `SymbolOffsetIndexing` | 修改 | 新增 `.sortedOffsetsOnly`；`SymbolTableRouting` 的文档改为「`language` 由注册表判出」 | 边界只要偏移、不要名字 | 2 |
 | `Sources/MachOSymbols/SymbolSweep.swift` · `SymbolSweep`、`TableAccumulator` | 修改 | `init(sweeping:routing:languageRegistry:)`（默认 `.shared`）；开始时取快照；`.sortedOffsetsOnly` 的表跳过建行，只记规范化偏移（调试条目不记） | 采集按注册表判语言；边界表不付名字的内存 | 2 |
 | `Sources/MachOSymbols/SymbolIndexStore.swift` · `SymbolIndexStore`、`Storage`、`NonSwiftSymbolTableRouting` | 修改 | routing 改名 `CAndCPlusPlusSymbolTableRouting`，分 `.symbols` 与 `.boundaries` 两张表；`closestSymbols` 遇边界答 `nil`；`Storage` 记代数，`storage(in:)` 代数不符就重建；测试用的 `internal init(languageRegistry:)`；类型与方法的文档注释改为「C 与 C++」 | 排除已注册语言、留边界、晚注册重建 | 3 |
 | `Tests/MachOSymbolsTests/SymbolLanguageTests.swift` | 修改 | 删 Swift / ObjC 的期望；用独立注册表实例测注册、顺序、重复注册、内置语言；真实镜像上两种入口一致，只见 C 与 C++ | 新语义 | 1 |
 | `Tests/MachOSymbolsTests/SymbolSweepTests.swift` | 修改 | `LanguageRouting` 改用测试里注册的假语言；新增只留偏移的表 | `.objectiveC` 已不在本包 | 2 |
 | `Tests/MachOSymbolsTests/SymbolIndexStoreTests.swift` | 修改 | `storeNeverContainsSwiftNames` 改为用独立注册表登记假语言后验证排除；新增边界与重建用例 | 本包测试进程里没有 Swift 注册 | 3 |
-| `Tests/MachOKitExtensionsTests/WrappedReaderSymbolIndexTests.swift` | 修改 | 用 `SymbolLanguage(…) == .c` 筛名字的地方按新语义调整（没有注册时 Swift 名字也是 `.c`） | 语义变化 | 3 |
+| `Tests/MachOKitExtensionsTests/WrappedReaderSymbolIndexTests.swift` | 不变 | 原以为要按新语义调整；实际它按 `== .c` 筛出的名字在新语义下仍全部进索引，无需改动 | — | 3 |
 | `Documentations/Internal/SymbolIndex.md` | 修改 | 「语言」一节改为注册表与判定顺序；store 一节改为两张表与边界；测试清单 | 实现说明随代码 | 4 |
 | `README.md` | 修改 | `MachOSymbols` 一行与示例：只认 C/C++，Swift、ObjC 由各自的包注册 | 对外说明 | 4 |
 | `Documentations/Evolutions/README.md`、`Documentations/README.md` | 修改 | 登记本提案 | 索引 | 4 |
@@ -334,7 +334,7 @@ struct CAndCPlusPlusSymbolTableRouting: SymbolTableRouting {
 
 - `closestSymbols(at:in:)`：在 `.symbols` 的偏移里找不大于目标的最后一个 `s`，在 `.boundaries` 里找 `b`。`b` 存在且 `b > s`（或没有 `s`）时答 `nil`，否则答 `s` 处的符号。同一偏移两边都有（别名、相同代码折叠）时答 C/C++ 符号。文档注释写明：`nil` 也可能表示目标落在别的语言的代码里。
 - `symbols(for:in:)`、`offset(ofSymbolNamed:in:)`、`containsSymbol(named:in:)`、`isExported(name:in:)` 只看 `.symbols`，已注册语言的名字一律答「没有」。
-- `Storage` 记下建它时注册表快照的代数；`storage(in:)` 取到代数不符的旧索引时先 `remove(for:)` 再建。`.shared` 上的注册另外调用 `removeAll()`，立刻释放内存。
+- `Storage` 记下建它时注册表快照的代数。`storage(in:)` 先比对注册表的代数：比 store 上次见到的新，就 `removeAll()`；取到代数仍旧的索引（建索引途中有人注册），先 `remove(for:)` 再建。注册本身不碰 store。
 - `internal init(languageRegistry:)` 只给测试用，`shared` 用 `.shared`。
 
 ### MachOSwiftSection
@@ -491,7 +491,7 @@ constructor 写进 `Sources/MachOObjCSectionC/symbol_language_registration.c`，
    - 行为：`sortedOffsetsOnlyTableKeepsOffsetsButNoRows`
    - 行为：`sortedOffsetsOnlyTableSkipsDebugEntriesAndRawAddresses`
    - 行为：`sweepFilesEachNameIntoTheTableItsRoutingChooses`（改写后照旧通过）
-3. **C/C++ 索引：排除、边界、重建** —— 本包第 5、8、9 行。
+3. **C/C++ 索引：排除、边界、重建**（已完成） —— 本包第 5、8、9 行。
    - 行为：`storeLeavesRegisteredLanguagesOut`
    - 行为：`storeFilesUnregisteredLanguagesAsC`
    - 行为：`closestSymbolsAnswersNilInsideAnotherLanguagesCode`
@@ -499,7 +499,7 @@ constructor 写进 `Sources/MachOObjCSectionC/symbol_language_registration.c`，
    - 行为：`registeringOnTheSharedRegistryDropsBuiltIndexes`
    - 行为：`indexBuiltBeforeARegistrationIsRebuiltOnItsNextQuery`
    - 行为：本包全量测试与 `swift test -c release` 通过；AppKit 建索引耗时与 2.0.0 对比并记录。
-4. **本包文档** —— 本包第 10–12 行。
+4. **本包文档**（已完成） —— 本包第 10–12 行。
 5. **MachOSwiftSection** —— MSS 各行。本地联调照旧：依赖目录必须真叫 `MachOKitExtensions`，设 `USING_LOCAL_DEPENDENCIES=1`。
    - 行为：`swiftLanguageIsRegisteredAtLoad`
    - 行为：`swiftRecognitionMatchesDemanglingIsSwiftSymbol`
@@ -538,3 +538,5 @@ constructor 写进 `Sources/MachOObjCSectionC/symbol_language_registration.c`，
 | 2026-11-19 | 「采集按注册表判语言」与「store 可指定注册表」提前到第 1 步 | `SymbolSweepTests` 与普查测试要给采集、store 传入自己的注册表（本包测试进程里没人注册语言，不能动共享注册表），不提前第 1 步就编不过测试。第 2 步只剩 `.sortedOffsetsOnly`。 |
 | 2026-11-19 | AppKit 普查改用注册了 Swift 与 ObjC 替身的注册表 | 第 1 步后普查断言「进程内镜像的名字全留在字符串表里」失败：本包测试进程没人注册 Swift，Swift 名字按 C 收进索引，其中只出现在导出表里的名字要复制。这是新设计下的预期行为；普查要量的是生产环境的构成（链接了两个下游、索引只剩 C/C++），所以改用替身注册表。`storeNeverContainsSwiftNames` 改为 `storeFilesUnregisteredLanguagesAsC`：没有注册时 Swift 名字照 C 收。 |
 | 2026-11-19 | 只留偏移的表不收导出表；发现导出表一路的切片偏移口径不一致，记为后续项 | 边界偏移只取符号表（导出的符号本来也在符号表里），与提案详细设计一致。实现时曾让导出表也登记边界，`curl` 的测试随即多出一个 278528：导出表一路给文件加的是 `machO.startOffset`，对胖二进制的切片就是切片在胖文件里的起点（`curl` 的 arm64e 切片从 278528 开始），而符号表一路用 `SymbolValueOffsetConverter` 算出的是切片内偏移（`__mh_execute_header` 为 0）。2.0.0 起行模式就是这样，只影响「只在导出表、不在符号表」的名字铸出的新行，一直没暴露。与本提案无关，不在这条分支上改，记为后续项。 |
+| 2026-11-19 | 晚注册的清空改在 store 下一次查询时做 | 设计原为「`.shared` 上注册时立即 `removeAll()`」。注册发生在镜像加载时的 constructor 里，那时去碰 `SymbolIndexStore.shared` 会在加载期间初始化 store 与它的缓存登记；改为 store 每次查询比对注册表的代数，比上次见到的新就整体清空，结果相同，只是内存晚一点释放。 |
+| 2026-11-19 | 第 3、4 步完成 | 本包全量测试 debug 与 release 都通过（公司那台 Mac Studio，Xcode 27.2）。AppKit 普查：C/C++ 索引 151,422 行，边界 13,718 个偏移、0.1 MB；同一普查测试 release 下各跑三次，2.0.0 为 0.312–0.365 秒，拆分后为 0.308–0.340 秒。普查测试补打印边界偏移的数量与字节。`WrappedReaderSymbolIndexTests` 无需改动。实现说明、README 与文档索引已更新。 |
