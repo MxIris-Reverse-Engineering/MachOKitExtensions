@@ -55,7 +55,7 @@ MachOSwiftSection keeps what is Swift-specific, its Swift symbol index included.
 ## Usage
 
 ```swift
-.package(url: "https://github.com/MxIris-Reverse-Engineering/MachOKitExtensions", from: "2.0.0")
+.package(url: "https://github.com/MxIris-Reverse-Engineering/MachOKitExtensions", from: "3.0.0")
 ```
 
 ```swift

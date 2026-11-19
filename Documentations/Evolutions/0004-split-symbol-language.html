@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title>Draft - 符号语言的判断归各自的包</title>
+<title>0004 - 符号语言的判断归各自的包</title>
 <style>
 /* Evolution proposal page, shared style (style A, "Apple documentation").
    Copy this whole <style> block verbatim. Page-specific rules, if any, go only
@@ -160,13 +160,13 @@ details[open] > summary { border-bottom: 1px solid var(--separator); }
 <div class="page">
 
 <header class="doc-header">
-  <p class="eyebrow"><span class="crumb">MachOKitExtensions</span><span class="crumb">Evolutions</span><span class="crumb">Draft</span></p>
-  <h1><span class="proposal-number">Draft</span> 符号语言的判断归各自的包：本包只认 C 与 C++，Swift 与 Objective-C 在加载时注册</h1>
+  <p class="eyebrow"><span class="crumb">MachOKitExtensions</span><span class="crumb">Evolutions</span><span class="crumb">0004</span></p>
+  <h1><span class="proposal-number">0004</span> 符号语言的判断归各自的包：本包只认 C 与 C++，Swift 与 Objective-C 在加载时注册</h1>
   <dl class="meta">
-    <div><dt>状态</dt><dd><span class="status status-in-progress">In Progress</span></dd></div>
+    <div><dt>状态</dt><dd><span class="status status-implemented">Implemented</span></dd></div>
     <div><dt>最后更新</dt><dd>2026-11-19</dd></div>
     <div><dt>项目类型</dt><dd>库</dd></div>
-    <div><dt>原文</dt><dd><code>draft-split-symbol-language.md</code></dd></div>
+    <div><dt>原文</dt><dd><code>0004-split-symbol-language.md</code></dd></div>
   </dl>
 </header>
 
@@ -598,7 +598,7 @@ details[open] > summary { border-bottom: 1px solid var(--separator); }
 <section id="log">
   <h2>决策日志</h2>
   <details>
-    <summary>22 条（网页里部分行合并），最近一条：实现完成，待用户看过后收尾</summary>
+    <summary>23 条（网页里部分行合并），最近一条：状态 → Implemented，取号 0004</summary>
     <div class="details-body">
       <div class="table-wrap">
       <table>
@@ -625,6 +625,7 @@ details[open] > summary { border-bottom: 1px solid var(--separator); }
           <tr><td class="numeric">2026-11-19</td><td>第 5 步完成，测试在 Ultra 上跑</td><td>全量测试 debug 通过；release 另有 <code>SpecializedRuntimeTypeNameTests</code> 5 个失败，基线上相同，属既有问题（后续项）。</td></tr>
           <tr><td class="numeric">2026-11-19</td><td>渲染 A/B 全部一致</td><td>Ultra 上 84 对逐字节一致（归档 cache、模拟器运行时文件、进程内镜像）。</td></tr>
           <tr><td class="numeric">2026-11-19</td><td>实现完成，待用户看过后收尾</td><td>落地等 C++ 结构化归类的提案；本包的分支在本地合进 <code>next</code>，另两个仓库的分支留到落地那天。</td></tr>
+          <tr><td class="numeric">2026-11-19</td><td>状态 → Implemented，取号 0004</td><td>与 0005 同日随本包 3.0.0 落地：本包 <code>main</code> 快进到叠着两份提案的功能分支，打 3.0.0；MachOObjCSection、MachOSwiftSection 与 RuntimeViewer 在随后几步完成，结果补记在原文。</td></tr>
         </tbody>
       </table>
       </div>

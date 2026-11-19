@@ -1,22 +1,22 @@
-# Draft - C++ 符号的结构化归类：按作用域整理一个镜像的 C++ 符号
+# 0005 - C++ 符号的结构化归类：按作用域整理一个镜像的 C++ 符号
 
-- **状态**: In Progress
+- **状态**: Implemented
 - **作者**: JH
 - **创建日期**: 2026-11-19
 - **最后更新**: 2026-11-19
 - **所属愿景**: 无
-- **关联提案**: 本包 [0003 move-macho-infrastructure-modules](0003-move-macho-infrastructure-modules.md)（定下要做 C++ 结构化归类、解析器引入 LLVM `ItaniumDemangle`，见其决策日志 2026-11-18）；本包 [draft-split-symbol-language](draft-split-symbol-language.md)（与本提案同日随 3.0.0 落地）
+- **关联提案**: 本包 [0003 move-macho-infrastructure-modules](0003-move-macho-infrastructure-modules.md)（定下要做 C++ 结构化归类、解析器引入 LLVM `ItaniumDemangle`，见其决策日志 2026-11-18）；本包 [0004-split-symbol-language](0004-split-symbol-language.md)（与本提案同日随 3.0.0 落地）
 - **实现分支 / PR**: `feature/cplusplus-symbol-classification`，从 `feature/split-symbol-language` 切出；worktree 在 `.worktrees/MachOKitExtensions-CPlusPlusSymbolClassification`
 - **配套文档**: 实现说明 [Internal/CPlusPlusSymbols.md](../Internal/CPlusPlusSymbols.md)（引入的解析器与更新方法、C 接口与遍历、作用域树、普查数字、与提案的差异）
 - **网页版**: 同目录同名的 `.html`
 
 ## 摘要
 
-本包新增模块 `CPlusPlusSymbols`（同名 library product），让调用方按类、命名空间与成员浏览一个镜像的 C++ 符号。底下是从 libc++abi 原样引入的 LLVM `ItaniumDemangle`，放在新的 C++ target `CPlusPlusDemangling` 里，对 Swift 只露一层 C 接口，下游不用开 C++ 互操作。上面有两样东西。`CPlusPlusSymbolName` 把一个 Itanium 名字拆成归类用的字段：种类、作用域路径、基本名、模板实参、参数、返回类型、const 等限定，外加与 `__cxa_demangle` 同源的可读字符串。`CPlusPlusSymbolIndexStore` 在第一次查询时扫描镜像里的 C++ 名字并逐个解析，建出一棵作用域树：每个作用域按名字里找得到的证据标成类型、命名空间或函数，找不到证据的标「未定」，并列出直接属于它的符号。只解析名字，不读 RTTI。这是纯新增的 API，与 `draft-split-symbol-language` 同日随本包 3.0.0 落地。
+本包新增模块 `CPlusPlusSymbols`（同名 library product），让调用方按类、命名空间与成员浏览一个镜像的 C++ 符号。底下是从 libc++abi 原样引入的 LLVM `ItaniumDemangle`，放在新的 C++ target `CPlusPlusDemangling` 里，对 Swift 只露一层 C 接口，下游不用开 C++ 互操作。上面有两样东西。`CPlusPlusSymbolName` 把一个 Itanium 名字拆成归类用的字段：种类、作用域路径、基本名、模板实参、参数、返回类型、const 等限定，外加与 `__cxa_demangle` 同源的可读字符串。`CPlusPlusSymbolIndexStore` 在第一次查询时扫描镜像里的 C++ 名字并逐个解析，建出一棵作用域树：每个作用域按名字里找得到的证据标成类型、命名空间或函数，找不到证据的标「未定」，并列出直接属于它的符号。只解析名字，不读 RTTI。这是纯新增的 API，与 `0004-split-symbol-language` 同日随本包 3.0.0 落地。
 
 ## 动机
 
-- **按作用域归类 C++ 符号是已经定下的需求。** 0003 写提案时，用户要求 C/C++ 索引不止按地址、名字、是否导出查询，还要按类、命名空间、成员归类 C++ 符号；「只做查询与字符串 demangle」被否决。当时把归类放到下一个版本另写提案，解析器按「依赖干净就引入」的规则定为 LLVM `ItaniumDemangle`（0003 决策日志 2026-11-18 的三条）。之后拆分提案把这个版本合进了 3.0.0（`draft-split-symbol-language` 决策日志 2026-11-19）。
+- **按作用域归类 C++ 符号是已经定下的需求。** 0003 写提案时，用户要求 C/C++ 索引不止按地址、名字、是否导出查询，还要按类、命名空间、成员归类 C++ 符号；「只做查询与字符串 demangle」被否决。当时把归类放到下一个版本另写提案，解析器按「依赖干净就引入」的规则定为 LLVM `ItaniumDemangle`（0003 决策日志 2026-11-18 的三条）。之后拆分提案把这个版本合进了 3.0.0（`0004-split-symbol-language` 决策日志 2026-11-19）。
 - **现在只拿得到原始名字，或一整串可读名字。** `SymbolIndexStore`（`Sources/MachOSymbols/SymbolIndexStore.swift`）只给符号表里的写法（`__ZNK4llvm5Value4dumpEv`）。要可读名字只能用 MachOKit 的 `demangledName`，它经 `dlsym` 取系统的 `__cxa_demangle`（0003 前期调研），得到的是一整串 `llvm::Value::dump() const`。调用方想知道「这是哪个类的成员」，就只能自己切字符串，可模板实参里同样有 `::`、括号和逗号（`std::__1::vector<int, std::__1::allocator<int>>::push_back(int&&)`），切不准。
 - **Swift 那边已经有成员归类，C++ 没有。** MachOSwiftSection 的 `SwiftSymbolIndexStore` 能按类型列出成员（`memberSymbols(of:for:in:)`），C++ 符号没有对应的能力。
 
@@ -73,7 +73,7 @@
 6. **作用域的种类按证据定。** 依次判断：是函数（局部实体所在）→ `.function`；有命名空间的证据（全局、`std`、匿名命名空间）→ `.namespace`；有任何类型的证据 → `.type`；都没有 → `.undetermined`，不猜。证据本身以 `OptionSet` 公开，调用方能自己判断。
 7. **模板的每个特化各是一个作用域。** `vector<int>` 与 `vector<char>` 是 `std::__1` 下的两个兄弟作用域，`name` 带实参，`baseName` 都是 `vector`，调用方按 `baseName` 就能把各个特化列在一起。
 8. **解析结果不常驻。** 索引只常驻作用域树（每个作用域一份名字），以及每行所属的作用域与种类。`members(of:in:)`、`symbols(for:in:)` 返回的 `CPlusPlusSymbol` 当场重新解析出来；一次解析是微秒级，一个有几百个成员的类也在毫秒内。
-9. **发版**：与 `draft-split-symbol-language` 同日随本包 3.0.0 落地。本提案只新增 API，不需要下游配合改动。
+9. **发版**：与 `0004-split-symbol-language` 同日随本包 3.0.0 落地。本提案只新增 API，不需要下游配合改动。
 
 ### 非目标
 
@@ -596,7 +596,7 @@ guard 变量、`thread_local` 变量与块由第 2 步的固定名字覆盖，�
    - 行为：`cPlusPlusSymbolIndexCensusOfALargeImage`，其中断言未能解析的名字系统 `__cxa_demangle` 也解析不了。
    - 行为：本包全量测试 debug 与 `swift test -c release` 都通过。
 5. **文档**（已完成） —— 第 17–19 行。
-6. **落地（与 `draft-split-symbol-language` 同一天，3.0.0）**：本分支先并入那时的拆分分支或 `next`，重跑全量测试（含 release）；随拆分的落地顺序发本包 3.0.0；两份提案各自取号、改 Implemented。
+6. **落地（与 `0004-split-symbol-language` 同一天，3.0.0）**：本分支先并入那时的拆分分支或 `next`，重跑全量测试（含 release）；随拆分的落地顺序发本包 3.0.0；两份提案各自取号、改 Implemented。
 
 **收尾时必须判断两件事**（判断结果写进决策日志）：
 
@@ -621,3 +621,4 @@ guard 变量、`thread_local` 变量与块由第 2 步的固定名字覆盖，�
 | 2026-11-19 | 第 3 步完成 | `CPlusPlusScope`、`CPlusPlusSymbol`、`CPlusPlusSymbolIndexStore` 与 C++ 夹具落地，`CPlusPlusSymbolsTests` 全部 41 个测试通过（debug，Ultra）。实现时定下的细节：construction vtable 的基类（`Middle-in-Derived` 的 `Middle`）记作「当作类型用到」，完整类拿 `.virtualTable`；`scope(named: "")` 返回全局作用域；`unparsedSymbols` 按偏移排序；`CPlusPlusSymbol` 的构造器不公开；限定名重复时取先建的作用域（实际不会发生，只是不让建表崩溃）。夹具发现 clang 给普通函数里的 lambda 起名 `$_0` 而不是 Itanium 的 `'lambda'`，这种闭包类型靠 `const` 的调用运算符判成类型；测试两种都覆盖，夹具多了一个放 lambda 的内联函数。比提案多一个用例：`virtualInheritanceShowsVirtualTableTablesAndThunks`。 |
 | 2026-11-19 | 第 4 步完成；不并行 | 普查（Ultra，release，macOS 27.2 的 JavaScriptCore）：34,951 个 C++ 名字，100 个未能解析（都是 clang 的 `$_N` 闭包名套在模板实参里，系统 `__cxa_demangle` 同样解析不了，测试断言了这一点），7,010 个作用域（类型 3,910、未定 2,117、函数 967、命名空间 16）；建树约 0.15 秒（debug 约 1 秒）；从 cache 读出的文件符号表 4.7 MB（复制的名字 4.0 MB）、进程内镜像 0.7 MB（零拷贝），偏移索引分别不少于 1.6 MB 与 0.8 MB，作用域树约 4.1 MB。建树已经够快，按提案的约定保持串行。release 全量测试第一次跑时，夹具里那个 `$_0` lambda 因为参数是常量被折叠掉、符号消失；两个放 lambda 的函数改为接收运行时参数后，debug 与 release 都通过。 |
 | 2026-11-19 | 第 5 步完成；实现完成，待用户看过后收尾 | 新增实现说明 `Internal/CPlusPlusSymbols.md`，登记进文档索引与本提案头部；README 加模块表一行、按作用域浏览的示例、3.0.0 新增本模块的一句、Linux 未验证的说明与第三方代码许可证一节；`Internal/SymbolIndex.md` 提到建在同一采集上的第三个 store。文档判断：不另写使用指南——调用方要守的契约（种类由证据推出、可能随版本变化、`std::__1` 是「未定」、函数作用域的段带参数）写在 `CPlusPlusScope.Kind` 等类型的文档注释、README 与实现说明里；「证据」「未定」只在实现说明与类型文档里定义，本包仍不建术语表。本包全量测试 debug 与 release 都通过（Ultra，Xcode 27.2）。第 6 步（与拆分同日随 3.0.0 落地）属于收尾。 |
+| 2026-11-19 | 状态 → Implemented，取号 0005 | 与 0004 同日随本包 3.0.0 落地。文档判断见「第 5 步完成」一行：实现说明 `Internal/CPlusPlusSymbols.md`，不另写使用指南，不建术语表。后续项：`CPlusPlusSymbols` 在 Linux 上未编译验证；Objective-C 符号的结构化归类没有提案，需要时另写。 |

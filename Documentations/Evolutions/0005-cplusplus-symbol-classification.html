@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title>Draft - C++ 符号的结构化归类：按作用域整理一个镜像的 C++ 符号</title>
+<title>0005 - C++ 符号的结构化归类：按作用域整理一个镜像的 C++ 符号</title>
 <style>
 /* Evolution proposal page, shared style (style A, "Apple documentation").
    Copy this whole <style> block verbatim. Page-specific rules, if any, go only
@@ -160,13 +160,13 @@ details[open] > summary { border-bottom: 1px solid var(--separator); }
 <div class="page">
 
 <header class="doc-header">
-  <p class="eyebrow"><span class="crumb">MachOKitExtensions</span><span class="crumb">Evolutions</span><span class="crumb">Draft</span></p>
-  <h1><span class="proposal-number">Draft</span> C++ 符号的结构化归类：按作用域整理一个镜像的 C++ 符号</h1>
+  <p class="eyebrow"><span class="crumb">MachOKitExtensions</span><span class="crumb">Evolutions</span><span class="crumb">0005</span></p>
+  <h1><span class="proposal-number">0005</span> C++ 符号的结构化归类：按作用域整理一个镜像的 C++ 符号</h1>
   <dl class="meta">
-    <div><dt>状态</dt><dd><span class="status status-in-progress">In Progress</span></dd></div>
+    <div><dt>状态</dt><dd><span class="status status-implemented">Implemented</span></dd></div>
     <div><dt>最后更新</dt><dd>2026-11-19</dd></div>
     <div><dt>项目类型</dt><dd>库</dd></div>
-    <div><dt>原文</dt><dd><code>draft-cplusplus-symbol-classification.md</code></dd></div>
+    <div><dt>原文</dt><dd><code>0005-cplusplus-symbol-classification.md</code></dd></div>
     <div><dt>实现分支</dt><dd><code>feature/cplusplus-symbol-classification</code>（从 <code>feature/split-symbol-language</code> 切出）</dd></div>
   </dl>
 </header>
@@ -191,7 +191,7 @@ details[open] > summary { border-bottom: 1px solid var(--separator); }
 
 <section id="summary">
   <h2>摘要</h2>
-  <p>本包新增模块 <code>CPlusPlusSymbols</code>（同名 library product），让调用方按类、命名空间与成员浏览一个镜像的 C++ 符号。底下是从 libc++abi 原样引入的 LLVM <code>ItaniumDemangle</code>，放在新的 C++ target <code>CPlusPlusDemangling</code> 里，对 Swift 只露一层 C 接口，下游不用开 C++ 互操作。上面有两样东西。<code>CPlusPlusSymbolName</code> 把一个 Itanium 名字拆成归类用的字段：种类、作用域路径、基本名、模板实参、参数、返回类型、const 等限定，外加与 <code>__cxa_demangle</code> 同源的可读字符串。<code>CPlusPlusSymbolIndexStore</code> 在第一次查询时扫描镜像里的 C++ 名字并逐个解析，建出一棵作用域树：每个作用域按名字里找得到的证据标成类型、命名空间或函数，找不到证据的标「未定」，并列出直接属于它的符号。只解析名字，不读 RTTI。这是纯新增的 API，与 <code>draft-split-symbol-language</code> 同日随本包 3.0.0 落地。</p>
+  <p>本包新增模块 <code>CPlusPlusSymbols</code>（同名 library product），让调用方按类、命名空间与成员浏览一个镜像的 C++ 符号。底下是从 libc++abi 原样引入的 LLVM <code>ItaniumDemangle</code>，放在新的 C++ target <code>CPlusPlusDemangling</code> 里，对 Swift 只露一层 C 接口，下游不用开 C++ 互操作。上面有两样东西。<code>CPlusPlusSymbolName</code> 把一个 Itanium 名字拆成归类用的字段：种类、作用域路径、基本名、模板实参、参数、返回类型、const 等限定，外加与 <code>__cxa_demangle</code> 同源的可读字符串。<code>CPlusPlusSymbolIndexStore</code> 在第一次查询时扫描镜像里的 C++ 名字并逐个解析，建出一棵作用域树：每个作用域按名字里找得到的证据标成类型、命名空间或函数，找不到证据的标「未定」，并列出直接属于它的符号。只解析名字，不读 RTTI。这是纯新增的 API，与 <code>0004-split-symbol-language</code> 同日随本包 3.0.0 落地。</p>
   <h3>动机</h3>
   <ul>
     <li><strong>按作用域归类 C++ 符号是已经定下的需求。</strong>0003 写提案时，用户要求 C/C++ 索引不止按地址、名字、是否导出查询，还要按类、命名空间、成员归类 C++ 符号；「只做查询与字符串 demangle」被否决。当时把归类放到下一个版本另写提案，解析器按「依赖干净就引入」的规则定为 LLVM <code>ItaniumDemangle</code>（0003 决策日志 2026-11-18 的三条）。之后拆分提案把这个版本合进了 3.0.0。</li>
@@ -351,7 +351,7 @@ details[open] > summary { border-bottom: 1px solid var(--separator); }
     <li><strong>作用域的种类按证据定。</strong>依次判断：是函数（局部实体所在）→ <code>.function</code>；有命名空间的证据（全局、<code>std</code>、匿名命名空间）→ <code>.namespace</code>；有任何类型的证据 → <code>.type</code>；都没有 → <code>.undetermined</code>，不猜。证据本身以 <code>OptionSet</code> 公开，调用方能自己判断。</li>
     <li><strong>模板的每个特化各是一个作用域。</strong><code>vector&lt;int&gt;</code> 与 <code>vector&lt;char&gt;</code> 是 <code>std::__1</code> 下的两个兄弟作用域，<code>name</code> 带实参，<code>baseName</code> 都是 <code>vector</code>，调用方按 <code>baseName</code> 就能把各个特化列在一起。</li>
     <li><strong>解析结果不常驻。</strong>索引只常驻作用域树（每个作用域一份名字），以及每行所属的作用域与种类。<code>members(of:in:)</code>、<code>symbols(for:in:)</code> 返回的 <code>CPlusPlusSymbol</code> 当场重新解析出来；一次解析是微秒级，一个有几百个成员的类也在毫秒内。</li>
-    <li><strong>发版</strong>：与 <code>draft-split-symbol-language</code> 同日随本包 3.0.0 落地。本提案只新增 API，不需要下游配合改动。</li>
+    <li><strong>发版</strong>：与 <code>0004-split-symbol-language</code> 同日随本包 3.0.0 落地。本提案只新增 API，不需要下游配合改动。</li>
   </ol>
   <h3>非目标</h3>
   <ul>
@@ -883,7 +883,7 @@ public final class CPlusPlusSymbolIndexStore: @unchecked Sendable {
       </ul>
     </li>
     <li><strong>文档</strong>（已完成） —— 第 17–19 行。</li>
-    <li><strong>落地（与 <code>draft-split-symbol-language</code> 同一天，3.0.0）</strong>：本分支先并入那时的拆分分支或 <code>next</code>，重跑全量测试（含 release）；随拆分的落地顺序发本包 3.0.0；两份提案各自取号、改 Implemented。</li>
+    <li><strong>落地（与 <code>0004-split-symbol-language</code> 同一天，3.0.0）</strong>：本分支先并入那时的拆分分支或 <code>next</code>，重跑全量测试（含 release）；随拆分的落地顺序发本包 3.0.0；两份提案各自取号、改 Implemented。</li>
   </ol>
   <div class="callout callout-note">
     <p class="callout-title">收尾时必须判断两件事</p>
@@ -897,7 +897,7 @@ public final class CPlusPlusSymbolIndexStore: @unchecked Sendable {
 <section id="log">
   <h2>决策日志</h2>
   <details>
-    <summary>14 条，最近一条：第 5 步完成；实现完成，待用户看过后收尾</summary>
+    <summary>15 条，最近一条：状态 → Implemented，取号 0005</summary>
     <div class="details-body">
       <div class="table-wrap">
       <table>
@@ -917,6 +917,7 @@ public final class CPlusPlusSymbolIndexStore: @unchecked Sendable {
           <tr><td class="numeric">2026-11-19</td><td>第 3 步完成</td><td>作用域树与 C++ 夹具落地，41 个测试通过。construction vtable 的基类记作「当作类型用到」，完整类拿 <code>.virtualTable</code>；<code>scope(named: "")</code> 返回全局作用域；<code>unparsedSymbols</code> 按偏移排序；<code>CPlusPlusSymbol</code> 的构造器不公开。clang 给普通函数里的 lambda 起名 <code>$_0</code>，靠 <code>const</code> 的调用运算符判成类型；夹具多了一个放 Itanium 命名 lambda 的内联函数。</td></tr>
           <tr><td class="numeric">2026-11-19</td><td>第 4 步完成；不并行</td><td>JavaScriptCore：34,951 个 C++ 名字，100 个未能解析（系统 <code>__cxa_demangle</code> 同样解析不了），7,010 个作用域（类型 3,910、未定 2,117、函数 967、命名空间 16）；release 建树约 0.15 秒；作用域树约 4.1 MB。保持串行。夹具里放 lambda 的函数改为接收运行时参数，release 才保留 <code>$_0</code> 的符号。</td></tr>
           <tr><td class="numeric">2026-11-19</td><td>第 5 步完成；实现完成，待用户看过后收尾</td><td>新增实现说明 <code>Internal/CPlusPlusSymbols.md</code>；README 加模块表一行、示例、Linux 未验证的说明与第三方代码许可证一节。不另写使用指南，不建术语表。本包全量测试 debug 与 release 都通过。第 6 步（与拆分同日随 3.0.0 落地）属于收尾。</td></tr>
+          <tr><td class="numeric">2026-11-19</td><td>状态 → Implemented，取号 0005</td><td>与 0004 同日随本包 3.0.0 落地。文档判断见「第 5 步完成」一行。后续项：<code>CPlusPlusSymbols</code> 在 Linux 上未编译验证；Objective-C 符号的结构化归类没有提案，需要时另写。</td></tr>
         </tbody>
       </table>
       </div>

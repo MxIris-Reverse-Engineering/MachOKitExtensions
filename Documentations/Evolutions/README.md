@@ -9,5 +9,5 @@
 | 0002 | [把 MachOReading 与 MachOResolving 迁入本包](0002-move-reading-and-resolving-modules.md) | Implemented |
 | 0003 | [把 MachOSwiftSection 剩余的 MachO 基础模块迁入本包，并拆出 C/C++ 符号索引](0003-move-macho-infrastructure-modules.md) | Implemented |
 | cross-repository（MachOSwiftSection 0098） | [交叉引用的核心层与 ObjC 层迁出 MachOSwiftSection](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0098-move-cross-reference-layers.md)：由 MachOSwiftSection 维护唯一提案；本包新增 `ARM64InstructionDecoding`、`MachOAddressResolution`、`MachOCodeReferences` 三个模块（层间接口是 `@_spi(Internals)`，只给 MachOSwiftSection 用），2.0.0 | Implemented |
-| draft | [符号语言的判断归各自的包：本包只认 C 与 C++，Swift 与 Objective-C 在加载时注册](draft-split-symbol-language.md) | In Progress |
-| draft | [C++ 符号的结构化归类：按作用域整理一个镜像的 C++ 符号](draft-cplusplus-symbol-classification.md) | In Progress |
+| 0004 | [符号语言的判断归各自的包：本包只认 C 与 C++，Swift 与 Objective-C 在加载时注册](0004-split-symbol-language.md) | Implemented |
+| 0005 | [C++ 符号的结构化归类：按作用域整理一个镜像的 C++ 符号](0005-cplusplus-symbol-classification.md) | Implemented |

@@ -1,7 +1,7 @@
 # CPlusPlusSymbols：C++ 名字的解析与按作用域归类
 
 > 实现说明，随代码维护。读者：维护者。
-> 2026-11 随提案 [draft-cplusplus-symbol-classification](../Evolutions/draft-cplusplus-symbol-classification.md) 新增，与拆分提案 [draft-split-symbol-language](../Evolutions/draft-split-symbol-language.md) 同随 3.0.0 落地。名字的语言判断与采集在 `MachOSymbols`，见 [SymbolIndex.md](SymbolIndex.md)。
+> 2026-11 随提案 [0005-cplusplus-symbol-classification](../Evolutions/0005-cplusplus-symbol-classification.md) 新增，与拆分提案 [0004-split-symbol-language](../Evolutions/0004-split-symbol-language.md) 同随 3.0.0 落地。名字的语言判断与采集在 `MachOSymbols`，见 [SymbolIndex.md](SymbolIndex.md)。
 
 ## 模块定位
 

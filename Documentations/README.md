@@ -6,8 +6,8 @@
 | [Evolutions/0001-cached-view.md](Evolutions/0001-cached-view.md) | 把 MachOKit fork 的三处性能改动移到 MachOKitExtensions 的 cached 视图 |
 | [Evolutions/0002-move-reading-and-resolving-modules.md](Evolutions/0002-move-reading-and-resolving-modules.md) | 把 MachOSwiftSection 的 MachOReading / MachOResolving 原名迁入本包，本包发 2.0.0 |
 | [Evolutions/0003-move-macho-infrastructure-modules.md](Evolutions/0003-move-macho-infrastructure-modules.md) | 把 MachOSwiftSection 剩余的 MachO 基础模块迁入本包，`MachOSymbols` 拆出只收 C/C++/ObjC 名字的符号索引，随 2.0.0 落地 |
-| [Evolutions/draft-split-symbol-language.md](Evolutions/draft-split-symbol-language.md) | 提案（Draft）：`SymbolLanguage` 只认 C 与 C++，Swift 与 Objective-C 由各自的包在加载时注册；C/C++ 索引排除已注册语言并留边界，随 3.0.0 落地 |
-| [Evolutions/draft-cplusplus-symbol-classification.md](Evolutions/draft-cplusplus-symbol-classification.md) | 提案（In Progress）：新模块 `CPlusPlusSymbols` 引入 LLVM `ItaniumDemangle`，把 C++ 名字拆成归类字段，并按证据把一个镜像的 C++ 符号整理成作用域树；与拆分同日随 3.0.0 落地 |
+| [Evolutions/0004-split-symbol-language.md](Evolutions/0004-split-symbol-language.md) | `SymbolLanguage` 只认 C 与 C++，Swift 与 Objective-C 由各自的包在加载时注册；C/C++ 索引排除已注册语言并留边界，随 3.0.0 落地 |
+| [Evolutions/0005-cplusplus-symbol-classification.md](Evolutions/0005-cplusplus-symbol-classification.md) | 新模块 `CPlusPlusSymbols` 引入 LLVM `ItaniumDemangle`，把 C++ 名字拆成归类字段，并按证据把一个镜像的 C++ 符号整理成作用域树；与拆分同日随 3.0.0 落地 |
 | [Internal/ReadingContextAbstraction.md](Internal/ReadingContextAbstraction.md) | 实现说明：读取层（`ReadingContext`、`Resolvable`）两个模块各管什么、读文件为何直接用 MachOKit 的映射、本进程地址掩码、缓存范围、怎样看穿包装类型读取器 |
 | [Internal/SymbolIndex.md](Internal/SymbolIndex.md) | 实现说明：符号表、按 routing 分表的采集、`SymbolLanguage` 与别的包在加载时注册语言、C/C++ 符号索引与已注册语言的边界；零拷贝名字何时可用、同名多处定义怎么登记 |
 | [Internal/CPlusPlusSymbols.md](Internal/CPlusPlusSymbols.md) | 实现说明：引入的 LLVM `ItaniumDemangle` 与更新方法、C 接口与 AST 遍历、特殊名字归位、按证据定作用域种类、查询时重新解析；JavaScriptCore 上的规模与耗时 |

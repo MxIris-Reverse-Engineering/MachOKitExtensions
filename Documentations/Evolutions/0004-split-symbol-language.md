@@ -1,11 +1,11 @@
-# Draft - 符号语言的判断归各自的包：本包只认 C 与 C++，Swift 与 Objective-C 在加载时注册
+# 0004 - 符号语言的判断归各自的包：本包只认 C 与 C++，Swift 与 Objective-C 在加载时注册
 
-- **状态**: In Progress
+- **状态**: Implemented
 - **作者**: JH
 - **创建日期**: 2026-11-19
 - **最后更新**: 2026-11-19
 - **所属愿景**: 无
-- **关联提案**: 本包 [0003 move-macho-infrastructure-modules](0003-move-macho-infrastructure-modules.md)（引入 `SymbolLanguage`、`SymbolTableRouting` 与 C/C++ 符号索引）；本包 [draft-cplusplus-symbol-classification](draft-cplusplus-symbol-classification.md)（C++ 符号的结构化归类，与本提案同随 3.0.0 落地，见决策日志）
+- **关联提案**: 本包 [0003 move-macho-infrastructure-modules](0003-move-macho-infrastructure-modules.md)（引入 `SymbolLanguage`、`SymbolTableRouting` 与 C/C++ 符号索引）；本包 [0005-cplusplus-symbol-classification](0005-cplusplus-symbol-classification.md)（C++ 符号的结构化归类，与本提案同随 3.0.0 落地，见决策日志）
 - **实现分支 / PR**: 本包、MachOSwiftSection、MachOObjCSection 各一条 `feature/split-symbol-language`，worktree 在各自的 `.worktrees/<项目名>-SplitSymbolLanguage`
 - **配套文档**: 待定 —— 落地时登记实现说明（预计改写 [Internal/SymbolIndex.md](../Internal/SymbolIndex.md)）
 - **网页版**: 同目录同名的 `.html`
@@ -546,3 +546,4 @@ constructor 写进 `Sources/MachOObjCSectionC/symbol_language_registration.c`，
 | 2026-11-19 | 第 5 步完成，测试在 Ultra 上跑 | 用户要求改到 Ultra 跑。Ultra 上新建同名功能 worktree；本包与 MachOObjCSection 功能分支用 Ultra 本地仓库 `git archive` 导出到 agent 目录的沙盒，其余兄弟依赖与公司那台是同一提交；功能 worktree 的 `Package.swift` 临时（不提交）指向沙盒。夹具 SymbolTestsCore 链接 Ultra `next` 检出里编好的那份（源码只差两行注释）。全量测试（`--skip IntegrationTests`）debug 与 release 各一遍：除命名扫描外 debug 全部通过；release 另有 `SpecializedRuntimeTypeNameTests` 的 5 个用例失败，在基线检出（功能分支起点，依赖本包 2.0.0）上用 release 跑同一组测试，失败的是相同的 5 个，属于基线已有的问题，记为后续项。命名扫描修复后，受影响的 4 组测试 debug、release 都通过。SwiftPM 报了几条「同一个包被两个路径引用」的警告（沙盒链接与 `.worktrees/` 链接写法不同、指向同一目录），只是警告。 |
 | 2026-11-19 | 渲染 A/B 全部一致 | 在 Ultra 上跑。基线是 MachOSwiftSection 功能分支的起点（`next`）的 detached worktree，依赖本包 2.0.0 与 MachOObjCSection `next` 的导出（另一个沙盒）；候选是功能分支，依赖两个功能分支的导出；其余兄弟依赖两侧相同。两侧 release 预构建后带 `--skip-build`、`--no-baseline-cache` 跑：归档 cache（macOS 26.6、15.5）、模拟器运行时里的独立文件、进程内镜像，共 84 对逐字节一致。 |
 | 2026-11-19 | 实现完成，待用户看过后收尾 | 落地步骤 1–6 完成，第 7 步（与 C++ 结构化归类同日随 3.0.0 落地）属于收尾，要等那份提案。文档判断：实现说明改写了本包的 `Internal/SymbolIndex.md`，MachOObjCSection 新增 `Internal/ObjectiveCSymbolLanguage.md`，MachOSwiftSection 改了 `SwiftSymbols.md` 与 AGENTS.md；调用方契约（判定顺序、`rawValue` 即身份、`closestSymbols` 的 `nil`、索引内容随注册而变、加载时注册的接法）写在类型的文档注释与 README，不另写使用指南；「注册的语言」「边界」只在实现说明里定义，本包仍不建术语表。三个功能分支都已推送；本包的分支在本地合进 `next`，MachOSwiftSection 与 MachOObjCSection 的不合进各自的常驻检出（它们的本地依赖链接指向本包根目录的 2.0.0，合进去就编不过），留到落地那天。 |
+| 2026-11-19 | 状态 → Implemented，取号 0004 | 与 0005 同日随本包 3.0.0 落地：本包 `main` 快进到叠着两份提案的功能分支（`main` 是线性历史），打 3.0.0。MachOObjCSection 0.8.208、MachOSwiftSection 0.26.0 与 RuntimeViewer `next` 改下限在随后几步完成，结果补记在本表。文档判断沿用「实现完成」一行：实现说明改写了 `Internal/SymbolIndex.md`，调用方契约写在类型文档与 README，不另写使用指南，本包不建术语表。 |
