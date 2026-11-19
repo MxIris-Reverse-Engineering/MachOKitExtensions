@@ -109,6 +109,23 @@ let package = Package(
             name: "MachOFoundation",
             targets: ["MachOFoundation"]
         ),
+        // The language-free layers of MachOSwiftSection's cross-reference
+        // analysis. Their interfaces are `@_spi(Internals)`: they serve
+        // MachOSwiftSection's `CrossReferenceAnalysis` and MachOObjCSection's
+        // `ObjCCodeReferences`, and promise no stable API (MachOSwiftSection
+        // proposal `move-cross-reference-layers`).
+        .library(
+            name: "ARM64InstructionDecoding",
+            targets: ["ARM64InstructionDecoding"]
+        ),
+        .library(
+            name: "MachOAddressResolution",
+            targets: ["MachOAddressResolution"]
+        ),
+        .library(
+            name: "MachOCodeReferences",
+            targets: ["MachOCodeReferences"]
+        ),
     ],
     dependencies: [
         .package(
@@ -213,6 +230,56 @@ let package = Package(
                 "MachOBase",
                 "MachOSymbols",
                 "MachODependencies",
+            ]
+        ),
+        // Hand readers for the few A64 encodings the analyses decode, and the
+        // trampoline shapes the linker and the dyld cache builder emit.
+        .target(
+            name: "ARM64InstructionDecoding"
+        ),
+        // One image's address space and the stubs and pointer slots on the
+        // way to a function, read from a Mach-O file.
+        .target(
+            name: "MachOAddressResolution",
+            dependencies: [
+                "MachOKit",
+                "MachOKitExtensions",
+                "MachOReading",
+                "ARM64InstructionDecoding",
+            ]
+        ),
+        // The language-free core of the cross-reference analysis: image
+        // memory, function tables, the instruction scan and the recognizer
+        // extension point. It knows no language; the Objective-C and Swift
+        // layers plug in as recognizers.
+        .target(
+            name: "MachOCodeReferences",
+            dependencies: [
+                "MachOKit",
+                "MachOKitExtensions",
+                "MachOReading",
+                "MachOAddressResolution",
+                "ARM64InstructionDecoding",
+            ]
+        ),
+        .testTarget(
+            name: "MachOAddressResolutionTests",
+            dependencies: [
+                "MachOAddressResolution",
+                "MachOReading",
+                "ARM64InstructionDecoding",
+                "MachOKitExtensions",
+                "MachOKit",
+            ]
+        ),
+        .testTarget(
+            name: "MachOCodeReferencesTests",
+            dependencies: [
+                "MachOCodeReferences",
+                "MachOAddressResolution",
+                "ARM64InstructionDecoding",
+                "MachOKitExtensions",
+                "MachOKit",
             ]
         ),
         .testTarget(
