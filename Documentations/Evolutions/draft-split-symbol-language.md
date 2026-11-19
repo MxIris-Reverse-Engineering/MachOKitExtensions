@@ -5,7 +5,7 @@
 - **创建日期**: 2026-11-19
 - **最后更新**: 2026-11-19
 - **所属愿景**: 无
-- **关联提案**: 本包 [0003 move-macho-infrastructure-modules](0003-move-macho-infrastructure-modules.md)（引入 `SymbolLanguage`、`SymbolTableRouting` 与 C/C++ 符号索引）；C++ 符号的结构化归类（尚未创建，与本提案同随 3.0.0 落地，见决策日志）
+- **关联提案**: 本包 [0003 move-macho-infrastructure-modules](0003-move-macho-infrastructure-modules.md)（引入 `SymbolLanguage`、`SymbolTableRouting` 与 C/C++ 符号索引）；本包 [draft-cplusplus-symbol-classification](draft-cplusplus-symbol-classification.md)（C++ 符号的结构化归类，与本提案同随 3.0.0 落地，见决策日志）
 - **实现分支 / PR**: 本包、MachOSwiftSection、MachOObjCSection 各一条 `feature/split-symbol-language`，worktree 在各自的 `.worktrees/<项目名>-SplitSymbolLanguage`
 - **配套文档**: 待定 —— 落地时登记实现说明（预计改写 [Internal/SymbolIndex.md](../Internal/SymbolIndex.md)）
 - **网页版**: 同目录同名的 `.html`
