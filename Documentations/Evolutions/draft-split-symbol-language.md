@@ -114,7 +114,8 @@ MachOSwiftSection（下表路径前缀 `MSS:`）：
 | `MSS:Sources/Symbols/SwiftSymbols/SwiftSymbolTableRouting.swift` | 修改 | 直接调用 `SwiftSymbolNameRecognition`，不看传入的 `language` | Swift 索引不依赖注册是否发生 | 5 |
 | `MSS:Tests/SwiftSymbolsTests/SymbolTableEquivalenceTests.swift` | 修改 | 钉住 `SwiftSymbolNameRecognition` 与 `isSwiftSymbol`、`_symbolic` 前缀判断等价 | 判断搬家，等价测试跟着走 | 5 |
 | `MSS:Tests/SwiftSymbolsTests/SwiftSymbolLanguageRegistrationTests.swift` | 新增 | 加载时已注册；本包的 C/C++ 索引在 libswiftCore 上不含 Swift 名字、Swift 函数里的地址答 `nil` | 端到端验证 | 5 |
-| `MSS:Documentations/Internal/Modules/SwiftSymbols.md`、术语表 | 修改 | 记下 `.swift` 在这里定义、加载时注册 | 文档随代码 | 5 |
+| `MSS:Tests/SwiftSymbolsTests/SymbolIndexStoreNamingScanTests.swift` | 修改 | 放行带模块名的 `MachOSymbols.SymbolIndexStore`，不带前缀的照旧禁止 | 新测试确实要用 C/C++ 索引 | 5 |
+| `MSS:Documentations/Internal/Modules/SwiftSymbols.md`、`MSS:AGENTS.md` | 修改 | 记下 `.swift` 在这里定义、加载时注册；`MachOSymbols` 的模块说明改为只收 C/C++；命名规则写明带模块名的例外 | 文档随代码 | 5 |
 
 MachOObjCSection（下表路径前缀 `MOS:`）：
 
@@ -123,8 +124,8 @@ MachOObjCSection（下表路径前缀 `MOS:`）：
 | `MOS:Package.swift` · `MachOObjCSection` | 修改 | 新增 `.product(name: "MachOSymbols", package: "MachOKitExtensions")`；本包范围改为 `"3.0.0"..<"4.0.0"` | 扩展 `SymbolLanguage` 并注册 | 6 |
 | `MOS:Sources/MachOObjCSectionC/symbol_language_registration.c` | 新增 | constructor 调用 `objc_section_register_symbol_language()` | 加载时注册；复用已被主模块依赖的 C target | 6 |
 | `MOS:Sources/MachOObjCSection/SymbolLanguage+ObjectiveC.swift` · `SymbolLanguage.objectiveC`、`ObjectiveCSymbolNameRecognition` | 新增 | `.objectiveC`（`rawValue` `"Objective-C"`）；从本包搬来的前缀判断；`@_cdecl("objc_section_register_symbol_language")` 注册函数 | Objective-C 的判断归 MachOObjCSection | 6 |
-| `MOS:Tests/…/ObjectiveCSymbolLanguageTests.swift` | 新增 | 加载时已注册；代表名字的判定；本包的 C/C++ 索引不含 ObjC 名字 | 端到端验证 | 6 |
-| MachOObjCSection 的文档 | 修改 | 记下 `.objectiveC` 在这里定义、加载时注册 | 文档随代码 | 6 |
+| `MOS:Tests/MachOObjCSectionTests/ObjectiveCSymbolLanguageTests.swift` | 新增 | 加载时已注册；代表名字的判定；本包的 C/C++ 索引不含 ObjC 名字 | 端到端验证 | 6 |
+| `MOS:Documentations/Internal/ObjectiveCSymbolLanguage.md`、`MOS:Documentations/README.md` | 新增 / 修改 | 记下 `.objectiveC` 在这里定义、加载时注册，以及为什么用 `@_cdecl` | 文档随代码 | 6 |
 
 下游（落地当天）：
 
@@ -500,19 +501,19 @@ constructor 写进 `Sources/MachOObjCSectionC/symbol_language_registration.c`，
    - 行为：`indexBuiltBeforeARegistrationIsRebuiltOnItsNextQuery`
    - 行为：本包全量测试与 `swift test -c release` 通过；AppKit 建索引耗时与 2.0.0 对比并记录。
 4. **本包文档**（已完成） —— 本包第 10–12 行。
-5. **MachOSwiftSection** —— MSS 各行。本地联调照旧：依赖目录必须真叫 `MachOKitExtensions`，设 `USING_LOCAL_DEPENDENCIES=1`。
+5. **MachOSwiftSection**（已完成，测试与渲染 A/B 在 Ultra 上跑，见决策日志） —— MSS 各行。本地联调照旧：依赖目录必须真叫 `MachOKitExtensions`，设 `USING_LOCAL_DEPENDENCIES=1`。
    - 行为：`swiftLanguageIsRegisteredAtLoad`
    - 行为：`swiftRecognitionMatchesDemanglingIsSwiftSymbol`
    - 行为：`cAndCPlusPlusStoreLeavesSwiftNamesOut`（libswiftCore）
    - 行为：`cAndCPlusPlusStoreAnswersNilInsideASwiftFunction`
    - 行为：`SwiftSymbolTableRoutingTests` 照旧通过
    - 行为：MachOSwiftSection 全量测试（`--skip IntegrationTests`）与 release 配置测试通过；渲染 A/B 与改动前逐字节一致。
-6. **MachOObjCSection** —— MOS 各行。
+6. **MachOObjCSection**（已完成） —— MOS 各行。
    - 行为：`objectiveCLanguageIsRegisteredAtLoad`
    - 行为：`objectiveCRecognitionClaimsMethodsAndRuntimeSymbols`
    - 行为：`cAndCPlusPlusStoreLeavesObjectiveCNamesOut`
    - 行为：MachOObjCSection 全部测试照旧（已知基线问题除外，见 0002 决策日志 2026-11-12）。
-7. **落地（与 C++ 结构化归类同一天，3.0.0）** —— 下游一行。顺序：本包 3.0.0 → MachOObjCSection 新 tag → MachOSwiftSection 新版本 → RuntimeViewer `next` 改下限；swift-decompiler 编译确认；两份提案各自取号、改 Implemented。
+7. **落地（与 C++ 结构化归类同一天，3.0.0）** —— 下游一行。顺序：本包 3.0.0 → MachOObjCSection 新 tag → MachOSwiftSection 新版本 → RuntimeViewer `next` 改下限；swift-decompiler 编译确认；两份提案各自取号、改 Implemented。MachOSwiftSection 的功能分支已把本包下限改为 3.0.0，落地前还要把 MachOObjCSection 的下限改为它的新 tag：在本包 3.0.0 与那个 tag 发布之前，MachOSwiftSection 的远端模式（不设 `USING_LOCAL_DEPENDENCIES`）解析不了，只能本地联调。三个功能分支落地前各自再并入当时的 `next`，重跑全量测试（含 release）与渲染 A/B。
 
 **收尾时必须判断两件事**（判断结果写进决策日志）：
 
@@ -540,3 +541,8 @@ constructor 写进 `Sources/MachOObjCSectionC/symbol_language_registration.c`，
 | 2026-11-19 | 只留偏移的表不收导出表；发现导出表一路的切片偏移口径不一致，记为后续项 | 边界偏移只取符号表（导出的符号本来也在符号表里），与提案详细设计一致。实现时曾让导出表也登记边界，`curl` 的测试随即多出一个 278528：导出表一路给文件加的是 `machO.startOffset`，对胖二进制的切片就是切片在胖文件里的起点（`curl` 的 arm64e 切片从 278528 开始），而符号表一路用 `SymbolValueOffsetConverter` 算出的是切片内偏移（`__mh_execute_header` 为 0）。2.0.0 起行模式就是这样，只影响「只在导出表、不在符号表」的名字铸出的新行，一直没暴露。与本提案无关，不在这条分支上改，记为后续项。 |
 | 2026-11-19 | 晚注册的清空改在 store 下一次查询时做 | 设计原为「`.shared` 上注册时立即 `removeAll()`」。注册发生在镜像加载时的 constructor 里，那时去碰 `SymbolIndexStore.shared` 会在加载期间初始化 store 与它的缓存登记；改为 store 每次查询比对注册表的代数，比上次见到的新就整体清空，结果相同，只是内存晚一点释放。 |
 | 2026-11-19 | 第 3、4 步完成 | 本包全量测试 debug 与 release 都通过（公司那台 Mac Studio，Xcode 27.2）。AppKit 普查：C/C++ 索引 151,422 行，边界 13,718 个偏移、0.1 MB；同一普查测试 release 下各跑三次，2.0.0 为 0.312–0.365 秒，拆分后为 0.308–0.340 秒。普查测试补打印边界偏移的数量与字节。`WrappedReaderSymbolIndexTests` 无需改动。实现说明、README 与文档索引已更新。 |
+| 2026-11-19 | 第 6 步完成 | MachOObjCSection 的 constructor 放进已有的 `MachOObjCSectionC`，主模块用 `@_cdecl` 导出注册函数，工具版本保持 6.2。新测试 4 个通过；全量测试跳过 XCTest 类 `MachOObjCSectionTests.MachOObjCSectionTests` 后全部通过（那个类在 `setUp` 读本机 `Downloads` 里的文件、读不到就崩溃，基线已有，见 0002 决策日志 2026-11-12）。在公司那台 Mac Studio 上于 agent 目录的沙盒里构建：沙盒放本包与 MachOObjCSection 功能分支的同步副本，兄弟依赖链接到与 MachOSwiftSection 的 `.worktrees/` 相同的目标。 |
+| 2026-11-19 | 第 5 步：命名扫描放行带模块名的写法 | MachOSwiftSection 的 `SymbolIndexStoreNamingScanTests` 禁止代码里出现不带前缀的 `SymbolIndexStore`，前提是「本包没有代码要用 C 索引」；新加的 `SwiftSymbolLanguageRegistrationTests` 正要验证 C/C++ 索引不含 Swift 名字，前提不再成立。改为放行 `MachOSymbols.SymbolIndexStore`，不带前缀的照旧禁止，AGENTS.md 同步写明。 |
+| 2026-11-19 | 第 5 步完成，测试在 Ultra 上跑 | 用户要求改到 Ultra 跑。Ultra 上新建同名功能 worktree；本包与 MachOObjCSection 功能分支用 Ultra 本地仓库 `git archive` 导出到 agent 目录的沙盒，其余兄弟依赖与公司那台是同一提交；功能 worktree 的 `Package.swift` 临时（不提交）指向沙盒。夹具 SymbolTestsCore 链接 Ultra `next` 检出里编好的那份（源码只差两行注释）。全量测试（`--skip IntegrationTests`）debug 与 release 各一遍：除命名扫描外 debug 全部通过；release 另有 `SpecializedRuntimeTypeNameTests` 的 5 个用例失败，在基线检出（功能分支起点，依赖本包 2.0.0）上用 release 跑同一组测试，失败的是相同的 5 个，属于基线已有的问题，记为后续项。命名扫描修复后，受影响的 4 组测试 debug、release 都通过。SwiftPM 报了几条「同一个包被两个路径引用」的警告（沙盒链接与 `.worktrees/` 链接写法不同、指向同一目录），只是警告。 |
+| 2026-11-19 | 渲染 A/B 全部一致 | 在 Ultra 上跑。基线是 MachOSwiftSection 功能分支的起点（`next`）的 detached worktree，依赖本包 2.0.0 与 MachOObjCSection `next` 的导出（另一个沙盒）；候选是功能分支，依赖两个功能分支的导出；其余兄弟依赖两侧相同。两侧 release 预构建后带 `--skip-build`、`--no-baseline-cache` 跑：归档 cache（macOS 26.6、15.5）、模拟器运行时里的独立文件、进程内镜像，共 84 对逐字节一致。 |
+| 2026-11-19 | 实现完成，待用户看过后收尾 | 落地步骤 1–6 完成，第 7 步（与 C++ 结构化归类同日随 3.0.0 落地）属于收尾，要等那份提案。文档判断：实现说明改写了本包的 `Internal/SymbolIndex.md`，MachOObjCSection 新增 `Internal/ObjectiveCSymbolLanguage.md`，MachOSwiftSection 改了 `SwiftSymbols.md` 与 AGENTS.md；调用方契约（判定顺序、`rawValue` 即身份、`closestSymbols` 的 `nil`、索引内容随注册而变、加载时注册的接法）写在类型的文档注释与 README，不另写使用指南；「注册的语言」「边界」只在实现说明里定义，本包仍不建术语表。三个功能分支都已推送；本包的分支在本地合进 `next`，MachOSwiftSection 与 MachOObjCSection 的不合进各自的常驻检出（它们的本地依赖链接指向本包根目录的 2.0.0，合进去就编不过），留到落地那天。 |
