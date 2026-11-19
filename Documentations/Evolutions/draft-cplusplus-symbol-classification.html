@@ -320,14 +320,14 @@ details[open] > summary { border-bottom: 1px solid var(--separator); }
       <tr><td><code>Sources/CPlusPlusDemangling/ItaniumDemangle/</code>（<code>ItaniumDemangle.h</code>、<code>ItaniumNodes.def</code>、<code>StringViewExtras.h</code>、<code>Utility.h</code>、<code>DemangleConfig.h</code>、<code>LICENSE.TXT</code>）</td><td><span class="tag tag-added">新增</span></td><td>从 libcxxabi <code>src/demangle</code> 原样拷入，不改</td><td>解析器</td><td class="numeric">1</td></tr>
       <tr><td><code>Sources/CPlusPlusDemangling/abort_message.h</code></td><td><span class="tag tag-added">新增</span></td><td>只定义 <code>__abort_message</code>，供 <code>DemangleConfig.h</code> 的 <code>#include "../abort_message.h"</code></td><td>不改引入的文件</td><td class="numeric">1</td></tr>
       <tr><td><code>Sources/CPlusPlusDemangling/include/CPlusPlusDemangling.h</code></td><td><span class="tag tag-added">新增</span></td><td>纯 C 接口：解析器的创建、销毁、解析与取值函数，种类、作用域段种类、限定的常量</td><td>Swift 不开 C++ 互操作</td><td class="numeric">1</td></tr>
-      <tr><td><code>Sources/CPlusPlusDemangling/CPlusPlusDemangling.cpp</code></td><td><span class="tag tag-added">新增</span></td><td>分配器（照抄 <code>cxa_demangle.cpp:290-366</code>）；解析器对象；遍历 AST 拆字段、收集当作类型用到的作用域路径</td><td>同上</td><td class="numeric">1</td></tr>
+      <tr><td><code>Sources/CPlusPlusDemangling/CPlusPlusDemangling.cpp</code></td><td><span class="tag tag-added">新增</span></td><td><code>parse_discriminator</code> 与分配器（照抄 <code>cxa_demangle.cpp:31-58</code>、<code>:290-366</code>）；解析器对象；遍历 AST 拆字段、收集当作类型用到的作用域路径</td><td>同上</td><td class="numeric">1</td></tr>
       <tr><td><code>Sources/CPlusPlusSymbols/CPlusPlusSymbolName.swift</code> · <code>CPlusPlusSymbolName</code>、<code>Kind</code>、<code>FunctionQualifiers</code></td><td><span class="tag tag-added">新增</span></td><td>一个名字拆开后的值类型，经 C 接口填字段</td><td>单个名字的解析入口</td><td class="numeric">2</td></tr>
       <tr><td><code>Sources/CPlusPlusSymbols/CPlusPlusDemangler.swift</code> · <code>CPlusPlusDemangler</code>（internal）</td><td><span class="tag tag-added">新增</span></td><td>包住 C 解析器对象：<code>deinit</code> 销毁，<code>parse(_:)</code> 返回只在闭包内有效的结果读取器；同时产出给索引用的作用域证据</td><td><code>CPlusPlusSymbolName</code> 与索引的建表共用</td><td class="numeric">2</td></tr>
       <tr><td><code>Sources/CPlusPlusSymbols/CPlusPlusScope.swift</code> · <code>CPlusPlusScope</code>、<code>Kind</code>、<code>Evidence</code></td><td><span class="tag tag-added">新增</span></td><td>作用域的值类型，含 <code>.global</code></td><td>树的节点</td><td class="numeric">3</td></tr>
       <tr><td><code>Sources/CPlusPlusSymbols/CPlusPlusSymbol.swift</code> · <code>CPlusPlusSymbol</code></td><td><span class="tag tag-added">新增</span></td><td><code>Symbol</code> 加 <code>CPlusPlusSymbolName</code></td><td>查询结果</td><td class="numeric">3</td></tr>
       <tr><td><code>Sources/CPlusPlusSymbols/CPlusPlusSymbolIndexStore.swift</code> · <code>CPlusPlusSymbolIndexStore</code>、<code>Storage</code>、<code>CPlusPlusSymbolTableRouting</code></td><td><span class="tag tag-added">新增</span></td><td><code>.shared</code>；查询见详细设计；<code>Storage</code> 建树、累积证据、定种类</td><td>按作用域浏览</td><td class="numeric">3</td></tr>
       <tr><td><code>Sources/CPlusPlusSymbols/SharedCacheEvictionGroup+CPlusPlusSymbols.swift</code></td><td><span class="tag tag-added">新增</span></td><td><code>.cPlusPlusSymbolStore</code></td><td>与 <code>.symbolStore</code> 分开驱逐</td><td class="numeric">3</td></tr>
-      <tr><td><code>Tests/CPlusPlusSymbolsFixture/</code>（<code>Fixture.cpp</code>、<code>include/CPlusPlusSymbolsFixture.h</code>）</td><td><span class="tag tag-added">新增</span></td><td>覆盖各种证据与特殊名字的小段 C++ 代码，符号都标 <code>used</code>，再导出一个 C 函数让测试取到所在镜像</td><td>归类规则需要确定的输入，不能只靠系统库</td><td class="numeric">3</td></tr>
+      <tr><td><code>Tests/CPlusPlusSymbolsFixture/</code>（<code>Fixture.cpp</code>、<code>include/CPlusPlusSymbolsFixture.h</code>）</td><td><span class="tag tag-added">新增</span></td><td>覆盖各种证据的小段 C++ 代码，符号都标 <code>used, noinline</code>，再导出两个 C 函数：一个让测试取到所在镜像，一个把夹具的函数都调用一遍</td><td>归类规则需要确定的输入，不能只靠系统库</td><td class="numeric">3</td></tr>
       <tr><td><code>Tests/CPlusPlusSymbolsTests/CPlusPlusDemanglingTests.swift</code></td><td><span class="tag tag-added">新增</span></td><td>C 接口：解析、拒绝、与系统 <code>__cxa_demangle</code> 一致</td><td>第 1 步行为</td><td class="numeric">1</td></tr>
       <tr><td><code>Tests/CPlusPlusSymbolsTests/CPlusPlusSymbolNameTests.swift</code></td><td><span class="tag tag-added">新增</span></td><td>一组固定名字的字段期望</td><td>第 2 步行为</td><td class="numeric">2</td></tr>
       <tr><td><code>Tests/CPlusPlusSymbolsTests/CPlusPlusSymbolIndexStoreTests.swift</code></td><td><span class="tag tag-added">新增</span></td><td>在夹具所在镜像上验证树、证据、种类与查询</td><td>第 3 步行为</td><td class="numeric">3</td></tr>
@@ -343,9 +343,9 @@ details[open] > summary { border-bottom: 1px solid var(--separator); }
 <section id="proposal">
   <h2>提议方案</h2>
   <ol>
-    <li><strong>引入 <code>ItaniumDemangle</code>，原样、不改文件。</strong>新 C++ target <code>CPlusPlusDemangling</code>：<code>ItaniumDemangle/</code> 子目录放 libcxxabi 的五个文件与 <code>LICENSE.TXT</code>，一字不改。<code>DemangleConfig.h</code> 要的 <code>../abort_message.h</code> 由本包在上一级目录提供一份小头文件，只定义 <code>__abort_message</code>（打印后 <code>abort()</code>）。分配器照抄 <code>cxa_demangle.cpp:290-366</code>，带出处注释。以后更新解析器，只要把五个文件整份换掉。</li>
+    <li><strong>引入 <code>ItaniumDemangle</code>，原样、不改文件。</strong>新 C++ target <code>CPlusPlusDemangling</code>：<code>ItaniumDemangle/</code> 子目录放 libcxxabi 的五个文件与 <code>LICENSE.TXT</code>，一字不改。<code>DemangleConfig.h</code> 要的 <code>../abort_message.h</code> 由本包在上一级目录提供一份小头文件，只定义 <code>__abort_message</code>（打印后 <code>abort()</code>）。<code>parse_discriminator</code> 与分配器照抄 <code>cxa_demangle.cpp:31-58</code>、<code>:290-366</code>，带出处注释。以后更新解析器，只要把五个文件整份换掉。</li>
     <li><strong>对 Swift 只露 C 接口。</strong><code>CPlusPlusDemangling</code> 的公开头文件是纯 C：一个可重复使用的不透明解析器对象。每次解析之后，用取值函数读出种类、作用域的各段、基本名、模板实参、参数、返回类型、限定、构造或析构的变体号、点后缀、完整的可读名字，以及名字里「当作类型用到」的各个作用域路径。字符串都指向解析器内部的缓冲区，下一次解析前有效。遍历 AST 的代码写在 <code>CPlusPlusDemangling.cpp</code> 里，照 <code>ItaniumPartialDemangler</code> 的走法。</li>
-    <li><strong><code>CPlusPlusSymbolName</code>：一个名字拆开后的样子。</strong>值类型，<code>init?(mangledName:)</code> 接受符号表的写法（<code>__Z…</code>、<code>___Z…</code>），解析不了时返回 <code>nil</code>。种类 <code>Kind</code> 是 struct 加静态成员：函数、构造、析构、变量，以及十几种特殊名字（vtable、typeinfo、thunk、guard 变量……）。</li>
+    <li><strong><code>CPlusPlusSymbolName</code>：一个名字拆开后的样子。</strong>值类型，<code>init?(mangledName:)</code> 接受符号表的写法（<code>__Z…</code>，C++ 函数里的块是 <code>____Z…_block_invoke</code>），解析不了时返回 <code>nil</code>。种类 <code>Kind</code> 是 struct 加静态成员：函数、构造、析构、变量，以及十几种特殊名字（vtable、typeinfo、thunk、guard 变量……）。</li>
     <li><strong>特殊名字按「它说的是谁」归位。</strong>说的是一个类型的（vtable、VTT、typeinfo、typeinfo name），作用域路径就是这个类型本身，因为它算这个类型的成员。construction vtable 归到被构造的那个完整类。说的是一个函数或变量的（各种 thunk、guard 变量、reference temporary、两种线程局部例程），取那个函数或变量的作用域与基本名。块的调用函数取外层函数的作用域与基本名。说的不是具名实体的（模板参数对象、模块初始化函数、关于指针或内置类型的 typeinfo），放在全局作用域。</li>
     <li><strong><code>CPlusPlusSymbolIndexStore</code>：作用域树。</strong>带 <code>.shared</code> 的 store，接口形状照 <code>SymbolIndexStore</code>（方法加 <code>in: machO</code>）。每个镜像在第一次查询时建一次：用自己的 routing 跑一遍 <code>SymbolSweep</code>，只收 C++ 名字；逐个解析，把作用域路径并进树里，累积证据。树里只有确实装着符号的作用域及其上层；名字里当作类型用到、却没有符号的作用域不进树，它的证据也丢掉。</li>
     <li><strong>作用域的种类按证据定。</strong>依次判断：是函数（局部实体所在）→ <code>.function</code>；有命名空间的证据（全局、<code>std</code>、匿名命名空间）→ <code>.namespace</code>；有任何类型的证据 → <code>.type</code>；都没有 → <code>.undetermined</code>，不猜。证据本身以 <code>OptionSet</code> 公开，调用方能自己判断。</li>
@@ -453,9 +453,10 @@ uint32_t CPlusPlusDemanglerGetFunctionQualifiers(const CPlusPlusDemangler *deman
 /// 0 to 5 for a constructor (C0–C5) or destructor (D0–D5); -1 otherwise.
 int32_t CPlusPlusDemanglerGetConstructorOrDestructorVariant(const CPlusPlusDemangler *demangler);
 
-/// Named types the signature uses as types: parameters, the return type,
-/// type template arguments, the class side of a member pointer. Each is a
-/// scope path, read component by component.
+/// Named types the name uses as types: parameters, the return type, type
+/// template arguments, the class side of a member pointer, and the base a
+/// construction vtable is for. Each is a scope path, read component by
+/// component; built-in types are left out.
 size_t CPlusPlusDemanglerGetReferencedTypeCount(const CPlusPlusDemangler *demangler);
 size_t CPlusPlusDemanglerGetReferencedTypeComponentCount(const CPlusPlusDemangler *demangler, size_t typeIndex);
 CPlusPlusDemanglerText CPlusPlusDemanglerGetReferencedTypeComponentName(CPlusPlusDemangler *demangler, size_t typeIndex, size_t componentIndex);
@@ -692,9 +693,9 @@ public final class CPlusPlusSymbolIndexStore: @unchecked Sendable {
 }</code></pre>
       <ul>
         <li><strong>自己的采集。</strong><code>CPlusPlusSymbolTableRouting</code>：语言是 <code>.cPlusPlus</code> 的进 <code>.symbols</code>（<code>.byOffset</code>），其余一概不收；<code>mayReferenceStringTablesOfLoadedImages</code> 为 <code>false</code>，与 C/C++ 索引一样，只对 dyld shared cache 里的镜像零拷贝。C++ 的判定先于任何注册的语言，所以这个索引不看注册表的代数，也不会因为有语言注册而重建。</li>
-        <li><strong>常驻的内容。</strong><code>Storage</code> 保存：采集结果；作用域数组（每个作用域一条：路径的最后一段、<code>baseName</code>、父作用域编号、种类、证据、按名字排序的子作用域编号、按偏移排序的行号）；限定名到作用域编号的字典；每行的作用域编号与种类；未能解析的行号。全局作用域固定是第 0 号。</li>
-        <li><strong>建树。</strong>逐行解析，按作用域路径逐段查找或插入，记下这一行的作用域、种类与它带来的证据。当作类型用到的路径先攒着，全部行处理完以后，只给树里已有的作用域加 <code>.usedAsType</code>，其余丢掉。最后为每个作用域定种类。</li>
-        <li><strong>并行。</strong>先串行实现，在第 4 步按普查数字决定要不要按行分块、每块一个解析器并行解析。树的合并在解析之后串行做，结果与串行一致。</li>
+        <li><strong>常驻的内容。</strong><code>Storage</code> 保存：采集结果；作用域数组（每个作用域一条：做好的 <code>CPlusPlusScope</code> 值、父作用域编号、按名字排序的子作用域编号、按偏移排序的成员行号）；限定名到作用域编号的字典；未能解析的行号。全局作用域固定是第 0 号。每行属于哪个作用域只体现在那个作用域的成员行号里，不另存。</li>
+        <li><strong>建树。</strong>逐行解析，按作用域路径逐段查找或插入，把这一行记进它的作用域、累积它带来的证据。当作类型用到的路径先攒着，全部行处理完以后，只给树里已有的作用域加 <code>.usedAsType</code>，其余丢掉。最后为每个作用域定种类。</li>
+        <li><strong>并行。</strong>串行实现。第 4 步的普查在 release 下量得 JavaScriptCore 的 34,951 个 C++ 名字建树约 0.15 秒，不需要并行。</li>
         <li><strong>查询结果当场解析。</strong><code>members(of:in:)</code>、<code>symbols(for:in:)</code>、<code>symbol(named:in:)</code> 用行号取出名字，再解析一次，组成 <code>CPlusPlusSymbol</code>。<code>scope(named:)</code> 查字典；<code>childScopes(of:)</code> 先按 <code>path</code> 定位作用域（同一个镜像里，同一路径只对应一个作用域），再读它的子作用域编号。</li>
         <li><strong>锁与驱逐。</strong>与 <code>SymbolIndexStore</code> 相同：<code>SharedCache</code> 自己带锁，驱逐组 <code>.cPlusPlusSymbolStore</code>，不主动驱逐，调用方用 <code>remove(for:)</code> 释放。</li>
       </ul>
@@ -707,10 +708,11 @@ public final class CPlusPlusSymbolIndexStore: @unchecked Sendable {
       <ul>
         <li>有构造函数的类；有虚函数的类（带 vtable 与 typeinfo），其中一个经虚继承（带 VTT、construction vtable 与 virtual thunk）；只有 const 成员函数的类；只有静态成员函数、按规则应是「未定」的类；只在别处的参数里出现的类；</li>
         <li>命名空间里的普通函数、两个特化的类模板、函数模板（带返回类型）；</li>
-        <li>匿名命名空间、函数里的局部类与 lambda、局部静态变量（guard 变量）、<code>thread_local</code> 变量；</li>
-        <li>一个块（<code>^{}</code>）。</li>
+        <li>匿名命名空间、函数里的局部类与 lambda（普通函数里一个，clang 给它起名 <code>$_0</code>；内联函数里一个，用 Itanium 的 <code>'lambda'</code>）；</li>
+        <li>用到标准库（<code>std::vector</code>），让 <code>std</code> 出现在树里；</li>
+        <li>一个名字带 C++ 前缀、却不是 Itanium 名字的 C 函数（<code>__Z_fixture_unparsable</code>）。</li>
       </ul>
-      <p>夹具的符号都标 <code>__attribute__((used))</code>，避免 release 构建把它们剥掉。另外导出一个 C 函数，测试用 <code>dladdr</code> 找到它所在的镜像，再按 <code>MachOImage</code> 读取。</p>
+      <p>guard 变量、<code>thread_local</code> 变量与块由第 2 步的固定名字覆盖，夹具里不再放。夹具的符号都标 <code>__attribute__((used, noinline))</code>，避免 release 构建内联或链接器剥掉它们；另外导出两个 C 函数：一个让测试用 <code>dladdr</code> 找到夹具所在的镜像（再按 <code>MachOImage</code> 读取），一个把夹具的函数都调用一遍。</p>
     </div>
   </details>
 </section>
@@ -734,7 +736,7 @@ public final class CPlusPlusSymbolIndexStore: @unchecked Sendable {
         <li>正本在 <code>libcxxabi/src/demangle</code>，<code>llvm/include/llvm/Demangle</code> 是用 <code>cp-to-llvm.sh</code> 拷过去的副本（该目录的 <code>README.txt</code>）。系统的 <code>__cxa_demangle</code> 就是它。</li>
         <li>文件：<code>ItaniumDemangle.h</code>（约 190 KB、6212 行）、<code>ItaniumNodes.def</code>、<code>StringViewExtras.h</code>、<code>Utility.h</code>、<code>DemangleConfig.h</code>。除 C++ 标准库外，只有 <code>DemangleConfig.h</code> 引用了上一级目录的 <code>../abort_message.h</code>，用来定义 <code>_LIBCPP_VERBOSE_ABORT</code>（<code>DemangleConfig.h:17-19</code>）。需要 C++17（<code>std::string_view</code>）。</li>
         <li>libcxxabi 版的 <code>DEMANGLE_NAMESPACE_BEGIN</code> 是 <code>namespace { namespace itanium_demangle {</code>（<code>DemangleConfig.h:115</code>）：匿名命名空间、内部链接，同一进程里的系统 libc++abi 或别人链接的 LLVM 不会与它撞符号。LLVM 那份放在 <code>llvm::itanium_demangle</code>，是外部链接。</li>
-        <li>解析器 <code>ManglingParser&lt;Alloc&gt;</code> 是纯头文件模板，但分配器不在头文件里：<code>BumpPointerAllocator</code> 与 <code>DefaultAllocator</code> 写在 <code>libcxxabi/src/cxa_demangle.cpp:290-366</code>（LLVM 的 <code>lib/Demangle/ItaniumDemangle.cpp:289-365</code> 有同样一份）。</li>
+        <li>解析器 <code>ManglingParser&lt;Alloc&gt;</code> 是纯头文件模板，但分配器不在头文件里：<code>BumpPointerAllocator</code> 与 <code>DefaultAllocator</code> 写在 <code>libcxxabi/src/cxa_demangle.cpp:290-366</code>（LLVM 的 <code>lib/Demangle/ItaniumDemangle.cpp:289-365</code> 有同样一份）。头文件声明了 <code>parse_discriminator</code>，定义同样在 <code>cxa_demangle.cpp:31-58</code>（实现时链接失败才发现，见决策日志）。</li>
         <li><code>parse()</code> 同时接受 <code>_Z</code> 与 <code>__Z</code>、<code>___Z</code> 与 <code>____Z</code>（<code>ItaniumDemangle.h:6161-6187</code>），符号表在 Darwin 上的写法不用先去掉下划线。名字后面跟 <code>.</code> 的部分包成 <code>DotSuffix</code>（<code>.cold.1</code> 之类）。</li>
         <li>AST 有 88 种节点（<code>ItaniumNodes.def</code>），其中三十多种是表达式。归类用得到的有：<code>FunctionEncoding</code>（<code>Ret</code>、<code>Name</code>、<code>Params</code>、<code>CVQuals</code>、<code>RefQual</code>，<code>ItaniumDemangle.h:952</code>）；<code>NestedName</code>（<code>Qual</code>、<code>Name</code>）；<code>LocalName</code>（<code>Encoding</code>、<code>Entity</code>）；<code>NameWithTemplateArgs</code>；<code>CtorDtorName</code>（<code>IsDtor</code>、<code>Variant</code>，<code>:1757</code>）；<code>AbiTagAttr</code>、<code>ModuleEntity</code>；<code>SpecialName</code>（一段前缀文字加一个子节点，<code>:1042</code>）与 <code>CtorVtableSpecialName</code>（<code>:1058</code>）；<code>ClosureTypeName</code>、<code>UnnamedTypeName</code>；<code>SpecialSubstitution</code>（<code>St</code>、<code>Sa</code>、<code>Ss</code>……）。</li>
         <li><code>SpecialName</code> 的前缀文字：<code>vtable for </code>、<code>VTT for </code>、<code>typeinfo for </code>、<code>typeinfo name for </code>、<code>covariant return thunk to </code>、<code>virtual thunk to </code>、<code>non-virtual thunk to </code>、<code>guard variable for </code>、<code>reference temporary for </code>、<code>thread-local wrapper routine for </code>、<code>thread-local initialization routine for </code>、<code>template parameter object for </code>、<code>initializer for module </code>、<code>invocation function for block in </code>（<code>ItaniumDemangle.h:5519-5640</code>、<code>:6187</code>）。</li>
@@ -820,7 +822,7 @@ public final class CPlusPlusSymbolIndexStore: @unchecked Sendable {
 <section id="steps">
   <h2>落地步骤</h2>
   <ol>
-    <li><strong>引入解析器与 C 接口</strong> —— 改动地图第 1–5、13 行。
+    <li><strong>引入解析器与 C 接口</strong>（已完成） —— 改动地图第 1–5、13 行。
       <ul>
         <li>行为：<code>demanglerParsesTheSymbolTableSpellingOfAnItaniumName</code></li>
         <li>行为：<code>demanglerRejectsANameThatIsNotItaniumMangled</code></li>
@@ -829,17 +831,20 @@ public final class CPlusPlusSymbolIndexStore: @unchecked Sendable {
         <li>引入的五个文件与 libcxxabi 原文件逐字节相同：提交前用 <code>cmp</code> 核对，不写成测试；核对方法写进实现说明的「更新解析器」一节。</li>
       </ul>
     </li>
-    <li><strong><code>CPlusPlusSymbolName</code></strong> —— 第 6、7、14 行。
+    <li><strong><code>CPlusPlusSymbolName</code></strong>（已完成） —— 第 6、7、14 行。
       <ul>
         <li>行为：<code>functionNameSplitsIntoScopePathBaseNameAndParameters</code></li>
         <li>行为：<code>templateArgumentsStayInsideTheirScopeComponent</code></li>
         <li>行为：<code>constQualifiedMemberFunctionReportsItsQualifiers</code></li>
         <li>行为：<code>constructorAndDestructorKeepTheirVariant</code></li>
         <li>行为：<code>namesAboutATypeEndTheirScopePathWithThatType</code></li>
+        <li>行为：<code>typeInfoOfATypeWithoutANameSitsAtGlobalScope</code></li>
         <li>行为：<code>constructionVirtualTableBelongsToTheCompleteClass</code></li>
         <li>行为：<code>thunksTakeTheScopeAndBaseNameOfTheFunctionTheyReach</code></li>
         <li>行为：<code>guardVariableTakesTheScopeOfItsVariable</code></li>
+        <li>行为：<code>threadLocalWrapperTakesTheScopeOfItsVariable</code></li>
         <li>行为：<code>localEntityScopePathRunsThroughItsFunction</code></li>
+        <li>行为：<code>lambdaInsideAMemberFunctionRunsThroughThatFunction</code></li>
         <li>行为：<code>blockInvocationTakesTheScopeOfItsFunction</code></li>
         <li>行为：<code>functionTemplateSpecializationReportsItsReturnType</code></li>
         <li>行为：<code>dotSuffixIsKeptApartFromTheName</code></li>
@@ -847,12 +852,13 @@ public final class CPlusPlusSymbolIndexStore: @unchecked Sendable {
         <li>行为：<code>unparsableNameGivesNil</code></li>
       </ul>
     </li>
-    <li><strong><code>CPlusPlusSymbolIndexStore</code>、作用域与夹具</strong> —— 第 8–12、15 行。
+    <li><strong><code>CPlusPlusSymbolIndexStore</code>、作用域与夹具</strong>（已完成） —— 第 8–12、15 行。
       <ul>
         <li>行为：<code>storeHoldsOnlyCPlusPlusNames</code></li>
         <li>行为：<code>childScopesOfGlobalAreTheTopLevelScopes</code></li>
         <li>行为：<code>scopeWithAConstructorIsAType</code></li>
         <li>行为：<code>scopeWithAVirtualTableHasVirtualTableAndTypeInfoAmongItsMembers</code></li>
+        <li>行为：<code>virtualInheritanceShowsVirtualTableTablesAndThunks</code></li>
         <li>行为：<code>scopeWithOnlyConstMemberFunctionsIsAType</code></li>
         <li>行为：<code>scopeOnlyUsedAsAParameterTypeIsAType</code></li>
         <li>行为：<code>scopeWithOnlyStaticMemberFunctionsIsUndetermined</code></li>
@@ -870,12 +876,13 @@ public final class CPlusPlusSymbolIndexStore: @unchecked Sendable {
         <li>行为：<code>registeringALanguageDoesNotRebuildTheIndex</code></li>
       </ul>
     </li>
-    <li><strong>普查与成本</strong> —— 第 16 行。在 JavaScriptCore 上（进程内与从 cache 读出各一次，release）记录 C++ 行数、作用域数、各种类的作用域数、未能解析的名字数、建树耗时与常驻字节，写进实现说明与决策日志；据此决定要不要并行解析。
+    <li><strong>普查与成本</strong>（已完成） —— 第 16 行。在 JavaScriptCore 上（进程内与从 cache 读出各一次，release）记录 C++ 行数、作用域数、各种类的作用域数、未能解析的名字数、建树耗时与常驻字节，写进实现说明与决策日志；据此决定要不要并行解析。
       <ul>
+        <li>行为：<code>cPlusPlusSymbolIndexCensusOfALargeImage</code>，其中断言未能解析的名字系统 <code>__cxa_demangle</code> 也解析不了。</li>
         <li>行为：本包全量测试 debug 与 <code>swift test -c release</code> 都通过。</li>
       </ul>
     </li>
-    <li><strong>文档</strong> —— 第 17–19 行。</li>
+    <li><strong>文档</strong>（已完成） —— 第 17–19 行。</li>
     <li><strong>落地（与 <code>draft-split-symbol-language</code> 同一天，3.0.0）</strong>：本分支先并入那时的拆分分支或 <code>next</code>，重跑全量测试（含 release）；随拆分的落地顺序发本包 3.0.0；两份提案各自取号、改 Implemented。</li>
   </ol>
   <div class="callout callout-note">
@@ -890,7 +897,7 @@ public final class CPlusPlusSymbolIndexStore: @unchecked Sendable {
 <section id="log">
   <h2>决策日志</h2>
   <details>
-    <summary>5 条，最近一条：写提案时定下的做法</summary>
+    <summary>14 条，最近一条：第 5 步完成；实现完成，待用户看过后收尾</summary>
     <div class="details-body">
       <div class="table-wrap">
       <table>
@@ -901,6 +908,15 @@ public final class CPlusPlusSymbolIndexStore: @unchecked Sendable {
           <tr><td class="numeric">2026-11-19</td><td>作用域按证据标，找不到证据的标「未定」</td><td>用户选择。Itanium 名字分不出类与命名空间。否决：统一只叫「作用域」；没有证据就当命名空间（只导出静态成员函数的类会被误标）。</td></tr>
           <tr><td class="numeric">2026-11-19</td><td>只从符号名归类，不读 RTTI</td><td>用户选择。RTTI 与 vtable 的内容以后另写提案。否决：同时读 RTTI 拿基类（范围与测试翻倍，3.0.0 会更晚）。</td></tr>
           <tr><td class="numeric">2026-11-19</td><td>写提案时定下的做法</td><td>未单独提问、写进简报供用户推翻：引入 libcxxabi 那份（匿名命名空间、不改文件，<code>abort_message.h</code> 由本包提供），对 Swift 只露 C 接口，不开 C++ 互操作；新模块 <code>CPlusPlusSymbols</code>，不进 <code>MachOFoundation</code>；独立的 store 与采集，第一次查询时建树，不随语言注册重建；解析结果不常驻，查询时再解析；模板的每个特化各是一个作用域，用 <code>baseName</code> 列在一起；当作类型用到的证据只加给树里已有的作用域；完整可读名字与 <code>__cxa_demangle</code> 同源；测试用专门的 C++ 夹具；实现分支从 <code>feature/split-symbol-language</code> 切出。</td></tr>
+          <tr><td class="numeric">2026-11-19</td><td>状态 → Accepted</td><td>用户批准，开始实现。</td></tr>
+          <tr><td class="numeric">2026-11-19</td><td>开始实现，叠在拆分分支上</td><td>功能分支 <code>feature/cplusplus-symbol-classification</code> 从 <code>origin/feature/split-symbol-language</code> 切出：本提案与拆分同日落地，实现也建立在拆分后的 <code>SymbolLanguage</code> 上。Ultra 上本包没有 <code>next</code>，提案直接提交在功能分支上。</td></tr>
+          <tr><td class="numeric">2026-11-19</td><td>另照抄 <code>parse_discriminator</code></td><td><code>ItaniumDemangle.h</code> 声明了它，定义在 libc++abi 的 <code>cxa_demangle.cpp:31-58</code>，第一次链接时报未定义符号。与分配器一样照抄进 <code>CPlusPlusDemangling.cpp</code>、带出处注释；引入的五个文件仍与原文件逐字节相同（<code>cmp</code> 核对）。</td></tr>
+          <tr><td class="numeric">2026-11-19</td><td>第 1 步完成</td><td>解析器与 C 接口的 4 个测试通过（Ultra，Xcode 27.2）：进程内 libc++ 的每个 C++ 名字，本包的完整可读名字与系统 <code>__cxa_demangle</code> 逐字一致，解析失败的也一致。</td></tr>
+          <tr><td class="numeric">2026-11-19</td><td>顺带修正：符号表里的 C++ block 名字判成 C++</td><td>clang 给 C++ 函数里的 block 起名 <code>___Z…_block_invoke</code>，Mach-O 符号表再加 Darwin 的下划线，成了 <code>____Z…</code>；<code>SymbolLanguage.isItaniumMangled</code> 只认 <code>__Z</code> 与 <code>___Z</code>，这类名字一直被判成 C（2.0.0 起就是这样）。先加失败的用例，再让判断也认 <code>____Z</code>，<code>MachOSymbolsTests</code> 全部通过；<code>Internal/SymbolIndex.md</code> 同步。</td></tr>
+          <tr><td class="numeric">2026-11-19</td><td>第 2 步完成</td><td><code>CPlusPlusSymbolName</code> 与内部的 <code>CPlusPlusDemangler</code> 落地，17 个名字用例全部通过；名字取自 clang 21（Xcode 27.2）给小段 C++ 生成的符号表。比提案多三个用例。</td></tr>
+          <tr><td class="numeric">2026-11-19</td><td>第 3 步完成</td><td>作用域树与 C++ 夹具落地，41 个测试通过。construction vtable 的基类记作「当作类型用到」，完整类拿 <code>.virtualTable</code>；<code>scope(named: "")</code> 返回全局作用域；<code>unparsedSymbols</code> 按偏移排序；<code>CPlusPlusSymbol</code> 的构造器不公开。clang 给普通函数里的 lambda 起名 <code>$_0</code>，靠 <code>const</code> 的调用运算符判成类型；夹具多了一个放 Itanium 命名 lambda 的内联函数。</td></tr>
+          <tr><td class="numeric">2026-11-19</td><td>第 4 步完成；不并行</td><td>JavaScriptCore：34,951 个 C++ 名字，100 个未能解析（系统 <code>__cxa_demangle</code> 同样解析不了），7,010 个作用域（类型 3,910、未定 2,117、函数 967、命名空间 16）；release 建树约 0.15 秒；作用域树约 4.1 MB。保持串行。夹具里放 lambda 的函数改为接收运行时参数，release 才保留 <code>$_0</code> 的符号。</td></tr>
+          <tr><td class="numeric">2026-11-19</td><td>第 5 步完成；实现完成，待用户看过后收尾</td><td>新增实现说明 <code>Internal/CPlusPlusSymbols.md</code>；README 加模块表一行、示例、Linux 未验证的说明与第三方代码许可证一节。不另写使用指南，不建术语表。本包全量测试 debug 与 release 都通过。第 6 步（与拆分同日随 3.0.0 落地）属于收尾。</td></tr>
         </tbody>
       </table>
       </div>

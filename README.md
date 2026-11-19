@@ -32,8 +32,9 @@ MachOSwiftSection keeps what is Swift-specific, its Swift symbol index included.
 | `MachOCaches` | `SharedCache`: one lazily built value per image, shared by every caller, with an eviction registry (behind the `Internals` SPI) |
 | `MachODependencies` | The images a binary links, found in this process, on disk or in a dyld shared cache: `DependencyClosure`, `DependencySearchPath`, `FileDependencyLocator` |
 | `MachOSymbols` | `SymbolIndexStore`, an index of an image's C and C++ symbols by offset, by nearest offset, by name and by export status; `SymbolLanguage`, which tells a symbol name's language from its leading bytes — C++ here, every other language through `SymbolLanguageRegistry`, where the package that owns it registers it |
+| `CPlusPlusSymbols` | `CPlusPlusSymbolName`, a C++ symbol name taken apart — what it names, the scopes it sits in, its signature — and `CPlusPlusSymbolIndexStore`, an image's C++ symbols arranged in a tree of the namespaces, types and functions they sit in. Built on LLVM's Itanium demangler, vendored as C++ behind a plain C interface: no C++ interoperability needed |
 | `MachOBase` | `MachOKitExtensions`, `MachOReading`, `MachOResolving` and `MachOPointers` as one import |
-| `MachOFoundation` | `MachOBase`, `MachOSymbols` and `MachODependencies` as one import |
+| `MachOFoundation` | `MachOBase`, `MachOSymbols` and `MachODependencies` as one import (not `CPlusPlusSymbols`) |
 | `ARM64InstructionDecoding` | Hand decoders for the few A64 encodings MachOSwiftSection's analyses read, and the trampoline shapes the linker and the dyld cache builder emit. Its interface is the `Internals` SPI, for MachOSwiftSection |
 | `MachOAddressResolution` | Where a call from a Mach-O file leads, read offline: an image's address space, the stubs and stub islands on the way, what a pointer slot holds, the cache image an address lies in. `Internals` SPI, for MachOSwiftSection |
 | `MachOCodeReferences` | The language-free core of MachOSwiftSection's cross-reference analysis: image memory, function tables, the instruction scan and the recognizer extension point its Objective-C and Swift layers plug into. `Internals` SPI, for MachOSwiftSection and MachOObjCSection; the analyzer itself is MachOSwiftSection's `CrossReferenceAnalysis` |
@@ -118,6 +119,27 @@ func registerRustSymbolLanguage() {
 }
 ```
 
+`CPlusPlusSymbols` takes C++ names apart and arranges an image's C++ symbols by scope. An Itanium
+name never says whether `foo` in `foo::bar` is a namespace or a class, so a scope is a type or a
+namespace only when some symbol name of the image shows it — a constructor, a vtable, a `const`
+member function, a use as a parameter type — and is `.undetermined` otherwise. Each scope carries
+the evidence it was judged by:
+
+```swift
+import CPlusPlusSymbols
+
+let name = CPlusPlusSymbolName(mangledName: "__ZNK4llvm5Value4dumpEv")!
+name.scopePath      // ["llvm", "Value"]
+name.baseName       // "dump"
+name.kind           // .function
+
+let store = CPlusPlusSymbolIndexStore.shared
+for scope in store.childScopes(of: .global, in: machOImage) where scope.kind == .type {
+    let constructors = store.members(of: scope, in: machOImage).filter { $0.name.kind == .constructor }
+    print(scope.qualifiedName, scope.evidence, constructors.map(\.name.demangledName))
+}
+```
+
 2.0.0 adds the `MachOReading`, `MachOResolving`, `MachOPointers`, `MachOCaches`,
 `MachODependencies`, `MachOSymbols`, `MachOBase` and `MachOFoundation` products, and the
 `ARM64InstructionDecoding`, `MachOAddressResolution` and `MachOCodeReferences` products of
@@ -129,7 +151,8 @@ with this release.
 3.0.0 takes the Swift and Objective-C rules out of `SymbolLanguage`: `.swift` is now defined by
 MachOSwiftSection's `SwiftSymbols` and `.objectiveC` by MachOObjCSection, each registered when its
 image loads. Code that compared a language with `.swift` or `.objectiveC` imports that module too.
-Without either package in the process, Swift and Objective-C names count as C.
+Without either package in the process, Swift and Objective-C names count as C. It also adds the
+`CPlusPlusSymbols` product.
 
 A type of your own that holds a reader and forwards every read to it declares what it wraps,
 so that whatever is worked out per reader kind — absolute pointers for an image mapped into
@@ -161,8 +184,15 @@ non-Objective-C platforms — and, for `MachOReading`, [swift-fileio](https://gi
 which MachOKit depends on already. `InProcessContext` reads this process's own Mach-O images, so
 it exists on Darwin only, as do the parts of `MachOCodeReferences` that read this
 process (`CodeImageSet.inProcess`, `InProcessCrossReferenceMemory`); its file mode is
-platform-neutral, though it has not been built on Linux.
+platform-neutral, though it has not been built on Linux. `CPlusPlusSymbols` compiles C++17 and
+links the C++ standard library; it has not been built on Linux either.
 
 ## License
 
 MachOKitExtensions is released under the MIT License. See [LICENSE](LICENSE).
+
+`Sources/CPlusPlusDemangling/ItaniumDemangle` holds LLVM's Itanium demangler, copied unchanged
+from libc++abi, and `Sources/CPlusPlusDemangling/CPlusPlusDemangling.cpp` holds two short excerpts
+of libc++abi's `cxa_demangle.cpp`. They are part of the LLVM Project, under the Apache License
+v2.0 with LLVM Exceptions. See
+[Sources/CPlusPlusDemangling/ItaniumDemangle/LICENSE.TXT](Sources/CPlusPlusDemangling/ItaniumDemangle/LICENSE.TXT).

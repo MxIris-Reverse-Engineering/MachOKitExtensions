@@ -7,7 +7,7 @@
 - **所属愿景**: 无
 - **关联提案**: 本包 [0003 move-macho-infrastructure-modules](0003-move-macho-infrastructure-modules.md)（定下要做 C++ 结构化归类、解析器引入 LLVM `ItaniumDemangle`，见其决策日志 2026-11-18）；本包 [draft-split-symbol-language](draft-split-symbol-language.md)（与本提案同日随 3.0.0 落地）
 - **实现分支 / PR**: `feature/cplusplus-symbol-classification`，从 `feature/split-symbol-language` 切出；worktree 在 `.worktrees/MachOKitExtensions-CPlusPlusSymbolClassification`
-- **配套文档**: 待定 —— 落地时登记实现说明（计划新增 `Internal/CPlusPlusSymbols.md`）
+- **配套文档**: 实现说明 [Internal/CPlusPlusSymbols.md](../Internal/CPlusPlusSymbols.md)（引入的解析器与更新方法、C 接口与遍历、作用域树、普查数字、与提案的差异）
 - **网页版**: 同目录同名的 `.html`
 
 ## 摘要
@@ -67,7 +67,7 @@
 
 1. **引入 `ItaniumDemangle`，原样、不改文件。** 新 C++ target `CPlusPlusDemangling`：`ItaniumDemangle/` 子目录放 libcxxabi 的五个文件与 `LICENSE.TXT`，一字不改。`DemangleConfig.h` 要的 `../abort_message.h` 由本包在上一级目录提供一份小头文件，只定义 `__abort_message`（打印后 `abort()`）。`parse_discriminator` 与分配器照抄 `cxa_demangle.cpp:31-58`、`:290-366`，带出处注释。以后更新解析器，只要把五个文件整份换掉。
 2. **对 Swift 只露 C 接口。** `CPlusPlusDemangling` 的公开头文件是纯 C：一个可重复使用的不透明解析器对象。每次解析之后，用取值函数读出种类、作用域的各段、基本名、模板实参、参数、返回类型、限定、构造或析构的变体号、点后缀、完整的可读名字，以及名字里「当作类型用到」的各个作用域路径。字符串都指向解析器内部的缓冲区，下一次解析前有效。遍历 AST 的代码写在 `CPlusPlusDemangling.cpp` 里，照 `ItaniumPartialDemangler` 的走法。
-3. **`CPlusPlusSymbolName`：一个名字拆开后的样子。** 值类型，`init?(mangledName:)` 接受符号表的写法（`__Z…`、`___Z…`），解析不了时返回 `nil`。字段见详细设计。种类 `Kind` 是 struct 加静态成员：函数、构造、析构、变量，以及十几种特殊名字（vtable、typeinfo、thunk、guard 变量……）。
+3. **`CPlusPlusSymbolName`：一个名字拆开后的样子。** 值类型，`init?(mangledName:)` 接受符号表的写法（`__Z…`，C++ 函数里的块是 `____Z…_block_invoke`），解析不了时返回 `nil`。字段见详细设计。种类 `Kind` 是 struct 加静态成员：函数、构造、析构、变量，以及十几种特殊名字（vtable、typeinfo、thunk、guard 变量……）。
 4. **特殊名字按「它说的是谁」归位。** 说的是一个类型的（vtable、VTT、typeinfo、typeinfo name），作用域路径就是这个类型本身，因为它算这个类型的成员。construction vtable 归到被构造的那个完整类。说的是一个函数或变量的（各种 thunk、guard 变量、reference temporary、两种线程局部例程），取那个函数或变量的作用域与基本名。块的调用函数取外层函数的作用域与基本名。说的不是具名实体的（模板参数对象、模块初始化函数、关于指针或内置类型的 typeinfo），放在全局作用域。
 5. **`CPlusPlusSymbolIndexStore`：作用域树。** 带 `.shared` 的 store，接口形状照 `SymbolIndexStore`（方法加 `in: machO`）。每个镜像在第一次查询时建一次：用自己的 routing 跑一遍 `SymbolSweep`，只收 C++ 名字；逐个解析，把作用域路径并进树里，累积证据。树里只有确实装着符号的作用域及其上层；名字里当作类型用到、却没有符号的作用域不进树，它的证据也丢掉。
 6. **作用域的种类按证据定。** 依次判断：是函数（局部实体所在）→ `.function`；有命名空间的证据（全局、`std`、匿名命名空间）→ `.namespace`；有任何类型的证据 → `.type`；都没有 → `.undetermined`，不猜。证据本身以 `OptionSet` 公开，调用方能自己判断。
@@ -595,7 +595,7 @@ guard 变量、`thread_local` 变量与块由第 2 步的固定名字覆盖，�
 4. **普查与成本**（已完成） —— 第 16 行。在 JavaScriptCore 上（进程内与从 cache 读出各一次，release）记录 C++ 行数、作用域数、各种类的作用域数、未能解析的名字数、建树耗时与常驻字节，写进实现说明与决策日志；据此决定要不要并行解析。
    - 行为：`cPlusPlusSymbolIndexCensusOfALargeImage`，其中断言未能解析的名字系统 `__cxa_demangle` 也解析不了。
    - 行为：本包全量测试 debug 与 `swift test -c release` 都通过。
-5. **文档** —— 第 17–19 行。
+5. **文档**（已完成） —— 第 17–19 行。
 6. **落地（与 `draft-split-symbol-language` 同一天，3.0.0）**：本分支先并入那时的拆分分支或 `next`，重跑全量测试（含 release）；随拆分的落地顺序发本包 3.0.0；两份提案各自取号、改 Implemented。
 
 **收尾时必须判断两件事**（判断结果写进决策日志）：
@@ -620,3 +620,4 @@ guard 变量、`thread_local` 变量与块由第 2 步的固定名字覆盖，�
 | 2026-11-19 | 第 2 步完成 | `CPlusPlusSymbolName` 与内部的 `CPlusPlusDemangler` 落地，17 个名字用例全部通过；测试名字取自 clang 21（Xcode 27.2）给小段 C++ 生成的符号表。比提案多了三个用例：无名类型的 typeinfo 放在全局、线程局部例程取变量的作用域、成员函数模板里的 lambda 路径穿过该函数。 |
 | 2026-11-19 | 第 3 步完成 | `CPlusPlusScope`、`CPlusPlusSymbol`、`CPlusPlusSymbolIndexStore` 与 C++ 夹具落地，`CPlusPlusSymbolsTests` 全部 41 个测试通过（debug，Ultra）。实现时定下的细节：construction vtable 的基类（`Middle-in-Derived` 的 `Middle`）记作「当作类型用到」，完整类拿 `.virtualTable`；`scope(named: "")` 返回全局作用域；`unparsedSymbols` 按偏移排序；`CPlusPlusSymbol` 的构造器不公开；限定名重复时取先建的作用域（实际不会发生，只是不让建表崩溃）。夹具发现 clang 给普通函数里的 lambda 起名 `$_0` 而不是 Itanium 的 `'lambda'`，这种闭包类型靠 `const` 的调用运算符判成类型；测试两种都覆盖，夹具多了一个放 lambda 的内联函数。比提案多一个用例：`virtualInheritanceShowsVirtualTableTablesAndThunks`。 |
 | 2026-11-19 | 第 4 步完成；不并行 | 普查（Ultra，release，macOS 27.2 的 JavaScriptCore）：34,951 个 C++ 名字，100 个未能解析（都是 clang 的 `$_N` 闭包名套在模板实参里，系统 `__cxa_demangle` 同样解析不了，测试断言了这一点），7,010 个作用域（类型 3,910、未定 2,117、函数 967、命名空间 16）；建树约 0.15 秒（debug 约 1 秒）；从 cache 读出的文件符号表 4.7 MB（复制的名字 4.0 MB）、进程内镜像 0.7 MB（零拷贝），偏移索引分别不少于 1.6 MB 与 0.8 MB，作用域树约 4.1 MB。建树已经够快，按提案的约定保持串行。release 全量测试第一次跑时，夹具里那个 `$_0` lambda 因为参数是常量被折叠掉、符号消失；两个放 lambda 的函数改为接收运行时参数后，debug 与 release 都通过。 |
+| 2026-11-19 | 第 5 步完成；实现完成，待用户看过后收尾 | 新增实现说明 `Internal/CPlusPlusSymbols.md`，登记进文档索引与本提案头部；README 加模块表一行、按作用域浏览的示例、3.0.0 新增本模块的一句、Linux 未验证的说明与第三方代码许可证一节；`Internal/SymbolIndex.md` 提到建在同一采集上的第三个 store。文档判断：不另写使用指南——调用方要守的契约（种类由证据推出、可能随版本变化、`std::__1` 是「未定」、函数作用域的段带参数）写在 `CPlusPlusScope.Kind` 等类型的文档注释、README 与实现说明里；「证据」「未定」只在实现说明与类型文档里定义，本包仍不建术语表。本包全量测试 debug 与 release 都通过（Ultra，Xcode 27.2）。第 6 步（与拆分同日随 3.0.0 落地）属于收尾。 |

@@ -10,7 +10,7 @@
 1. **符号表**（`SymbolTable` 与它的 builder）：每个唯一名字一行 16 字节，名字的字节或指向镜像的字符串表、或进表自己的私有缓冲。
 2. **采集**（`SymbolSweep`）：一趟扫完一个镜像的符号表与导出表，按调用方给的 **routing**（`SymbolTableRouting`）把每个名字分进几张表，每张表带自己的按偏移索引、导出信息与本地符号事实。
 3. **语言**（`SymbolLanguage` 与 `SymbolLanguageRegistry`）：本包只认 C++ 的 Itanium 前缀，其余语言由拥有它的包在镜像加载时注册。
-4. **store**：本包的 `SymbolIndexStore` 收 C 与 C++ 的名字，已注册语言的名字只留偏移作边界；MachOSwiftSection 的 `SwiftSymbolIndexStore` 收 Swift 名字，在同一趟采集上再 demangle、归类。两个 store 各有各的缓存与驱逐组，互不相干。
+4. **store**：本包的 `SymbolIndexStore` 收 C 与 C++ 的名字，已注册语言的名字只留偏移作边界；MachOSwiftSection 的 `SwiftSymbolIndexStore` 收 Swift 名字，在同一趟采集上再 demangle、归类；本包 `CPlusPlusSymbols` 模块的 `CPlusPlusSymbolIndexStore` 只收 C++ 名字，解析后按作用域建树（见 [CPlusPlusSymbols.md](CPlusPlusSymbols.md)）。各个 store 各有各的缓存与驱逐组，互不相干。
 
 采集与符号表放在 `@_spi(Internals)` 下：它们是给「别的 store」用的构件，不是承诺给所有调用方的 API。`SymbolIndexStore`、`SymbolLanguage` 与 `SymbolLanguageRegistry` 是正式公开的。
 
