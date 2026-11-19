@@ -2,7 +2,7 @@
 /// symbol under.
 ///
 /// A store keeps the names of one family of symbols — this package's
-/// ``SymbolIndexStore`` the C, C++ and Objective-C ones, MachOSwiftSection's
+/// ``SymbolIndexStore`` the C and C++ ones, MachOSwiftSection's
 /// Swift store the Swift ones — and builds on the same sweep by handing it a
 /// routing. Each table the routing names gets its own rows, offset index,
 /// export facts and local-symbol fact.
@@ -17,8 +17,8 @@ public protocol SymbolTableRouting: Sendable {
     /// Asked once for each defined symbol-table entry and once for each
     /// export-trie entry; an import is never offered. `name` is the
     /// NUL-terminated name as the symbol table spells it, valid only for the
-    /// duration of the call; `language` is ``SymbolLanguage`` read from it
-    /// already.
+    /// duration of the call; `language` is its ``SymbolLanguage``, as the
+    /// registry the sweep was given classifies it.
     func table(forSymbolNamed name: UnsafePointer<CChar>, language: SymbolLanguage) -> Table?
 
     /// How the sweep files `table`'s rows by offset, beyond by name.
@@ -45,6 +45,7 @@ public struct SymbolOffsetIndexing: Hashable, Sendable {
         case nameOnly
         case byOffset
         case byOffsetWithSortedOffsets
+        case sortedOffsetsOnly
     }
 
     private let kind: Kind
@@ -65,11 +66,25 @@ public struct SymbolOffsetIndexing: Hashable, Sendable {
     /// that never searches by proximity should not pay.
     public static let byOffsetWithSortedOffsets = SymbolOffsetIndexing(kind: .byOffsetWithSortedOffsets)
 
+    /// No rows and no names: only every canonical offset a name is filed
+    /// under, ascending and without repeats —
+    /// ``SweptSymbolTable/sortedCanonicalOffsets`` — so a store can tell
+    /// where some other family's symbols begin without paying for their
+    /// names. Offsets come from the symbol table alone — an exported symbol
+    /// is listed there too — and, as for ``byOffsetWithSortedOffsets``, a
+    /// debug-map entry and a file's raw symbol value are left out.
+    public static let sortedOffsetsOnly = SymbolOffsetIndexing(kind: .sortedOffsetsOnly)
+
+    /// Whether the table keeps names and rows at all.
+    var keepsRows: Bool {
+        kind != .sortedOffsetsOnly
+    }
+
     var indexesByOffset: Bool {
-        kind != .nameOnly
+        kind == .byOffset || kind == .byOffsetWithSortedOffsets
     }
 
     var keepsSortedOffsets: Bool {
-        kind == .byOffsetWithSortedOffsets
+        kind == .byOffsetWithSortedOffsets || kind == .sortedOffsetsOnly
     }
 }

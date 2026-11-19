@@ -163,7 +163,7 @@ details[open] > summary { border-bottom: 1px solid var(--separator); }
   <p class="eyebrow"><span class="crumb">MachOKitExtensions</span><span class="crumb">Evolutions</span><span class="crumb">Draft</span></p>
   <h1><span class="proposal-number">Draft</span> 符号语言的判断归各自的包：本包只认 C 与 C++，Swift 与 Objective-C 在加载时注册</h1>
   <dl class="meta">
-    <div><dt>状态</dt><dd><span class="status status-accepted">Accepted</span></dd></div>
+    <div><dt>状态</dt><dd><span class="status status-in-progress">In Progress</span></dd></div>
     <div><dt>最后更新</dt><dd>2026-11-19</dd></div>
     <div><dt>项目类型</dt><dd>库</dd></div>
     <div><dt>原文</dt><dd><code>draft-split-symbol-language.md</code></dd></div>
@@ -196,9 +196,9 @@ details[open] > summary { border-bottom: 1px solid var(--separator); }
 <section id="decide">
   <h2>要你定</h2>
   <div class="callout">
-    <p class="callout-title">已批准（2026-11-19），实现中</p>
+    <p class="callout-title">实现完成（2026-11-19），等你看过后收尾</p>
     <ol>
-      <li>三个仓库各开 <code>feature/split-symbol-language</code>，按落地步骤实现；落地等 C++ 结构化归类的提案，一起发 3.0.0。</li>
+      <li>落地步骤 1–6 完成，三个仓库的 <code>feature/split-symbol-language</code> 都已推送；落地要等 C++ 结构化归类的提案，一起发 3.0.0。</li>
     </ol>
   </div>
   <div class="callout callout-note">
@@ -207,7 +207,7 @@ details[open] > summary { border-bottom: 1px solid var(--separator); }
       <li>注册表是带 <code>.shared</code> 的类，API 为 <code>register(_:where:)</code>；测试用独立实例。</li>
       <li>同一语言重复注册保留第一次的识别器；注册 <code>.c</code>、<code>.cPlusPlus</code> 视为程序员错误。</li>
       <li>Swift 索引直接用自己的判断，不经注册表。</li>
-      <li>索引记下注册表代数，查询时不符就重建；<code>.shared</code> 上注册时另外立即清空。</li>
+      <li>索引记下注册表代数，查询时不符就重建；store 每次查询比对代数，变了就整体清空（实现时由「注册时立即清空」改来，见决策日志）。</li>
       <li><code>SymbolOffsetIndexing</code> 新增 <code>.sortedOffsetsOnly</code>；ObjC 的 constructor 放进已有的 <code>MachOObjCSectionC</code>。</li>
     </ul>
   </div>
@@ -302,7 +302,7 @@ details[open] > summary { border-bottom: 1px solid var(--separator); }
       <tr><td><code>Tests/MachOSymbolsTests/SymbolLanguageTests.swift</code></td><td><span class="tag tag-changed">修改</span></td><td>删 Swift / ObjC 的期望；用独立注册表实例测注册、顺序、重复注册、内置语言；真实镜像上两种入口一致，只见 C 与 C++</td><td>新语义</td><td class="numeric">1</td></tr>
       <tr><td><code>Tests/MachOSymbolsTests/SymbolSweepTests.swift</code></td><td><span class="tag tag-changed">修改</span></td><td><code>LanguageRouting</code> 改用测试里注册的假语言；新增只留偏移的表</td><td><code>.objectiveC</code> 已不在本包</td><td class="numeric">2</td></tr>
       <tr><td><code>Tests/MachOSymbolsTests/SymbolIndexStoreTests.swift</code></td><td><span class="tag tag-changed">修改</span></td><td><code>storeNeverContainsSwiftNames</code> 改为用独立注册表登记假语言后验证排除；新增边界与重建用例</td><td>本包测试进程里没有 Swift 注册</td><td class="numeric">3</td></tr>
-      <tr><td><code>Tests/MachOKitExtensionsTests/WrappedReaderSymbolIndexTests.swift</code></td><td><span class="tag tag-changed">修改</span></td><td>用 <code>SymbolLanguage(…) == .c</code> 筛名字的地方按新语义调整</td><td>语义变化</td><td class="numeric">3</td></tr>
+      <tr><td><code>Tests/MachOKitExtensionsTests/WrappedReaderSymbolIndexTests.swift</code></td><td><span class="tag">不变</span></td><td>原以为要按新语义调整；实际无需改动</td><td>—</td><td class="numeric">3</td></tr>
       <tr><td><code>Documentations/Internal/SymbolIndex.md</code></td><td><span class="tag tag-changed">修改</span></td><td>「语言」一节改为注册表与判定顺序；store 一节改为两张表与边界；测试清单</td><td>实现说明随代码</td><td class="numeric">4</td></tr>
       <tr><td><code>README.md</code></td><td><span class="tag tag-changed">修改</span></td><td><code>MachOSymbols</code> 一行与示例</td><td>对外说明</td><td class="numeric">4</td></tr>
       <tr><td><code>Documentations/Evolutions/README.md</code>、<code>Documentations/README.md</code></td><td><span class="tag tag-changed">修改</span></td><td>登记本提案</td><td>索引</td><td class="numeric">4</td></tr>
@@ -320,7 +320,8 @@ details[open] > summary { border-bottom: 1px solid var(--separator); }
       <tr><td><code>Sources/Symbols/SwiftSymbols/SwiftSymbolTableRouting.swift</code></td><td><span class="tag tag-changed">修改</span></td><td>直接调用 <code>SwiftSymbolNameRecognition</code>，不看传入的 <code>language</code></td><td>Swift 索引不依赖注册是否发生</td><td class="numeric">5</td></tr>
       <tr><td><code>Tests/SwiftSymbolsTests/SymbolTableEquivalenceTests.swift</code></td><td><span class="tag tag-changed">修改</span></td><td>钉住 <code>SwiftSymbolNameRecognition</code> 与 <code>isSwiftSymbol</code>、<code>_symbolic</code> 前缀判断等价</td><td>判断搬家，等价测试跟着走</td><td class="numeric">5</td></tr>
       <tr><td><code>Tests/SwiftSymbolsTests/SwiftSymbolLanguageRegistrationTests.swift</code></td><td><span class="tag tag-added">新增</span></td><td>加载时已注册；本包的 C/C++ 索引在 libswiftCore 上不含 Swift 名字、Swift 函数里的地址答 <code>nil</code></td><td>端到端验证</td><td class="numeric">5</td></tr>
-      <tr><td><code>Documentations/Internal/Modules/SwiftSymbols.md</code>、术语表</td><td><span class="tag tag-changed">修改</span></td><td>记下 <code>.swift</code> 在这里定义、加载时注册</td><td>文档随代码</td><td class="numeric">5</td></tr>
+      <tr><td><code>Tests/SwiftSymbolsTests/SymbolIndexStoreNamingScanTests.swift</code></td><td><span class="tag tag-changed">修改</span></td><td>放行带模块名的 <code>MachOSymbols.SymbolIndexStore</code>，不带前缀的照旧禁止</td><td>新测试确实要用 C/C++ 索引</td><td class="numeric">5</td></tr>
+      <tr><td><code>Documentations/Internal/Modules/SwiftSymbols.md</code>、<code>AGENTS.md</code></td><td><span class="tag tag-changed">修改</span></td><td>记下 <code>.swift</code> 在这里定义、加载时注册；<code>MachOSymbols</code> 的说明改为只收 C/C++；命名规则写明带模块名的例外</td><td>文档随代码</td><td class="numeric">5</td></tr>
     </tbody>
   </table>
   </div>
@@ -332,8 +333,8 @@ details[open] > summary { border-bottom: 1px solid var(--separator); }
       <tr><td><code>Package.swift</code> · <code>MachOObjCSection</code></td><td><span class="tag tag-changed">修改</span></td><td>新增 <code>MachOSymbols</code> 依赖；本包范围改为 <code>"3.0.0"..&lt;"4.0.0"</code></td><td>扩展 <code>SymbolLanguage</code> 并注册</td><td class="numeric">6</td></tr>
       <tr><td><code>Sources/MachOObjCSectionC/symbol_language_registration.c</code></td><td><span class="tag tag-added">新增</span></td><td>constructor 调用 <code>objc_section_register_symbol_language()</code></td><td>加载时注册；复用已被主模块依赖的 C target</td><td class="numeric">6</td></tr>
       <tr><td><code>Sources/MachOObjCSection/SymbolLanguage+ObjectiveC.swift</code></td><td><span class="tag tag-moved">移动</span></td><td><code>.objectiveC</code>（<code>rawValue</code> <code>"Objective-C"</code>）；从本包搬来的前缀判断；<code>@_cdecl</code> 注册函数</td><td>Objective-C 的判断归 MachOObjCSection</td><td class="numeric">6</td></tr>
-      <tr><td><code>Tests/…/ObjectiveCSymbolLanguageTests.swift</code></td><td><span class="tag tag-added">新增</span></td><td>加载时已注册；代表名字的判定；本包的 C/C++ 索引不含 ObjC 名字</td><td>端到端验证</td><td class="numeric">6</td></tr>
-      <tr><td>MachOObjCSection 的文档</td><td><span class="tag tag-changed">修改</span></td><td>记下 <code>.objectiveC</code> 在这里定义、加载时注册</td><td>文档随代码</td><td class="numeric">6</td></tr>
+      <tr><td><code>Tests/MachOObjCSectionTests/ObjectiveCSymbolLanguageTests.swift</code></td><td><span class="tag tag-added">新增</span></td><td>加载时已注册；代表名字的判定；本包的 C/C++ 索引不含 ObjC 名字</td><td>端到端验证</td><td class="numeric">6</td></tr>
+      <tr><td><code>Documentations/Internal/ObjectiveCSymbolLanguage.md</code>、<code>Documentations/README.md</code></td><td><span class="tag tag-added">新增</span> <span class="tag tag-changed">修改</span></td><td>记下 <code>.objectiveC</code> 在这里定义、加载时注册，以及为什么用 <code>@_cdecl</code></td><td>文档随代码</td><td class="numeric">6</td></tr>
     </tbody>
   </table>
   </div>
@@ -439,7 +440,7 @@ details[open] > summary { border-bottom: 1px solid var(--separator); }
       <ul>
         <li><code>closestSymbols</code>：在两张表里各找不大于目标的最后一个偏移 <code>s</code>、<code>b</code>；<code>b</code> 存在且大于 <code>s</code>（或没有 <code>s</code>）时答 <code>nil</code>；同一偏移两边都有时答 C/C++ 符号。</li>
         <li>按名字、按精确偏移、是否导出的查询只看 <code>.symbols</code>。</li>
-        <li><code>Storage</code> 记代数，<code>storage(in:)</code> 取到旧代数的索引先 <code>remove(for:)</code> 再建；<code>.shared</code> 上注册时另外 <code>removeAll()</code>。</li>
+        <li><code>Storage</code> 记代数。<code>storage(in:)</code> 先比对注册表的代数：比上次见到的新就 <code>removeAll()</code>；取到代数仍旧的索引（建索引途中有人注册）先 <code>remove(for:)</code> 再建。注册本身不碰 store。</li>
       </ul>
     </div>
   </details>
@@ -597,7 +598,7 @@ details[open] > summary { border-bottom: 1px solid var(--separator); }
 <section id="log">
   <h2>决策日志</h2>
   <details>
-    <summary>10 条，最近一条：写提案时定下的做法</summary>
+    <summary>22 条（网页里部分行合并），最近一条：实现完成，待用户看过后收尾</summary>
     <div class="details-body">
       <div class="table-wrap">
       <table>
@@ -613,6 +614,17 @@ details[open] > summary { border-bottom: 1px solid var(--separator); }
           <tr><td class="numeric">2026-11-19</td><td>原型：C constructor 可行，Swift <code>@section</code> 链接失败</td><td>结果见调研。原型不在任何仓库里，结论记下后删除。</td></tr>
           <tr><td class="numeric">2026-11-19</td><td>共识确认，开始写提案</td><td>用户确认上述决策与默认做法（C constructor、<code>@c</code> / <code>@_cdecl</code>、字符串 <code>rawValue</code>、判定顺序、C++ 归类另写提案、原型删除）。</td></tr>
           <tr><td class="numeric">2026-11-19</td><td>写提案时定下的做法</td><td>注册表带 <code>.shared</code>、<code>register(_:where:)</code>；重复注册保留第一次；注册内置语言是程序员错误；Swift 索引不经注册表；代数校验加立即清空；<code>.sortedOffsetsOnly</code>；ObjC 的 constructor 放进 <code>MachOObjCSectionC</code>。</td></tr>
+          <tr><td class="numeric">2026-11-19</td><td>状态 → Accepted；开始实现</td><td>用户批准。三个仓库各从 <code>next</code> 切 <code>feature/split-symbol-language</code>；本包的 <code>next</code> 只在本地，不推送。</td></tr>
+          <tr><td class="numeric">2026-11-19</td><td>两项提前到第 1 步</td><td>采集按注册表判语言、store 可指定注册表：测试要传入自己的注册表，否则第 1 步编不过测试。</td></tr>
+          <tr><td class="numeric">2026-11-19</td><td>AppKit 普查改用替身注册表</td><td>没人注册 Swift 时 Swift 名字按 C 收、只在导出表里的要复制；普查改量生产环境的构成。</td></tr>
+          <tr><td class="numeric">2026-11-19</td><td>只留偏移的表不收导出表；发现切片偏移口径不一致（后续项）</td><td>导出表一路给胖二进制切片加的是切片在胖文件里的起点（<code>curl</code> 为 278528），符号表一路是切片内偏移；2.0.0 起就是这样，不在本分支改。</td></tr>
+          <tr><td class="numeric">2026-11-19</td><td>晚注册的清空改在 store 下一次查询时做</td><td>注册在加载时的 constructor 里，那时去碰 store 会在加载期间初始化它；改为查询时比对代数，结果相同。</td></tr>
+          <tr><td class="numeric">2026-11-19</td><td>第 3、4 步完成</td><td>本包全量测试 debug、release 通过。C/C++ 索引 151,422 行，边界 13,718 个偏移、0.1 MB；普查耗时 2.0.0 为 0.312–0.365 秒，拆分后 0.308–0.340 秒。</td></tr>
+          <tr><td class="numeric">2026-11-19</td><td>第 6 步完成</td><td>MachOObjCSection 新测试与全量测试通过（跳过基线就会崩溃的 XCTest 类）。</td></tr>
+          <tr><td class="numeric">2026-11-19</td><td>命名扫描放行带模块名的写法</td><td>新测试要用 C/C++ 索引，改为放行 <code>MachOSymbols.SymbolIndexStore</code>。</td></tr>
+          <tr><td class="numeric">2026-11-19</td><td>第 5 步完成，测试在 Ultra 上跑</td><td>全量测试 debug 通过；release 另有 <code>SpecializedRuntimeTypeNameTests</code> 5 个失败，基线上相同，属既有问题（后续项）。</td></tr>
+          <tr><td class="numeric">2026-11-19</td><td>渲染 A/B 全部一致</td><td>Ultra 上 84 对逐字节一致（归档 cache、模拟器运行时文件、进程内镜像）。</td></tr>
+          <tr><td class="numeric">2026-11-19</td><td>实现完成，待用户看过后收尾</td><td>落地等 C++ 结构化归类的提案；本包的分支在本地合进 <code>next</code>，另两个仓库的分支留到落地那天。</td></tr>
         </tbody>
       </table>
       </div>

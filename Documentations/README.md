@@ -8,7 +8,7 @@
 | [Evolutions/0003-move-macho-infrastructure-modules.md](Evolutions/0003-move-macho-infrastructure-modules.md) | 把 MachOSwiftSection 剩余的 MachO 基础模块迁入本包，`MachOSymbols` 拆出只收 C/C++/ObjC 名字的符号索引，随 2.0.0 落地 |
 | [Evolutions/draft-split-symbol-language.md](Evolutions/draft-split-symbol-language.md) | 提案（Draft）：`SymbolLanguage` 只认 C 与 C++，Swift 与 Objective-C 由各自的包在加载时注册；C/C++ 索引排除已注册语言并留边界，随 3.0.0 落地 |
 | [Internal/ReadingContextAbstraction.md](Internal/ReadingContextAbstraction.md) | 实现说明：读取层（`ReadingContext`、`Resolvable`）两个模块各管什么、读文件为何直接用 MachOKit 的映射、本进程地址掩码、缓存范围、怎样看穿包装类型读取器 |
-| [Internal/SymbolIndex.md](Internal/SymbolIndex.md) | 实现说明：符号表、按 routing 分表的采集、`SymbolLanguage` 与 C/C++ 符号索引；零拷贝名字何时可用、同名多处定义怎么登记 |
+| [Internal/SymbolIndex.md](Internal/SymbolIndex.md) | 实现说明：符号表、按 routing 分表的采集、`SymbolLanguage` 与别的包在加载时注册语言、C/C++ 符号索引与已注册语言的边界；零拷贝名字何时可用、同名多处定义怎么登记 |
 | [Internal/SharedCache.md](Internal/SharedCache.md) | 实现说明：按镜像共享的缓存（`SharedCache`）、键与驱逐登记 |
 | [Internal/DependencyResolution.md](Internal/DependencyResolution.md) | 实现说明：依赖闭包、搜索路径与定位器 |
 | [Internal/MachOCodeReferences.md](Internal/MachOCodeReferences.md) | 实现说明：交叉引用与语言无关的核心层——镜像集、函数表、指令扫描、识别器扩展点；接口只开 `Internals` SPI 给 MachOSwiftSection 与 MachOObjCSection，进程内部分只在 Darwin 上有 |
