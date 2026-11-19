@@ -3,7 +3,7 @@
 - **状态**: In Progress
 - **作者**: JH
 - **创建日期**: 2026-11-18
-- **最后更新**: 2026-11-18
+- **最后更新**: 2026-11-19
 - **所属愿景**: 无
 - **关联提案**: 本包 [draft-move-reading-and-resolving-modules](draft-move-reading-and-resolving-modules.md)（前置：先把 `MachOReading` / `MachOResolving` 迁进本包；本提案的功能分支从它的功能分支切出，两者同一天落地）；MachOSwiftSection [0001 symbol-name-offsetization](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0001-symbol-name-offsetization.md)（符号表的紧凑行与零拷贝名字）、[0017 macho-dependencies-module](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0017-macho-dependencies-module.md)、[0018 self-contained-abi-layer](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0018-self-contained-abi-layer.md)（`MachOBase` 这一层能看到什么）、[0053 shared-cache-composition-and-eviction-registry](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0053-shared-cache-composition-and-eviction-registry.md)（`SharedCache` 与驱逐登记）、[0055 group-sources-by-layer](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0055-group-sources-by-layer.md)
 - **实现分支 / PR**: 本包与 MachOSwiftSection 各一条 `feature/move-macho-infrastructure-modules`，分别从两边的 `feature/move-reading-and-resolving-modules` 切出，worktree 在各自的 `.worktrees/<项目名>-MoveMachOInfrastructureModules`
@@ -106,7 +106,7 @@
 ### 非目标
 
 - C++ 名字的 demangle（转字符串或结构化归类）与 LLVM `ItaniumDemangle` 的引入：放到 2.1.0，另写提案。2.0.0 的 C/C++ store 只给原始名字和语言；要可读名字的调用方暂时继续用 MachOKit 的 `demangledName`。
-- 不迁 `Utilities`、`MachOMacros`、`ARM64InstructionDecoding` 及任何 Swift 层模块。
+- 不迁 `Utilities`、`MachOMacros`、`ARM64InstructionDecoding` 及任何 Swift 层模块。（2026-11-19 更正：`ARM64InstructionDecoding` 随交叉引用的核心层一起迁入本包，由 MachOSwiftSection 的 [move-cross-reference-layers](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/draft-move-cross-reference-layers.md) 负责，见决策日志。）
 - 不让 `MachOKitExtensions` 模块再导出任何迁入的模块（避免与 MachOObjCSection 的 `Relative*Pointer`、与 MachOKit 的 `Symbol` / `SymbolProtocol` 歧义）。
 - 不合并 `SharedCache` 与本包已有的 `MachOCacheStorage`：前者是跨实例、按镜像身份共享的缓存加驱逐登记，后者挂在单个 `MachOFile` 实例上；合不合并以后另议。
 - 不改迁入模块的 API 与行为。例外只有：上面列出的可见性提升、`MachOBase` 不再导出 `Utilities`、`SymbolTable` 在纯 C 镜像上不再零拷贝。
@@ -670,3 +670,5 @@ public final class SymbolIndexStore: Sendable {
 | 2026-11-18 | 实现完成，待用户看过后收尾 | 落地步骤 1–8 完成，第 9 步（与前置提案、MachOSwiftSection 0.25.0 同一天落地）属于收尾。文档判断：实现说明三份已写并登记在头部；调用方契约（偏移口径、`closestSymbols` 不设上限、`isExported` 三态、`remove(for:)` 由调用方负责）写在 `SymbolIndexStore` 的文档注释里，不另写使用指南；新术语 routing、sweep 在 `Internal/SymbolIndex.md` 里定义，本包暂不建术语表，MachOSwiftSection 的术语表已同步。功能分支只推送，按前置提案的理由不合进任何常驻检出。 |
 | 2026-11-18 | 愿景第 6 条改为「通用代码直接写进本包」 | 用户决定。MachOSwiftSection 愿景 `ReverseEngineeringWithoutIDA.md` 原写「新的通用代码先在 `Sources/MachO/` 下写成独立模块，等读取层迁移落定后再搬」；整个 Mach-O 层已迁入本包、那个分组已不存在，改为不依赖 Swift 元数据的通用代码直接写进本包。在 MachOSwiftSection 的功能分支上提交。 |
 | 2026-11-18 | 本包加 CI 另写提案 | 用户决定：给本包加 macOS 的 GitHub Actions 工作流，跑全量测试并在单线程协作池上重跑 `SharedCache` 的几个 suite，补回迁移丢掉的那层防护。不在本提案的分支里做，记为后续项。 |
+| 2026-11-19 | MachOSwiftSection 的功能分支再次并入 `origin/next`，冲突已解 | MachOSwiftSection 的提案 [move-cross-reference-layers](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/draft-move-cross-reference-layers.md) 要叠在本提案上做，它的第 0 步把 `origin/next`（当时落后 13 个提交，正是 0097 离线交叉引用的全部实现）合进了 MachOSwiftSection 的 `feature/move-macho-infrastructure-modules`，用 merge、不 rebase。冲突在 `Package.swift`、`MachOThunkEnvironment.swift`、`AGENTS.md`、`AccessorThunkResolutionExplained.md`、`SwiftSectionKit.md`、愿景与 `MachOCaches.md`：两边的改动都保留；`MachOCaches.md` 在本提案里已搬来本包，那边保持删除，`origin/next` 对它的一行改动（`thunkResolution` 组里 `CacheImageResolver` 换成 `CacheImageLocator`）由那份提案补到本包的 `SharedCache.md`。原计划「落地当天再把 `next` 合进来解冲突」不再需要，但此前的全量测试与 84 对渲染 A/B 不再覆盖这条分支，要重新验证，结果记在那份提案里 |
+| 2026-11-19 | `ARM64InstructionDecoding` 也迁入本包 | 更正「不迁」一节的第一条。交叉引用的核心层（迁来后叫 `MachOCodeReferences`）与地址解析（`MachOAddressResolution`）都离不开它，它不依赖任何 Swift 的东西，名字不变、作为独立 product 迁来。由 MachOSwiftSection 的 [move-cross-reference-layers](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/draft-move-cross-reference-layers.md) 负责，随本包 2.0.0 一起发 |
