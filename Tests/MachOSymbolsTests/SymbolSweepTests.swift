@@ -34,14 +34,13 @@ private struct LanguageRouting: SymbolTableRouting {
 
 private let languageRegistry = StandInRecognition.objectiveCRuntimeRegistry
 
-/// Files every name, Swift included, under one offset-indexed table, keeping
-/// its offsets in order when asked to.
+/// Files every name, Swift included, under one table, indexed as asked.
 private struct EverythingRouting: SymbolTableRouting {
     enum Table: Hashable, Sendable {
         case all
     }
 
-    var keepsSortedOffsets = false
+    var indexing: SymbolOffsetIndexing = .byOffset
 
     var mayReferenceStringTablesOfLoadedImages: Bool { true }
 
@@ -50,7 +49,26 @@ private struct EverythingRouting: SymbolTableRouting {
     }
 
     func offsetIndexing(in table: Table) -> SymbolOffsetIndexing {
-        keepsSortedOffsets ? .byOffsetWithSortedOffsets : .byOffset
+        indexing
+    }
+}
+
+/// Files the Objective-C runtime stand-in's names as offsets alone, and
+/// every other name with rows — the shape of the C/C++ store's routing.
+private struct BoundaryRouting: SymbolTableRouting {
+    enum Table: Hashable, Sendable {
+        case symbols
+        case boundaries
+    }
+
+    var mayReferenceStringTablesOfLoadedImages: Bool { false }
+
+    func table(forSymbolNamed name: UnsafePointer<CChar>, language: SymbolLanguage) -> Table? {
+        language == .objectiveCRuntimeStandIn ? .boundaries : .symbols
+    }
+
+    func offsetIndexing(in table: Table) -> SymbolOffsetIndexing {
+        table == .boundaries ? .sortedOffsetsOnly : .byOffsetWithSortedOffsets
     }
 }
 
@@ -287,14 +305,56 @@ extension SymbolSweepTests {
         #expect(withoutOrder.sortedCanonicalOffsets.isEmpty)
         #expect(!withoutOrder.rowsByOffset.isEmpty)
 
-        let withOrder = SymbolSweep(sweeping: curl, routing: EverythingRouting(keepsSortedOffsets: true))[.all]
+        let withOrder = SymbolSweep(sweeping: curl, routing: EverythingRouting(indexing: .byOffsetWithSortedOffsets))[.all]
         #expect(withOrder.sortedCanonicalOffsets == [0])
         #expect(withOrder.rowsByOffset[0x1_0000_0000] != nil)
 
-        let foundation = SymbolSweep(sweeping: try Self.loadedImage(named: "Foundation"), routing: EverythingRouting(keepsSortedOffsets: true))[.all]
+        let foundation = SymbolSweep(sweeping: try Self.loadedImage(named: "Foundation"), routing: EverythingRouting(indexing: .byOffsetWithSortedOffsets))[.all]
         let offsets = foundation.sortedCanonicalOffsets
         #expect(offsets.count > 1)
         #expect(zip(offsets, offsets.dropFirst()).allSatisfy { $0 < $1 })
         #expect(Set(offsets) == Set(foundation.rowsByOffset.keys))
+    }
+}
+
+extension SymbolSweepTests {
+    /// The canonical offsets a table that keeps no rows should hold for
+    /// `image`: those of every defined, non-debug symbol-table entry
+    /// `recognizes` accepts. The export trie adds none.
+    private static func expectedOffsets(of image: MachOImage, where recognizes: (UnsafePointer<CChar>) -> Bool) -> Set<Int> {
+        var offsets: Set<Int> = []
+        for symbol in image.symbols where !symbol.nlist.isExternal && !symbol.nlist.isDebuggingEntry && symbol.name.withCString(recognizes) {
+            offsets.insert(symbol.offset)
+        }
+        return offsets
+    }
+
+    @Test func sortedOffsetsOnlyTableKeepsOffsetsButNoRows() throws {
+        let foundation = try Self.loadedImage(named: "Foundation")
+        let sweep = SymbolSweep(sweeping: foundation, routing: BoundaryRouting(), languageRegistry: languageRegistry)
+        let boundaries = sweep[.boundaries]
+        #expect(boundaries.symbolTable.rowCount == 0)
+        #expect(boundaries.rowsByOffset.isEmpty)
+        #expect(!boundaries.hasLocalSymbols)
+        let offsets = boundaries.sortedCanonicalOffsets
+        try #require(!offsets.isEmpty)
+        #expect(zip(offsets, offsets.dropFirst()).allSatisfy { $0 < $1 })
+        #expect(Set(offsets) == Self.expectedOffsets(of: foundation, where: StandInRecognition.isObjectiveCRuntimeSymbol))
+        // The names went nowhere else either.
+        #expect(sweep[.symbols].symbolTable.row(forName: "_OBJC_CLASS_$_NSObject") == nil)
+    }
+
+    /// A debug-map entry names no offset, and a file's raw symbol value — a
+    /// virtual address — is not an offset.
+    @Test func sortedOffsetsOnlyTableSkipsDebugEntriesAndRawAddresses() throws {
+        let curl = try Self.curl()
+        let curlOffsets = SymbolSweep(sweeping: curl, routing: EverythingRouting(indexing: .sortedOffsetsOnly))[.all]
+        #expect(curlOffsets.sortedCanonicalOffsets == [0])
+        #expect(curlOffsets.symbolTable.rowCount == 0)
+
+        let image = MachOImage.current()
+        try #require(image.symbols.contains { $0.nlist.isDebuggingEntry }, "this test bundle carries no debug map; run a debug build")
+        let imageOffsets = SymbolSweep(sweeping: image, routing: EverythingRouting(indexing: .sortedOffsetsOnly))[.all].sortedCanonicalOffsets
+        #expect(Set(imageOffsets) == Self.expectedOffsets(of: image, where: { _ in true }))
     }
 }

@@ -70,8 +70,12 @@ public struct SymbolSweep<Routing: SymbolTableRouting>: Sendable {
             for symbol in mappedSymbols where !symbol.nlist.isExternal {
                 let nameC = symbol.nameC
                 guard let table = routing.table(forSymbolNamed: nameC, language: classifier.language(ofSymbolNameBytes: nameC)) else { continue }
-                let name = String(cString: nameC)
                 let offset = symbol.offset
+                guard routing.offsetIndexing(in: table).keepsRows else {
+                    accumulators[table, default: makeAccumulator(for: table)].collectOffset(canonicalOffset: offset, isDebuggingEntry: symbol.nlist.isDebuggingEntry)
+                    continue
+                }
+                let name = String(cString: nameC)
                 if referencesMappedNames {
                     let mappedNameByteOffset = UnsafeRawPointer(nameC) - stringBase
                     let nameByteLength = strlen(nameC)
@@ -109,10 +113,15 @@ public struct SymbolSweep<Routing: SymbolTableRouting>: Sendable {
                 let name = symbol.name
                 guard let table = name.withCString({ routing.table(forSymbolNamed: $0, language: classifier.language(ofSymbolNameBytes: $0)) }) else { continue }
                 let rawOffset = symbol.offset
+                let canonicalOffset = symbolValueOffsetConverter.offset(forSymbolValue: rawOffset)
+                guard routing.offsetIndexing(in: table).keepsRows else {
+                    accumulators[table, default: makeAccumulator(for: table)].collectOffset(canonicalOffset: canonicalOffset, isDebuggingEntry: symbol.nlist.isDebuggingEntry)
+                    continue
+                }
                 accumulators[table, default: makeAccumulator(for: table)].collectSymbol(
                     named: name,
                     rawOffset: rawOffset,
-                    canonicalOffset: symbolValueOffsetConverter.offset(forSymbolValue: rawOffset),
+                    canonicalOffset: canonicalOffset,
                     isDebuggingEntry: symbol.nlist.isDebuggingEntry,
                     isLocal: symbol.nlist.isLocal
                 )
@@ -153,8 +162,11 @@ public struct SweptSymbolTable: Sendable {
     /// offset.
     public let rowsByOffset: [Int: SymbolRowBucket]
 
-    /// Every canonical offset a row is filed under, ascending. Empty unless
-    /// the routing asked for ``SymbolOffsetIndexing/byOffsetWithSortedOffsets``.
+    /// Every canonical offset a row is filed under, ascending — for a table
+    /// that keeps no rows, every canonical offset a name was filed under.
+    /// Empty unless the routing asked for
+    /// ``SymbolOffsetIndexing/byOffsetWithSortedOffsets`` or
+    /// ``SymbolOffsetIndexing/sortedOffsetsOnly``.
     /// Unlike the keys of ``rowsByOffset``, never a file's raw symbol value,
     /// which is a virtual address and would sort among the offsets as if it
     /// were one.
@@ -285,10 +297,20 @@ private struct TableAccumulator {
         registerRow(row, rawOffset: rawOffset, canonicalOffset: canonicalOffset, isNewRow: isNewRow)
     }
 
+    /// Files the offset alone, for a table that keeps no rows. A debug-map
+    /// entry never decides an offset.
+    mutating func collectOffset(canonicalOffset: Int, isDebuggingEntry: Bool) {
+        guard !isDebuggingEntry else { return }
+        canonicalOffsets.append(canonicalOffset)
+    }
+
     /// Records an export-trie entry: its row's bit when the name has a row
     /// already, a new row when the entry carries an offset, and the name
-    /// alone otherwise.
+    /// alone otherwise. A table that keeps no rows takes nothing from the
+    /// trie: an exported symbol is in the symbol table too, which gave its
+    /// offset already.
     mutating func collectExportedSymbol(named name: String, rawOffset: Int?, offsetBase: Int) {
+        guard offsetIndexing.keepsRows else { return }
         if let existingRow = builder.existingRow(forName: name) {
             recordExportedRow(existingRow)
         } else if let rawOffset {

@@ -486,7 +486,7 @@ constructor 写进 `Sources/MachOObjCSectionC/symbol_language_registration.c`，
    - 行为：`registeringABuiltInLanguageIsAProgrammerError`（exit test）
    - 行为：`descriptionIsTheRawValue`
    - 行为：`stringAndByteClassificationAgreeOnEveryNameOfARealImage`（未注册时只见 C 与 C++）
-2. **采集按注册表判语言，新增只留偏移的一档** —— 本包第 3、4、7 行。
+2. **采集按注册表判语言，新增只留偏移的一档**（已完成；按注册表判语言已在第 1 步做完） —— 本包第 3、4、7 行。
    - 行为：`sweepClassifiesThroughTheRegistryItIsGiven`
    - 行为：`sortedOffsetsOnlyTableKeepsOffsetsButNoRows`
    - 行为：`sortedOffsetsOnlyTableSkipsDebugEntriesAndRawAddresses`
@@ -537,3 +537,4 @@ constructor 写进 `Sources/MachOObjCSectionC/symbol_language_registration.c`，
 | 2026-11-19 | 开始实现 | 三个仓库各从 `next` 切 `feature/split-symbol-language`。本包的 `next` 只在公司那台本地、上面还有别的会话未推送的提交，提案提交在 `next` 上但不推送 `next`，随功能分支推到远端。 |
 | 2026-11-19 | 「采集按注册表判语言」与「store 可指定注册表」提前到第 1 步 | `SymbolSweepTests` 与普查测试要给采集、store 传入自己的注册表（本包测试进程里没人注册语言，不能动共享注册表），不提前第 1 步就编不过测试。第 2 步只剩 `.sortedOffsetsOnly`。 |
 | 2026-11-19 | AppKit 普查改用注册了 Swift 与 ObjC 替身的注册表 | 第 1 步后普查断言「进程内镜像的名字全留在字符串表里」失败：本包测试进程没人注册 Swift，Swift 名字按 C 收进索引，其中只出现在导出表里的名字要复制。这是新设计下的预期行为；普查要量的是生产环境的构成（链接了两个下游、索引只剩 C/C++），所以改用替身注册表。`storeNeverContainsSwiftNames` 改为 `storeFilesUnregisteredLanguagesAsC`：没有注册时 Swift 名字照 C 收。 |
+| 2026-11-19 | 只留偏移的表不收导出表；发现导出表一路的切片偏移口径不一致，记为后续项 | 边界偏移只取符号表（导出的符号本来也在符号表里），与提案详细设计一致。实现时曾让导出表也登记边界，`curl` 的测试随即多出一个 278528：导出表一路给文件加的是 `machO.startOffset`，对胖二进制的切片就是切片在胖文件里的起点（`curl` 的 arm64e 切片从 278528 开始），而符号表一路用 `SymbolValueOffsetConverter` 算出的是切片内偏移（`__mh_execute_header` 为 0）。2.0.0 起行模式就是这样，只影响「只在导出表、不在符号表」的名字铸出的新行，一直没暴露。与本提案无关，不在这条分支上改，记为后续项。 |
