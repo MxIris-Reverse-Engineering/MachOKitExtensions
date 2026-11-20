@@ -48,10 +48,9 @@ struct ImagePointerSlotsTests {
                     mismatches.append("\(offset): file \(content), process \(String(describing: processContent))")
                     return
                 }
-                var information = Dl_info()
-                guard let pointer = UnsafeRawPointer(bitPattern: UInt(address) - UInt(addend)),
-                      dladdr(pointer, &information) != 0, let symbolName = information.dli_sname,
-                      "_" + String(cString: symbolName) == name else {
+                // dyld bound the slot to the address the symbol has here.
+                guard let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), String(name.dropFirst())),
+                      UInt64(UInt(bitPattern: symbol)) & UInt64(InProcessContext.addressMask) == address &- UInt64(addend) else {
                     mismatches.append("\(offset): bound \(name)+\(addend), process holds \(address)")
                     return
                 }
@@ -86,8 +85,19 @@ struct ImagePointerSlotsTests {
         var mismatches: [String] = []
         fileSlots.forEachDataSlot { offset, content in
             guard constantRanges.contains(where: { $0.contains(offset) }) else { return }
-            comparedCount += 1
+            // Only the words that are pointers in this process: a cache file
+            // cannot tell every other word from a pointer.
             let processContent = processSlots.content(atOffset: offset - processOffsetDelta)
+            switch processContent {
+            case .internalPointer?:
+                break
+            case .externalAddress(let address)?:
+                var information = Dl_info()
+                guard let pointer = UnsafeRawPointer(bitPattern: UInt(address)), dladdr(pointer, &information) != 0 else { return }
+            default:
+                return
+            }
+            comparedCount += 1
             switch content {
             case .internalPointer(let target, _):
                 guard case .internalPointer(let processTarget, _)? = processContent, processTarget == target - processOffsetDelta else {
@@ -105,6 +115,22 @@ struct ImagePointerSlotsTests {
         }
         #expect(comparedCount > 1000)
         #expect(mismatches.isEmpty, "\(mismatches.count) of \(comparedCount) differ: \(mismatches.prefix(5))")
+    }
+
+    /// `std::exception` of libc++abi, read out of this Mac's dyld shared
+    /// cache and from this process, gives the same table.
+    @Test func libraryClassOfTheCacheReadsLikeTheProcess() throws {
+        let hostCache = try #require(FullDyldCache.cachedHost)
+        let file = try #require(hostCache.machOFile(by: .path("/usr/lib/libc++abi.dylib")))
+        let image = try #require(MachOImage(name: "libc++abi"))
+        let store = CPlusPlusClassIndexStore(symbolStore: .shared)
+        for machO in [file as any MachORepresentableWithCache, image] {
+            let classes = store.classes(in: machO)
+            let exception = try #require(classes.first { $0.qualifiedName == "std::exception" }, "\(classes.count) classes, no std::exception")
+            #expect(exception.hasVirtualTable)
+            let tables = store.virtualTables(of: exception, in: machO)
+            #expect(tables.map { $0.functions.map { $0.name?.baseName } } == [["~exception", "~exception", "what"]])
+        }
     }
 
     @Test func aBindSlotNamesItsSymbolAndLibrary() throws {

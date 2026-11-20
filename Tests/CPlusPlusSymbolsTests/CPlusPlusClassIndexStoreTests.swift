@@ -36,7 +36,7 @@ struct CPlusPlusClassIndexStoreTests {
         let expected: Set<String> = [
             "fixture::Polymorphic", "fixture::VirtualBase", "fixture::Intermediate", "fixture::Complete",
             "hierarchy::Left", "hierarchy::Right", "hierarchy::Both", "hierarchy::Shape", "hierarchy::Square",
-            "hierarchy::Retired", "hierarchy::Failure", "hierarchy::HiddenInline", "hierarchy::(anonymous namespace)::Anonymous",
+            "hierarchy::Retired", "hierarchy::Failure", "hierarchy::InlineOnly", "hierarchy::(anonymous namespace)::Anonymous",
         ]
         #expect(expected.isSubset(of: names), "missing \(expected.subtracting(names))")
         let classes = Self.store.classes(in: machO)
@@ -101,12 +101,12 @@ struct CPlusPlusClassIndexStoreTests {
     }
 
     @Test(arguments: Reader.allCases)
-    func aHiddenClassHasANonUniqueTypeInfoAndItsNameStillReads(reader: Reader) throws {
+    func aClassWithoutAKeyFunctionHasANonUniqueTypeInfoAndItsNameStillReads(reader: Reader) throws {
         let machO = try ClassIndexTestImages.fixture(reader)
-        let hiddenInline = try Self.requireClass("hierarchy::HiddenInline", in: machO)
-        #expect(hiddenInline.mangledTypeName == "N9hierarchy12HiddenInlineE")
+        let inlineOnly = try Self.requireClass("hierarchy::InlineOnly", in: machO)
+        #expect(inlineOnly.mangledTypeName == "N9hierarchy10InlineOnlyE")
         #if arch(arm64)
-        #expect(!hiddenInline.hasUniqueTypeInfo)
+        #expect(!inlineOnly.hasUniqueTypeInfo)
         #endif
         let left = try Self.requireClass("hierarchy::Left", in: machO)
         #expect(left.hasUniqueTypeInfo)
@@ -198,8 +198,12 @@ struct CPlusPlusClassIndexStoreTests {
         // offset, offset-to-top and RTTI slot.
         #expect(primary.addressPointOffset > virtualTableSymbol.offset)
         #expect(primary.addressPointOffset - virtualTableSymbol.offset <= 8 * 8)
-        // The secondary table belongs to the virtual base.
-        #expect(tables.dropFirst().map(\.subobjectClassName) == ["fixture::VirtualBase"])
+        // `VirtualBase` holds nothing but its virtual pointer: as a nearly
+        // empty virtual base it is `Intermediate`'s primary base and shares
+        // its table, which names the slots after it.
+        #expect(tables.count == 1)
+        #expect(primary.functions.map { $0.baseFunction?.className } == Array(repeating: "fixture::VirtualBase", count: 3))
+        #expect(primary.functions.map { $0.name?.baseName } == ["~Intermediate", "~Intermediate", "run"])
     }
 
     @Test(arguments: Reader.allCases)
@@ -256,7 +260,7 @@ struct CPlusPlusClassIndexStoreTests {
         let expectedSlotCounts: [String: [Int]] = [
             "hierarchy::Left": [3], "hierarchy::Right": [3], "hierarchy::Both": [5, 3],
             "hierarchy::Shape": [3], "hierarchy::Square": [3], "hierarchy::Retired": [4],
-            "hierarchy::Failure": [3], "hierarchy::HiddenInline": [3], "fixture::Polymorphic": [3],
+            "hierarchy::Failure": [3], "hierarchy::InlineOnly": [3], "fixture::Polymorphic": [3],
         ]
         for (qualifiedName, slotCounts) in expectedSlotCounts {
             let polymorphicClass = try Self.requireClass(qualifiedName, in: machO)

@@ -96,7 +96,10 @@ final class ImagePointerSlots: @unchecked Sendable {
         case .standaloneFile(let contentsByOffset):
             return contentsByOffset[offset]
         case .cacheFile(let sharedRegionStart, let imageAddressRanges):
+            // A small integer is no pointer, though the cache's format would
+            // decode it into an address near the shared region's start.
             guard case .file(let file) = image,
+                  let stored = word(atOffset: offset), !Self.isSmallInteger(stored),
                   let (cache, cacheOffset) = file.resolveCacheStartOffsetIfNeeded(offset: UInt64(offset)),
                   let resolved = cache.resolveOptionalRebase(at: cacheOffset) else {
                 return nil
@@ -111,6 +114,7 @@ final class ImagePointerSlots: @unchecked Sendable {
             #if canImport(Darwin)
             guard case .process(let processImage) = image else { return nil }
             let raw = processImage.ptr.loadUnaligned(fromByteOffset: offset, as: UInt64.self)
+            guard !Self.isSmallInteger(Int64(bitPattern: raw)) else { return nil }
             let address = raw & UInt64(InProcessContext.addressMask)
             guard address != 0 else { return nil }
             if imageAddressRanges.contains(where: { $0.contains(address) }) {
@@ -162,7 +166,13 @@ final class ImagePointerSlots: @unchecked Sendable {
             return false
         }
         guard let value = word(atOffset: offset) else { return false }
-        return value >= -(1 << 31) && value < (1 << 31)
+        return Self.isSmallInteger(value)
+    }
+
+    /// Whether a stored word is an integer no pointer of a cache file or of
+    /// this process can be.
+    static func isSmallInteger(_ value: Int64) -> Bool {
+        value >= -(1 << 31) && value < (1 << 31)
     }
 
     /// Whether `offset` lies in the image's code.

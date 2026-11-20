@@ -170,9 +170,11 @@ struct Failure : std::exception {
 };
 FIXTURE_KEEP const char *Failure::what() const noexcept { return "failure"; }
 
-// No key function and hidden: on Apple arm64 its typeinfo is not unique.
-struct __attribute__((visibility("hidden"))) HiddenInline {
-    virtual ~HiddenInline() {}
+// No key function and default visibility: every image that uses it emits
+// its own hidden copy of the typeinfo, which on Apple arm64 is marked not
+// unique.
+struct __attribute__((visibility("default"))) InlineOnly {
+    virtual ~InlineOnly() {}
     virtual int value() { return 7; }
 };
 
@@ -189,21 +191,21 @@ FIXTURE_KEEP int callRight(Right *object) { return object->right(); }
 FIXTURE_KEEP int callArea(Shape *object) { return object->area(); }
 FIXTURE_KEEP int callKept(Retired *object) { return object->kept(); }
 FIXTURE_KEEP int callWhat(std::exception *object) { return object->what()[0]; }
-FIXTURE_KEEP int callValue(HiddenInline *object) { return object->value(); }
+FIXTURE_KEEP int callValue(InlineOnly *object) { return object->value(); }
 
 FIXTURE_KEEP int touchHierarchies() {
     Both *both = new Both();
     Square *square = new Square();
     Retired *retired = new Retired();
     Failure *failure = new Failure();
-    HiddenInline *hiddenInline = new HiddenInline();
+    InlineOnly *inlineOnly = new InlineOnly();
     Left *anonymous = new Anonymous();
-    int total = callLeft(both) + callRight(both) + both->both() + callArea(square) + callKept(retired) + callWhat(failure) + callValue(hiddenInline) + callLeft(anonymous);
+    int total = callLeft(both) + callRight(both) + both->both() + callArea(square) + callKept(retired) + callWhat(failure) + callValue(inlineOnly) + callLeft(anonymous);
     delete both;
     delete square;
     delete retired;
     delete failure;
-    delete hiddenInline;
+    delete inlineOnly;
     delete anonymous;
     return total;
 }

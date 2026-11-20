@@ -377,20 +377,33 @@ final class ClassResolver {
         record(of: handle)?.value.qualifiedName ?? ""
     }
 
-    /// The first non-virtual base at offset zero that has a vtable — the
-    /// primary base, by the Itanium ABI's layout rules.
+    /// The primary base, by the Itanium ABI's layout rules: the first
+    /// non-virtual base at offset zero that has a vtable; failing that, a
+    /// virtual base the class's own table places at offset zero — a nearly
+    /// empty virtual base, which shares the class's virtual pointer.
     func primaryBase(of handle: ClassHandle) -> ClassHandle? {
         if let known = primaryBasesByClass[handle] {
             return known
         }
+        let record = record(of: handle)
         var primaryBase: ClassHandle?
         var firstCandidate: ClassHandle?
-        for base in record(of: handle)?.bases ?? [] where !base.isVirtual && base.offset == 0 {
+        for base in record?.bases ?? [] where !base.isVirtual && base.offset == 0 {
             guard let (image, offset) = locator.locate(base.reference, from: handle.image) else { continue }
             let candidate = ClassHandle(image: image, typeInfoOffset: offset)
             firstCandidate = firstCandidate ?? candidate
-            if record(of: candidate)?.virtualTables.isEmpty == false {
+            if self.record(of: candidate)?.virtualTables.isEmpty == false {
                 primaryBase = candidate
+                break
+            }
+        }
+        if primaryBase == nil, firstCandidate == nil, let primaryTable = record?.virtualTables.first(where: { $0.offsetToTop == 0 }) {
+            for base in record?.bases ?? [] where base.isVirtual {
+                guard handle.image.word(atOffset: primaryTable.addressPointOffset + base.offset) == 0,
+                      let (image, offset) = locator.locate(base.reference, from: handle.image) else {
+                    continue
+                }
+                primaryBase = ClassHandle(image: image, typeInfoOffset: offset)
                 break
             }
         }

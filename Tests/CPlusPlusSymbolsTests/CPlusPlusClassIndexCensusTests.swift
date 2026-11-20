@@ -10,7 +10,9 @@ import MachODependencies
 /// whatever the image's version.
 @Suite
 struct CPlusPlusClassIndexCensusTests {
-    private static let javaScriptCorePath = "/System/Library/Frameworks/JavaScriptCore.framework/Versions/A/JavaScriptCore"
+    /// A C++ framework built with run-time type information (WebKit's
+    /// JavaScriptCore is built without).
+    private static let espressoPath = "/System/Library/PrivateFrameworks/Espresso.framework/Versions/A/Espresso"
 
     /// The iWork frameworks the proposal took its numbers from; set
     /// `CPLUSPLUS_CLASS_CENSUS_FRAMEWORKS` to read them from elsewhere.
@@ -72,13 +74,13 @@ struct CPlusPlusClassIndexCensusTests {
         return (census, slotCountsByClass)
     }
 
-    @Test func classIndexCensusOfJavaScriptCore() throws {
+    @Test func classIndexCensusOfEspresso() throws {
         let hostCache = try #require(FullDyldCache.cachedHost)
-        let file = try #require(hostCache.machOFile(by: .path(Self.javaScriptCorePath)))
-        try #require(dlopen(Self.javaScriptCorePath, RTLD_NOW) != nil)
-        let image = try #require(MachOImage(name: "JavaScriptCore"))
-        let (fileCensus, fileSlotCounts) = Self.census(of: file, label: "JavaScriptCore, MachOFile from the host cache") { $0.virtualTables(of: $1, in: file) }
-        let (imageCensus, imageSlotCounts) = Self.census(of: image, label: "JavaScriptCore, MachOImage in this process") { $0.virtualTables(of: $1, in: image) }
+        let file = try #require(hostCache.machOFile(by: .path(Self.espressoPath)))
+        try #require(dlopen(Self.espressoPath, RTLD_NOW) != nil)
+        let image = try #require(MachOImage(name: "Espresso"))
+        let (fileCensus, fileSlotCounts) = Self.census(of: file, label: "Espresso, MachOFile from the host cache") { $0.virtualTables(of: $1, in: file) }
+        let (imageCensus, imageSlotCounts) = Self.census(of: image, label: "Espresso, MachOImage in this process") { $0.virtualTables(of: $1, in: image) }
         print("C++ class index census —\n\(fileCensus)\n\(imageCensus)")
         #expect(fileCensus.classCount > 100)
         #expect(fileCensus.slotCount > 1000)
@@ -91,9 +93,9 @@ struct CPlusPlusClassIndexCensusTests {
 
     /// No group of tables the scan finds runs past the next symbol after
     /// its `__ZTV` symbol: the scan stops at the next object.
-    @Test func scannedTableLengthsMatchSymbolBoundsInJavaScriptCore() throws {
-        try #require(dlopen(Self.javaScriptCorePath, RTLD_NOW) != nil)
-        let image = try #require(MachOImage(name: "JavaScriptCore"))
+    @Test func scannedTableLengthsMatchSymbolBoundsInEspresso() throws {
+        try #require(dlopen(Self.espressoPath, RTLD_NOW) != nil)
+        let image = try #require(MachOImage(name: "Espresso"))
         let store = CPlusPlusClassIndexStore(symbolStore: .shared)
         let symbolOffsets = Set(image.symbols.map(\.offset)).sorted()
         func nextSymbolOffset(after offset: Int) -> Int? {
