@@ -74,7 +74,7 @@
 
 ## 已知局限
 
-- 本包承诺支持 Linux，但没有 Linux CI，本机也没有装 Linux 的 Swift SDK，这两个模块在 Linux 上能否编译未经验证。
+- 本包自 3.2.0 起不再支持 Linux：共享状态改用 FrameworkToolbox `OSToolbox` 的 `Mutex`，它基于 `os_unfair_lock`，只在 Apple 平台上有。此前承诺过 Linux，但从没有 Linux CI，也没在 Linux 上编译验证过。
 - `ReadingContext` 只有 64 位的 `MachOContext`（`Runtime = RuntimeTarget64`）；32 位 Mach-O 没有对应的 context。
 
 术语（context form / Mach-O form / pointer form、cache scope、reader wrapper）沿用 MachOSwiftSection 术语表里的定义。

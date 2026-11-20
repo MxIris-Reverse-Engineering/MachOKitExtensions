@@ -202,18 +202,16 @@ document.asMachOImage   // the image beneath, not nil
 
 ## Platforms
 
-macOS 10.15+, iOS 13+, watchOS 6+, tvOS 13+, visionOS 1+, and Linux.
+macOS 10.15+, iOS 13+, watchOS 6+, tvOS 13+ and visionOS 1+.
 
-Linux support matters here because MachOObjCSection supports Linux, and it would have regressed
-had this package pulled in Apple-only dependencies. The package therefore depends only on
-MachOKit, [AssociatedObject](https://github.com/p-x9/AssociatedObject) — which routes through
-[swift-object-association](https://github.com/p-x9/swift-object-association) on
-non-Objective-C platforms — and, for `MachOReading`, [swift-fileio](https://github.com/p-x9/swift-fileio),
-which MachOKit depends on already. `InProcessContext` reads this process's own Mach-O images, so
-it exists on Darwin only, as do the parts of `MachOCodeReferences` that read this
-process (`CodeImageSet.inProcess`, `InProcessCrossReferenceMemory`); its file mode is
-platform-neutral, though it has not been built on Linux. `CPlusPlusSymbols` compiles C++17 and
-links the C++ standard library; it has not been built on Linux either.
+Linux is not supported. Since 3.2.0 the package guards its shared state with the `Mutex` of
+[FrameworkToolbox](https://github.com/Mx-Iris/FrameworkToolbox)'s `OSToolbox`, which is built on
+`os_unfair_lock` and exists on Apple platforms only; it is used the way the standard library's
+`Mutex` is, without that one's macOS 15 floor. Besides it the package depends on MachOKit,
+[AssociatedObject](https://github.com/p-x9/AssociatedObject) and, for `MachOReading`,
+[swift-fileio](https://github.com/p-x9/swift-fileio). `InProcessContext` and the parts of
+`MachOCodeReferences` that read this process (`CodeImageSet.inProcess`,
+`InProcessCrossReferenceMemory`) read this process's own Mach-O images.
 
 ## License
 
