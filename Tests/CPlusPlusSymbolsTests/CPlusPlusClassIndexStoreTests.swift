@@ -13,12 +13,14 @@ struct CPlusPlusClassIndexStoreTests {
     private static let store = CPlusPlusClassIndexStore.shared
 
     private static func requireClass(_ qualifiedName: String, in machO: some MachORepresentableWithCache) throws -> CPlusPlusClass {
-        try #require(store.class(named: qualifiedName, in: machO), "no class \(qualifiedName)")
+        let found = store.class(named: qualifiedName, in: machO)
+        return try #require(found, "no class \(qualifiedName)")
     }
 
     private static func primaryTable(of qualifiedName: String, in machO: some MachORepresentableWithCache) throws -> CPlusPlusVirtualTable {
         let polymorphicClass = try requireClass(qualifiedName, in: machO)
-        return try #require(store.virtualTables(of: polymorphicClass, in: machO).first { $0.isPrimary }, "no primary vtable of \(qualifiedName)")
+        let primary = store.virtualTables(of: polymorphicClass, in: machO).first { $0.isPrimary }
+        return try #require(primary, "no primary vtable of \(qualifiedName)")
     }
 
     private static func baseNames(_ table: CPlusPlusVirtualTable) -> [String?] {
@@ -106,14 +108,16 @@ struct CPlusPlusClassIndexStoreTests {
         #if arch(arm64)
         #expect(!hiddenInline.hasUniqueTypeInfo)
         #endif
-        #expect(try Self.requireClass("hierarchy::Left", in: machO).hasUniqueTypeInfo)
+        let left = try Self.requireClass("hierarchy::Left", in: machO)
+        #expect(left.hasUniqueTypeInfo)
     }
 
     @Test(arguments: Reader.allCases)
     func qualifiedNameFindsTheSameScopeInTheScopeTree(reader: Reader) throws {
         let machO = try ClassIndexTestImages.fixture(reader)
         let both = try Self.requireClass("hierarchy::Both", in: machO)
-        let scope = try #require(CPlusPlusSymbolIndexStore.shared.scope(named: both.qualifiedName, in: machO))
+        let foundScope = CPlusPlusSymbolIndexStore.shared.scope(named: both.qualifiedName, in: machO)
+        let scope = try #require(foundScope)
         #expect(scope.path == both.scopePath)
         #expect(scope.baseName == both.baseName)
     }
@@ -124,7 +128,8 @@ struct CPlusPlusClassIndexStoreTests {
         let left = try Self.requireClass("hierarchy::Left", in: machO)
         let derived = Self.store.derivedClasses(of: left, in: machO).map(\.qualifiedName)
         #expect(Set(derived) == ["hierarchy::Both", "hierarchy::(anonymous namespace)::Anonymous"])
-        #expect(Self.store.class(atTypeInfoOffset: left.typeInfoOffset, in: machO) == left)
+        let classAtOffset = Self.store.class(atTypeInfoOffset: left.typeInfoOffset, in: machO)
+        #expect(classAtOffset == left)
     }
 
     @Test func processImageAndItsFileGiveTheSameClasses() throws {
@@ -169,7 +174,8 @@ struct CPlusPlusClassIndexStoreTests {
     func secondaryTableSlotsAreThunksNamedAfterTheOverrider(reader: Reader) throws {
         let machO = try ClassIndexTestImages.fixture(reader)
         let both = try Self.requireClass("hierarchy::Both", in: machO)
-        let secondary = try #require(Self.store.virtualTables(of: both, in: machO).last)
+        let tables = Self.store.virtualTables(of: both, in: machO)
+        let secondary = try #require(tables.last)
         let right = try #require(secondary.functions.last)
         #expect(right.slotIndex == 2)
         #expect(right.symbolName?.kind == .nonVirtualThunk)
@@ -184,7 +190,8 @@ struct CPlusPlusClassIndexStoreTests {
         let machO = try ClassIndexTestImages.fixture(reader)
         let intermediate = try Self.requireClass("fixture::Intermediate", in: machO)
         let tables = Self.store.virtualTables(of: intermediate, in: machO)
-        let virtualTableSymbol = try #require(CPlusPlusSymbolIndexStore.shared.symbol(named: "__ZTVN7fixture12IntermediateE", in: machO))
+        let foundSymbol = CPlusPlusSymbolIndexStore.shared.symbol(named: "__ZTVN7fixture12IntermediateE", in: machO)
+        let virtualTableSymbol = try #require(foundSymbol)
         let primary = try #require(tables.first)
         #expect(primary.isPrimary)
         // The primary table starts right after the group's virtual base
@@ -253,7 +260,8 @@ struct CPlusPlusClassIndexStoreTests {
         ]
         for (qualifiedName, slotCounts) in expectedSlotCounts {
             let polymorphicClass = try Self.requireClass(qualifiedName, in: machO)
-            #expect(Self.store.virtualTables(of: polymorphicClass, in: machO).map(\.functions.count) == slotCounts, "\(qualifiedName)")
+            let tables = Self.store.virtualTables(of: polymorphicClass, in: machO)
+            #expect(tables.map(\.functions.count) == slotCounts, "\(qualifiedName)")
         }
     }
 
