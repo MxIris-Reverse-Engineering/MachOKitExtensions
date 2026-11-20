@@ -1,6 +1,7 @@
 import Foundation
 import MachOKit
 import AssociatedObject
+import OSToolbox
 
 public protocol MachORepresentableWithCache: MachORepresentable, Sendable {
     associatedtype Cache: DyldCacheRepresentable
@@ -61,8 +62,9 @@ extension MachOImage {
 }
 
 extension MachOFile: MachORepresentableWithCache, @unchecked @retroactive Sendable {
-    /// Guards the one store of ``identifier``'s value.
-    private static let identifierStoreLock = NSLock()
+    /// Guards the one store of ``identifier``'s value. It holds no value of
+    /// its own: the value is an association of each file.
+    private static let identifierStoreLock = Mutex(())
 
     @AssociatedObject(.retain(.nonatomic))
     private var storedIdentifier: MachOTargetIdentifier?
@@ -82,13 +84,17 @@ extension MachOFile: MachORepresentableWithCache, @unchecked @retroactive Sendab
             return storedIdentifier
         }
         let computedIdentifier = makeIdentifier()
-        Self.identifierStoreLock.lock()
-        defer { Self.identifierStoreLock.unlock() }
-        if let storedIdentifier {
-            return storedIdentifier
+        // The identifier is not `Sendable` (`.image` holds a pointer), so the
+        // lock hands back only the value an earlier store left, and this
+        // thread's own value is returned outside it.
+        let earlierIdentifier: MachOTargetIdentifier? = Self.identifierStoreLock.withLock { _ in
+            if let storedIdentifier {
+                return storedIdentifier
+            }
+            storedIdentifier = computedIdentifier
+            return nil
         }
-        storedIdentifier = computedIdentifier
-        return computedIdentifier
+        return earlierIdentifier ?? computedIdentifier
     }
 
     /// Reads the load commands **once** and derives the cache identity from the

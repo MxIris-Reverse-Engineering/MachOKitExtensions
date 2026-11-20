@@ -1,5 +1,6 @@
 import Foundation
 import MachOKit
+import OSToolbox
 
 /// One opening of each dyld shared cache file that dependency locators search
 /// by path, shared by every locator for as long as anything still holds it.
@@ -30,44 +31,41 @@ enum SharedDyldCacheOpenings {
 
     private static let registry = Registry()
 
-    private final class Registry: @unchecked Sendable {
+    private final class Registry: Sendable {
         /// One per cache file, created under the registry's lock and filled in
         /// under its own, so a cache being opened holds up only the requests
         /// for that cache — the arrangement of `DyldCacheImageDirectory`'s
         /// registry.
-        private final class Slot: @unchecked Sendable {
-            let lock = NSLock()
-            weak var cache: FullDyldCache?
+        private final class Slot: Sendable {
+            let cache = Mutex(WeakBox<FullDyldCache>())
         }
 
-        private let lock = NSLock()
-        private var slotsByFileIdentity: [DependencyFileIdentity: Slot] = [:]
+        private let slotsByFileIdentity = Mutex<[DependencyFileIdentity: Slot]>([:])
 
         func cache(at url: URL) throws -> FullDyldCache {
             guard let fileIdentity = DependencyFileIdentity(fileAt: url) else {
                 return try FullDyldCache(url: url)
             }
-            lock.lock()
-            let slot: Slot
-            if let existingSlot = slotsByFileIdentity[fileIdentity] {
-                slot = existingSlot
-            } else {
-                slot = Slot()
+            let slot = slotsByFileIdentity.withLock { slotsByFileIdentity in
+                if let existingSlot = slotsByFileIdentity[fileIdentity] {
+                    return existingSlot
+                }
+                let slot = Slot()
                 slotsByFileIdentity[fileIdentity] = slot
+                return slot
             }
-            lock.unlock()
 
-            slot.lock.lock()
-            defer { slot.lock.unlock() }
-            if let cache = slot.cache {
+            return try slot.cache.withLock { cacheReference in
+                if let cache = cacheReference.value {
+                    return cache
+                }
+                let cache = try FullDyldCache(url: url)
+                _ = cache.mappingInfos
+                _ = cache.mappingAndSlideInfos
+                _ = try? cache.symbolCache
+                cacheReference.value = cache
                 return cache
             }
-            let cache = try FullDyldCache(url: url)
-            _ = cache.mappingInfos
-            _ = cache.mappingAndSlideInfos
-            _ = try? cache.symbolCache
-            slot.cache = cache
-            return cache
         }
     }
 }

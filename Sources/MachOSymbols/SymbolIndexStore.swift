@@ -3,6 +3,7 @@ import MachOKit
 import MachOKitExtensions
 import MachOResolving
 @_spi(Internals) import MachOCaches
+import OSToolbox
 
 /// The C and C++ symbols of an image, found by offset or by name. An image's
 /// index is built on first use and shared by every caller.
@@ -38,8 +39,9 @@ import MachOResolving
 /// built before a language registered is dropped on the store's next query,
 /// and built again.
 ///
-/// `@unchecked Sendable`: the one mutable property is behind a lock.
-public final class SymbolIndexStore: @unchecked Sendable {
+/// `Sendable`: the one mutable value is behind a `Mutex`, and the indexes
+/// themselves are immutable once built.
+public final class SymbolIndexStore: Sendable {
     public static let shared = SymbolIndexStore(languageRegistry: .shared)
 
     private let cache = SharedCache<Storage>(evictionGroup: .symbolStore)
@@ -47,11 +49,9 @@ public final class SymbolIndexStore: @unchecked Sendable {
     /// Which languages count as some other package's, and stay out.
     private let languageRegistry: SymbolLanguageRegistry
 
-    private let observedLanguageGenerationLock = NSLock()
-
     /// The registry generation every index in the cache was built at or
-    /// after. Guarded by `observedLanguageGenerationLock`.
-    private var observedLanguageGeneration = 0
+    /// after.
+    private let observedLanguageGeneration = Mutex(0)
 
     /// A store of its own, classifying through `languageRegistry` — for
     /// tests; everything else uses ``shared``.
@@ -138,12 +138,11 @@ public final class SymbolIndexStore: @unchecked Sendable {
     }
 
     private func dropIndexesBuiltBefore(generation: Int) {
-        observedLanguageGenerationLock.lock()
-        let isNewGeneration = generation > observedLanguageGeneration
-        if isNewGeneration {
+        let isNewGeneration = observedLanguageGeneration.withLock { observedLanguageGeneration in
+            guard generation > observedLanguageGeneration else { return false }
             observedLanguageGeneration = generation
+            return true
         }
-        observedLanguageGenerationLock.unlock()
         if isNewGeneration {
             cache.removeAll()
         }

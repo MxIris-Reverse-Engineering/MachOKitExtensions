@@ -1,5 +1,6 @@
 import Foundation
 @_spi(Support) import MachOKit
+import OSToolbox
 
 /// Which sub-cache file of a dyld cache maps an address, with each sub-cache
 /// built at most once.
@@ -18,6 +19,10 @@ import Foundation
 /// time it is read, so a table per file held a copy of all of them per image:
 /// 1,867 images read from the macOS 27 cache kept 165,689 `DyldCache` objects,
 /// about 250 MB.
+///
+/// `@unchecked Sendable` because it holds `DyldCache` instances, which
+/// MachOKit does not declare `Sendable`, and hands them to every thread that
+/// looks an address up. The sub-caches it opens are guarded by a lock.
 final class DyldCacheSubCacheTable: @unchecked Sendable {
     private struct MappedRange {
         let address: UInt64
@@ -30,8 +35,7 @@ final class DyldCacheSubCacheTable: @unchecked Sendable {
     private let subCacheEntries: [DyldSubCacheEntry]
     /// Sorted by address. Ranges of different files never overlap.
     private let mappedRanges: [MappedRange]
-    private let lock = NSLock()
-    private var subCaches: [DyldCache?]
+    private let subCaches: Mutex<[DyldCache?]>
 
     init(mainCache: DyldCache) {
         let subCacheEntries = mainCache.subCaches.map { Array($0) } ?? []
@@ -61,7 +65,12 @@ final class DyldCacheSubCacheTable: @unchecked Sendable {
         self.mainCache = mainCache
         self.subCacheEntries = subCacheEntries
         self.mappedRanges = mappedRanges.sorted { $0.address < $1.address }
-        self.subCaches = subCaches
+        // `Mutex` takes its value as `sending`, and the compiler cannot tell
+        // that the sub-caches are not used elsewhere: they come out of
+        // `mainCache`, a non-`Sendable` parameter. `FullDyldCache.subCaches`
+        // builds them anew on every read, so nothing else holds them.
+        nonisolated(unsafe) let initialSubCaches = subCaches
+        self.subCaches = Mutex(initialSubCaches)
     }
 
     /// The sub-cache that maps `address` and the file offset it maps it to, as
@@ -90,25 +99,28 @@ final class DyldCacheSubCacheTable: @unchecked Sendable {
     }
 
     private func subCache(at subCacheIndex: Int) -> DyldCache? {
-        lock.lock()
-        if let subCache = subCaches[subCacheIndex] {
-            lock.unlock()
-            return subCache
+        let storedSubCache = subCaches.withLock { subCaches in
+            subCaches[subCacheIndex]
         }
-        lock.unlock()
+        if let storedSubCache {
+            return storedSubCache
+        }
 
         // Opened outside the lock; when two threads race, the first one
-        // stored is the one both return.
+        // stored is the one both return. Stored through `withLockUnchecked`:
+        // `withLock` refuses to put the non-`Sendable` `DyldCache` this
+        // thread still holds into the guarded state, and sharing it is what
+        // the table is for (see the type's documentation).
         guard let openedSubCache = try? subCacheEntries[subCacheIndex].subcache(for: mainCache) else {
             return nil
         }
-        lock.lock()
-        defer { lock.unlock() }
-        if let subCache = subCaches[subCacheIndex] {
-            return subCache
+        return subCaches.withLockUnchecked { subCaches in
+            if let subCache = subCaches[subCacheIndex] {
+                return subCache
+            }
+            subCaches[subCacheIndex] = openedSubCache
+            return openedSubCache
         }
-        subCaches[subCacheIndex] = openedSubCache
-        return openedSubCache
     }
 }
 
@@ -145,22 +157,21 @@ extension DyldCacheSubCacheTable {
     /// with it the cache's sub-caches and their open files. Held here, they
     /// would keep the sub-cache files of every cache a process ever read open
     /// for the rest of the process.
-    private final class Registry: @unchecked Sendable {
+    private final class Registry: Sendable {
         private struct Entry {
             weak var table: DyldCacheSubCacheTable?
         }
 
-        private let lock = NSLock()
-        private var entriesByCacheIdentity: [CacheIdentity: Entry] = [:]
+        private let entriesByCacheIdentity = Mutex<[CacheIdentity: Entry]>([:])
 
         func table(for mainCache: DyldCache) -> DyldCacheSubCacheTable {
             let cacheIdentity = CacheIdentity(mainCache: mainCache)
-            lock.lock()
-            if let table = entriesByCacheIdentity[cacheIdentity]?.table {
-                lock.unlock()
-                return table
+            let storedTable = entriesByCacheIdentity.withLock { entriesByCacheIdentity in
+                entriesByCacheIdentity[cacheIdentity]?.table
             }
-            lock.unlock()
+            if let storedTable {
+                return storedTable
+            }
 
             // Built outside the lock: from the main file alone it opens every
             // sub-cache file to read its mappings, and lookups in other caches
@@ -168,17 +179,17 @@ extension DyldCacheSubCacheTable {
             // stored is the one both return.
             let builtTable = DyldCacheSubCacheTable(mainCache: mainCache)
 
-            lock.lock()
-            defer { lock.unlock() }
-            if let table = entriesByCacheIdentity[cacheIdentity]?.table {
-                return table
+            return entriesByCacheIdentity.withLock { entriesByCacheIdentity in
+                if let table = entriesByCacheIdentity[cacheIdentity]?.table {
+                    return table
+                }
+                // Entries whose table is gone are dropped as new ones arrive, so
+                // the registry grows with the caches in use at once, not with
+                // every cache the process has read.
+                entriesByCacheIdentity = entriesByCacheIdentity.filter { $0.value.table != nil }
+                entriesByCacheIdentity[cacheIdentity] = Entry(table: builtTable)
+                return builtTable
             }
-            // Entries whose table is gone are dropped as new ones arrive, so
-            // the registry grows with the caches in use at once, not with every
-            // cache the process has read.
-            entriesByCacheIdentity = entriesByCacheIdentity.filter { $0.value.table != nil }
-            entriesByCacheIdentity[cacheIdentity] = Entry(table: builtTable)
-            return builtTable
         }
     }
 }

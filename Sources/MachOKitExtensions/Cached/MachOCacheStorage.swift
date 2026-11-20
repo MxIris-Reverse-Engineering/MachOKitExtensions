@@ -1,43 +1,59 @@
 import Foundation
 import MachOKit
+import OSToolbox
 
 /// Backing store for a ``MachOCached`` view.
 ///
 /// The storage is attached to the Mach-O it serves, so it never holds that
 /// Mach-O itself — a reference back would form a cycle and leak both. Every
 /// computation receives the Mach-O from the view instead.
-final class MachOCacheStorage<Base: MachORepresentable>: @unchecked Sendable {
-    private let lock = NSLock()
+final class MachOCacheStorage<Base: MachORepresentable>: Sendable {
+    /// Every slot of the storage, behind one lock.
+    struct State {
+        // MARK: - Chained fixups
 
-    // MARK: - Chained fixups
+        var dyldChainedFixups: CacheSlot<Base.DyldChainedFixups?> = .notComputed
+        var chainedImports: CacheSlot<[DyldChainedImport]> = .notComputed
+        var fixupPointersByOffset: CacheSlot<[Int: DyldChainedFixupPointer]> = .notComputed
 
-    var dyldChainedFixups: CacheSlot<Base.DyldChainedFixups?> = .notComputed
-    var chainedImports: CacheSlot<[DyldChainedImport]> = .notComputed
-    var fixupPointersByOffset: CacheSlot<[Int: DyldChainedFixupPointer]> = .notComputed
+        // MARK: - Exports
 
-    // MARK: - Exports
+        var exportTrie: CacheSlot<Base.ExportTrie?> = .notComputed
 
-    var exportTrie: CacheSlot<Base.ExportTrie?> = .notComputed
+        // MARK: - Dyld cache files
 
-    // MARK: - Dyld cache files
+        var subCacheTable: CacheSlot<DyldCacheSubCacheTable?> = .notComputed
 
-    var subCacheTable: CacheSlot<DyldCacheSubCacheTable?> = .notComputed
+        // MARK: - Legacy binds
 
-    // MARK: - Legacy binds
+        /// The slots `MachOFile`'s LC_DYLD_INFO(_ONLY) bind streams bind, by
+        /// file offset.
+        var dyldInfoBindsByFileOffset: CacheSlot<[UInt64: MachOFile.DyldInfoBind]> = .notComputed
 
-    /// The slots `MachOFile`'s LC_DYLD_INFO(_ONLY) bind streams bind, by file
-    /// offset.
-    var dyldInfoBindsByFileOffset: CacheSlot<[UInt64: MachOFile.DyldInfoBind]> = .notComputed
+        // MARK: - Resolved fixups
 
-    // MARK: - Resolved fixups
+        /// What `MachOFile.resolveRebase(fileOffset:)` resolved, by the slot's
+        /// file offset.
+        var resolvedRebaseTargetsByFileOffset: [Int: UInt64] = [:]
 
-    /// What `MachOFile.resolveRebase(fileOffset:)` resolved, by the slot's
-    /// file offset.
-    var resolvedRebaseTargetsByFileOffset: [Int: UInt64] = [:]
+        /// What `MachOFile.resolveBind(fileOffset:)` resolved, by the slot's
+        /// file offset.
+        var resolvedBindSymbolNamesByFileOffset: [UInt64: String] = [:]
+    }
 
-    /// What `MachOFile.resolveBind(fileOffset:)` resolved, by the slot's
-    /// file offset.
-    var resolvedBindSymbolNamesByFileOffset: [UInt64: String] = [:]
+    private let state = Mutex(State())
+
+    /// Runs `body` on the slots under the lock.
+    ///
+    /// Through `withLockUnchecked`, not `withLock`: the cached values are not
+    /// `Sendable` — MachOKit's parsing results mostly are not — and are
+    /// reached through key paths and keys the caller passes, so `withLock`
+    /// refuses to hand a stored value out or to store one made outside the
+    /// lock. Handing one value to every thread that asks is what this cache
+    /// is for; a stored value is never mutated.
+    private func withState<Result>(_ body: (inout State) -> Result) -> Result {
+        state.withLockUnchecked(body)
+    }
 
     // MARK: - Memoization
 
@@ -50,35 +66,38 @@ final class MachOCacheStorage<Base: MachORepresentable>: @unchecked Sendable {
     /// stored value wins and is returned to both, which is safe because every
     /// cached value is a pure function of immutable file contents.
     func memoized<Value>(
-        _ keyPath: ReferenceWritableKeyPath<MachOCacheStorage, CacheSlot<Value>>,
+        _ keyPath: WritableKeyPath<State, CacheSlot<Value>>,
         _ compute: () -> Value
     ) -> Value {
-        lock.lock()
-        if case .computed(let value) = self[keyPath: keyPath] {
-            lock.unlock()
-            return value
+        let cachedValue: Value? = withState { state in
+            if case .computed(let value) = state[keyPath: keyPath] {
+                return value
+            }
+            return nil
         }
-        lock.unlock()
+        if let cachedValue {
+            return cachedValue
+        }
 
         let computedValue = compute()
 
-        lock.lock()
-        defer { lock.unlock() }
-        if case .computed(let existingValue) = self[keyPath: keyPath] {
-            return existingValue
+        return withState { state in
+            if case .computed(let existingValue) = state[keyPath: keyPath] {
+                return existingValue
+            }
+            state[keyPath: keyPath] = .computed(computedValue)
+            return computedValue
         }
-        self[keyPath: keyPath] = .computed(computedValue)
-        return computedValue
     }
 
     /// The entry the dictionary at `keyPath` holds for `key`, if any.
     func memoizedEntry<Key: Hashable, Value>(
-        in keyPath: ReferenceWritableKeyPath<MachOCacheStorage, [Key: Value]>,
+        in keyPath: WritableKeyPath<State, [Key: Value]>,
         for key: Key
     ) -> Value? {
-        lock.lock()
-        defer { lock.unlock() }
-        return self[keyPath: keyPath][key]
+        withState { state in
+            state[keyPath: keyPath][key]
+        }
     }
 
     /// Records `value` for `key` in the dictionary at `keyPath`.
@@ -90,10 +109,10 @@ final class MachOCacheStorage<Base: MachORepresentable>: @unchecked Sendable {
     func memoize<Key: Hashable, Value>(
         _ value: Value,
         for key: Key,
-        in keyPath: ReferenceWritableKeyPath<MachOCacheStorage, [Key: Value]>
+        in keyPath: WritableKeyPath<State, [Key: Value]>
     ) {
-        lock.lock()
-        defer { lock.unlock() }
-        self[keyPath: keyPath][key] = value
+        withState { state in
+            state[keyPath: keyPath][key] = value
+        }
     }
 }

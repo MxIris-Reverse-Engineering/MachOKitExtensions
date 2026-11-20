@@ -1,6 +1,7 @@
 import Foundation
 import MachOKit
 import MachOKitExtensions
+import OSToolbox
 
 /// Locates dependency `MachOFile`s across a set of search paths, for a root
 /// binary read from disk (no running process to ask).
@@ -51,6 +52,10 @@ import MachOKitExtensions
 /// Explicit files and system-root files are the caller's own choice and are
 /// never filtered. A load name every candidate was rejected for lands in the
 /// closure's `unresolvedLoadNames`, as any other miss does.
+///
+/// `@unchecked Sendable` because it holds the `FullDyldCache` instances it
+/// searches, which MachOKit does not declare `Sendable`, and reads them from
+/// whichever thread locates. What the lookups fill in is behind two `Mutex`es.
 public final class FileDependencyLocator: DependencyLocating, @unchecked Sendable {
     /// Search paths that could not be opened. Never thrown: one bad path must
     /// not fail the whole resolution.
@@ -62,12 +67,13 @@ public final class FileDependencyLocator: DependencyLocating, @unchecked Sendabl
     private let preferredCPU: CPU?
     private let platforms: Set<Platform>
     private let caches: [FullDyldCache]
-    /// Guards `cacheDirectories` and `locatedCacheImages`.
-    private let cacheLookupLock = NSLock()
-    private var cacheDirectories: [CacheDirectory]?
-    private var locatedCacheImages: [CacheImageReference: MachOFile] = [:]
-    private let systemRootFilesLock = NSLock()
-    private var systemRootFilesByLoadName: [String: MachOFile?] = [:]
+    /// What the cache lookups fill in, behind one lock.
+    private struct CacheLookupState {
+        var cacheDirectories: [CacheDirectory]?
+        var locatedCacheImages: [CacheImageReference: MachOFile] = [:]
+    }
+    private let cacheLookupState = Mutex(CacheLookupState())
+    private let systemRootFilesByLoadName = Mutex<[String: MachOFile?]>([:])
 
     /// - Parameters:
     ///   - searchPaths: Consulted in order; the first explicit file registered
@@ -189,20 +195,20 @@ public final class FileDependencyLocator: DependencyLocating, @unchecked Sendabl
     /// Mach-O counts as a miss, not a failure.
     private func systemRootFile(forLoadName loadName: String) -> MachOFile? {
         guard !systemRoots.isEmpty, loadName.hasPrefix("/") else { return nil }
-        systemRootFilesLock.lock()
-        defer { systemRootFilesLock.unlock() }
-        if let located = systemRootFilesByLoadName[loadName] { return located }
-        var located: MachOFile?
-        for systemRoot in systemRoots {
-            let path = systemRoot + loadName
-            guard FileManager.default.fileExists(atPath: path),
-                  let machOFile = try? SharedMachOFileOpenings.machOFile(at: URL(fileURLWithPath: path), preferredCPU: preferredCPU)
-            else { continue }
-            located = machOFile
-            break
+        return systemRootFilesByLoadName.withLock { systemRootFilesByLoadName in
+            if let located = systemRootFilesByLoadName[loadName] { return located }
+            var located: MachOFile?
+            for systemRoot in systemRoots {
+                let path = systemRoot + loadName
+                guard FileManager.default.fileExists(atPath: path),
+                      let machOFile = try? SharedMachOFileOpenings.machOFile(at: URL(fileURLWithPath: path), preferredCPU: preferredCPU)
+                else { continue }
+                located = machOFile
+                break
+            }
+            systemRootFilesByLoadName[loadName] = located
+            return located
         }
-        systemRootFilesByLoadName[loadName] = located
-        return located
     }
 
     // MARK: - Cache images
@@ -229,58 +235,58 @@ public final class FileDependencyLocator: DependencyLocating, @unchecked Sendabl
     /// be merged into gave: first writer wins an install path, and a later
     /// image takes a bare name only with a strictly better rank.
     private func cacheImage(forLoadName loadName: String, bareImageName: String) -> MachOFile? {
-        cacheLookupLock.lock()
-        defer { cacheLookupLock.unlock() }
-        let cacheDirectories = resolvedCacheDirectories()
+        cacheLookupState.withLock { state in
+            let cacheDirectories = resolvedCacheDirectories(in: &state)
 
-        var located: CacheImageReference?
-        for (cachePosition, cacheDirectory) in cacheDirectories.enumerated() {
-            if let imageIndex = cacheDirectory.lookup.imageIndicesByInstallPath[loadName] {
-                located = CacheImageReference(cachePosition: cachePosition, imageIndex: imageIndex)
-                break
-            }
-        }
-        if located == nil {
-            var bestRank = Int.max
+            var located: CacheImageReference?
             for (cachePosition, cacheDirectory) in cacheDirectories.enumerated() {
-                guard let candidate = cacheDirectory.lookup.bestImagesByBareName[bareImageName] else { continue }
-                if located == nil || candidate.rank < bestRank {
-                    located = CacheImageReference(cachePosition: cachePosition, imageIndex: candidate.imageIndex)
-                    bestRank = candidate.rank
+                if let imageIndex = cacheDirectory.lookup.imageIndicesByInstallPath[loadName] {
+                    located = CacheImageReference(cachePosition: cachePosition, imageIndex: imageIndex)
+                    break
                 }
             }
-        }
-        guard let located else { return nil }
+            if located == nil {
+                var bestRank = Int.max
+                for (cachePosition, cacheDirectory) in cacheDirectories.enumerated() {
+                    guard let candidate = cacheDirectory.lookup.bestImagesByBareName[bareImageName] else { continue }
+                    if located == nil || candidate.rank < bestRank {
+                        located = CacheImageReference(cachePosition: cachePosition, imageIndex: candidate.imageIndex)
+                        bestRank = candidate.rank
+                    }
+                }
+            }
+            guard let located else { return nil }
 
-        if let machOFile = locatedCacheImages[located] {
+            if let machOFile = state.locatedCacheImages[located] {
+                return machOFile
+            }
+            let cacheDirectory = cacheDirectories[located.cachePosition]
+            guard let machOFile = DyldCacheImageDirectory.machOFile(of: cacheDirectory.directory.images[located.imageIndex], in: cacheDirectory.cache) else {
+                return nil
+            }
+            state.locatedCacheImages[located] = machOFile
             return machOFile
         }
-        let cacheDirectory = cacheDirectories[located.cachePosition]
-        guard let machOFile = DyldCacheImageDirectory.machOFile(of: cacheDirectory.directory.images[located.imageIndex], in: cacheDirectory.cache) else {
-            return nil
-        }
-        locatedCacheImages[located] = machOFile
-        return machOFile
     }
 
-    /// Called with `cacheLookupLock` held. The first call reads each cache's
-    /// shared directory, which the first locator over that cache in the
-    /// process builds.
-    private func resolvedCacheDirectories() -> [CacheDirectory] {
-        if let cacheDirectories { return cacheDirectories }
+    /// Called under the cache lookup lock, with its state. The first call
+    /// reads each cache's shared directory, which the first locator over that
+    /// cache in the process builds.
+    private func resolvedCacheDirectories(in state: inout CacheLookupState) -> [CacheDirectory] {
+        if let cacheDirectories = state.cacheDirectories { return cacheDirectories }
         let resolved = caches.map { cache in
             let directory = DyldCacheImageDirectory.directory(of: cache)
             return CacheDirectory(cache: cache, directory: directory, lookup: directory.lookup(forRootPlatforms: platforms))
         }
-        cacheDirectories = resolved
+        state.cacheDirectories = resolved
         return resolved
     }
 
     /// The identities of the directories this locator reads, in search
     /// order, for the tests that pin the sharing.
     func cacheImageDirectoryIdentifiers() -> [ObjectIdentifier] {
-        cacheLookupLock.lock()
-        defer { cacheLookupLock.unlock() }
-        return resolvedCacheDirectories().map { ObjectIdentifier($0.directory) }
+        cacheLookupState.withLock { state in
+            resolvedCacheDirectories(in: &state).map { ObjectIdentifier($0.directory) }
+        }
     }
 }

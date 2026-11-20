@@ -1,5 +1,6 @@
 import Foundation
 import MachOKit
+import OSToolbox
 
 /// What the language layers say about runtime libraries and helpers, for
 /// the core to apply without knowing any language.
@@ -27,6 +28,11 @@ import MachOKit
 ///
 /// Remembers the function table of every image it was asked to keep one for
 /// for its own lifetime; a whole-image scan builds its table and drops it.
+///
+/// `@unchecked Sendable` because two of its immutable properties are not
+/// `Sendable`: `memoryOwner`, an `AnyObject` the memory reads from, and the
+/// ``ImageAddressRange`` lists, a public type that never declared it. What it
+/// builds on demand is behind `Mutex`es.
 @_spi(Internals) public final class CodeImageSet: @unchecked Sendable {
     /// Every image, shared cache first.
     @_spi(Internals) public let images: [CodeImage]
@@ -66,13 +72,19 @@ import MachOKit
     /// image by. Two copies of one framework, loaded from two places, share
     /// one.
     private let indicesByInstallName: [String: [Int]]
-    private let lock = NSLock()
-    private var functionTables: [Int: ImageFunctionTable] = [:]
-    private var linkageStorage: Linkage?
-    private var renamedReexportStorage: RenamedReexportIndex?
+
+    /// What the set builds on demand and keeps, behind one lock.
+    private struct State {
+        var functionTables: [Int: ImageFunctionTable] = [:]
+        var linkage: Linkage?
+        var renamedReexports: RenamedReexportIndex?
+        var renamedReexportBuildCount = 0
+    }
+
+    private let state = Mutex(State())
     /// Held while the renamed re-exports are built, so they are built once.
-    private let renamedReexportBuildLock = NSLock()
-    private var renamedReexportBuildCountStorage = 0
+    /// It guards no value of its own.
+    private let renamedReexportBuildLock = Mutex(())
 
     /// The current process's images, or `nil` when it does not run arm64
     /// code.
@@ -379,20 +391,17 @@ import MachOKit
     /// The image's function table, built on first use and then kept for the
     /// set's lifetime — what naming functions needs.
     @_spi(Internals) public func functionTable(ofImageAt imageIndex: Int) -> ImageFunctionTable {
-        lock.lock()
-        if let table = functionTables[imageIndex] {
-            lock.unlock()
+        if let table = existingFunctionTable(ofImageAt: imageIndex) {
             return table
         }
-        lock.unlock()
         // Built outside the lock: two threads may build the same table once
         // each, and the first one stored wins.
         let table = makeFunctionTable(ofImageAt: imageIndex)
-        lock.lock()
-        defer { lock.unlock() }
-        if let stored = functionTables[imageIndex] { return stored }
-        functionTables[imageIndex] = table
-        return table
+        return state.withLock { state in
+            if let stored = state.functionTables[imageIndex] { return stored }
+            state.functionTables[imageIndex] = table
+            return table
+        }
     }
 
     /// The table the set keeps for the image, or a new one it does not keep:
@@ -403,9 +412,9 @@ import MachOKit
     }
 
     @_spi(Internals) public func existingFunctionTable(ofImageAt imageIndex: Int) -> ImageFunctionTable? {
-        lock.lock()
-        defer { lock.unlock() }
-        return functionTables[imageIndex]
+        state.withLock { state in
+            state.functionTables[imageIndex]
+        }
     }
 
     private func makeFunctionTable(ofImageAt imageIndex: Int) -> ImageFunctionTable {
@@ -415,31 +424,31 @@ import MachOKit
     /// Drops the function tables of every image but `keptImageIndices`, and
     /// returns them so that the caller frees them outside any lock.
     @_spi(Internals) public func releaseFunctionTables(exceptForImagesAt keptImageIndices: Set<Int>) -> [Int: ImageFunctionTable] {
-        lock.lock()
-        defer { lock.unlock() }
-        let released = functionTables
-        functionTables = functionTables.filter { keptImageIndices.contains($0.key) }
-        return released
+        state.withLock { state in
+            let released = state.functionTables
+            state.functionTables = state.functionTables.filter { keptImageIndices.contains($0.key) }
+            return released
+        }
     }
 
     // MARK: - Linkage
 
     /// Whether the linkage and the renamed re-exports are read; for tests.
     @_spi(Internals) public var hasPreparedPrefilters: Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return linkageStorage != nil && renamedReexportStorage != nil
+        state.withLock { state in
+            state.linkage != nil && state.renamedReexports != nil
+        }
     }
 
     /// Built on first use and kept: reading every image's load commands takes
     /// a few tens of milliseconds.
     @_spi(Internals) public func linkage() -> Linkage {
-        lock.lock()
-        if let linkageStorage {
-            lock.unlock()
-            return linkageStorage
+        let storedLinkage = state.withLock { state in
+            state.linkage
         }
-        lock.unlock()
+        if let storedLinkage {
+            return storedLinkage
+        }
         var dependents: [Int: [Int]] = [:]
         var reexporters: [Int: [Int]] = [:]
         var executables: [Int] = []
@@ -463,11 +472,14 @@ import MachOKit
             dependents[executable, default: []].append(contentsOf: bundles)
         }
         let linkage = Linkage(dependents: dependents, reexporters: reexporters)
-        lock.lock()
-        defer { lock.unlock() }
-        if let linkageStorage { return linkageStorage }
-        linkageStorage = linkage
-        return linkage
+        // `Linkage` never declared `Sendable`, and `withLock` refuses to store
+        // a non-`Sendable` value this thread still holds. It is a value of
+        // immutable dictionaries of integers, safe to hand to every caller.
+        return state.withLockUnchecked { state in
+            if let storedLinkage = state.linkage { return storedLinkage }
+            state.linkage = linkage
+            return linkage
+        }
     }
 
     /// The names of the dylibs the image's load commands link, in order —
@@ -494,32 +506,36 @@ import MachOKit
     /// and what is kept is small. Built once: a caller that asks while it is
     /// being built waits for it.
     @_spi(Internals) public func renamedReexports(concurrently: Bool = true) -> RenamedReexportIndex {
-        lock.lock()
-        if let renamedReexportStorage {
-            lock.unlock()
-            return renamedReexportStorage
+        if let storedRenamedReexports = storedRenamedReexports() {
+            return storedRenamedReexports
         }
-        lock.unlock()
-        renamedReexportBuildLock.lock()
-        defer { renamedReexportBuildLock.unlock() }
-        lock.lock()
-        if let renamedReexportStorage {
-            lock.unlock()
-            return renamedReexportStorage
+        return renamedReexportBuildLock.withLock { _ in
+            if let storedRenamedReexports = storedRenamedReexports() {
+                return storedRenamedReexports
+            }
+            let index = RenamedReexportIndex(images: self, concurrently: concurrently)
+            // `RenamedReexportIndex` never declared `Sendable`, and `withLock`
+            // refuses to store a non-`Sendable` value this thread still holds.
+            // It is a value of immutable dictionaries of names, safe to hand
+            // to every caller.
+            state.withLockUnchecked { state in
+                state.renamedReexports = index
+                state.renamedReexportBuildCount += 1
+            }
+            return index
         }
-        lock.unlock()
-        let index = RenamedReexportIndex(images: self, concurrently: concurrently)
-        lock.lock()
-        renamedReexportStorage = index
-        renamedReexportBuildCountStorage += 1
-        lock.unlock()
-        return index
+    }
+
+    private func storedRenamedReexports() -> RenamedReexportIndex? {
+        state.withLock { state in
+            state.renamedReexports
+        }
     }
 
     /// How many times the renamed re-exports were built; for tests.
     @_spi(Internals) public var renamedReexportBuildCount: Int {
-        lock.lock()
-        defer { lock.unlock() }
-        return renamedReexportBuildCountStorage
+        state.withLock { state in
+            state.renamedReexportBuildCount
+        }
     }
 }

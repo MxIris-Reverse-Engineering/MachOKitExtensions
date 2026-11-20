@@ -1,6 +1,7 @@
 import Foundation
 import MachOKit
 import MachOKitExtensions
+import OSToolbox
 
 /// One lazily built value per Mach-O image, shared by every caller that
 /// asks for it.
@@ -25,10 +26,11 @@ import MachOKitExtensions
 /// were pinned by live references anyway.
 ///
 /// `final`: an owning type holds a private instance and forwards to it,
-/// rather than subclassing. `@unchecked Sendable` because the mutable state
-/// is behind an `NSLock`.
+/// rather than subclassing. `Sendable` with every entry behind a `Mutex`;
+/// `Storage` need not be `Sendable`, and a finished value goes to every
+/// caller that asks for it, on whatever thread (see `withStorageByKey`).
 @_spi(Internals)
-public final class SharedCache<Storage>: SharedCacheEvicting, @unchecked Sendable {
+public final class SharedCache<Storage>: SharedCacheEvicting, Sendable {
     /// The family this cache's entries are evicted with.
     public let evictionGroup: SharedCacheEvictionGroup
 
@@ -55,16 +57,18 @@ public final class SharedCache<Storage>: SharedCacheEvicting, @unchecked Sendabl
         case inFlight(SharedCacheBuildPromise<Storage>)
     }
 
-    private let storageByKeyLock = NSLock()
-
-    private var storageByKey: [SharedCacheKey: Entry] = [:]
+    private let storageByKey = Mutex<[SharedCacheKey: Entry]>([:])
 
     /// Runs `body` on the entries under the cache lock. The lock is never held
     /// across a build, so `body` must not call back into the cache.
+    ///
+    /// Through `withLockUnchecked`, not `withLock`: `Storage` need not be
+    /// `Sendable`, and `withLock` refuses to store a value the caller still
+    /// holds (a registered or freshly built `Storage`) or to hand a stored
+    /// one out. Sharing one built value among every caller, on any thread,
+    /// is what the cache is for.
     private func withStorageByKey<Result>(_ body: (inout [SharedCacheKey: Entry]) -> Result) -> Result {
-        storageByKeyLock.lock()
-        defer { storageByKeyLock.unlock() }
-        return body(&storageByKey)
+        storageByKey.withLockUnchecked(body)
     }
 
     /// Routing decision the cache lock makes on behalf of `storage(...)`:

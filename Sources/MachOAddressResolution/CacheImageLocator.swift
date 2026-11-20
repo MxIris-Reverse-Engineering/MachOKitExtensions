@@ -1,6 +1,7 @@
 import Foundation
 import MachOKit
 import MachOKitExtensions
+import OSToolbox
 
 /// Finds, inside a dyld shared cache, the image an address belongs to.
 ///
@@ -15,12 +16,20 @@ import MachOKitExtensions
 /// `offline-cross-references-and-symbolication`). It keeps no per-image
 /// cache of itself: the accessor-thunk reader keeps one locator per image in
 /// its own `SharedCache`, with its own eviction group.
+///
+/// `@unchecked Sendable` because it holds the `DyldCache` it opens images
+/// from, which MachOKit does not declare `Sendable`, and opens them from
+/// whichever thread asks. What it opens and builds is behind a `Mutex`.
 @_spi(Internals) public final class CacheImageLocator: @unchecked Sendable {
+    /// What the locator opens and builds, behind one lock.
+    private struct State {
+        var openedImagesByPath: [String: MachOFile?] = [:]
+        var exportedAddressesByImagePath: [String: [UInt64: String]] = [:]
+    }
+
     private let cache: DyldCache
     private let imagesByAddress: [(address: UInt64, path: String)]
-    private let lock = NSLock()
-    private var openedImagesByPath: [String: MachOFile?] = [:]
-    private var exportedAddressesByImagePath: [String: [UInt64: String]] = [:]
+    private let state = Mutex(State())
 
     /// The locator for the cache `machO` was read from; `nil` for a file not
     /// read out of a cache.
@@ -54,20 +63,20 @@ import MachOKitExtensions
 
     @_spi(Internals) public func image(containing address: UInt64) -> MachOFile? {
         guard let path = imagePath(containing: address) else { return nil }
-        lock.lock()
-        if let opened = openedImagesByPath[path] {
-            lock.unlock()
-            return opened
+        let storedImage = state.withLock { state in
+            state.openedImagesByPath[path]
         }
-        lock.unlock()
+        if let storedImage {
+            return storedImage
+        }
         // Opened outside the lock; the first one stored is the one every
         // caller gets, so they share its caches.
         let opened = cache.machOFile(by: .path(path))
-        lock.lock()
-        defer { lock.unlock() }
-        if let alreadyOpened = openedImagesByPath[path] { return alreadyOpened }
-        openedImagesByPath[path] = opened
-        return opened
+        return state.withLock { state in
+            if let alreadyOpened = state.openedImagesByPath[path] { return alreadyOpened }
+            state.openedImagesByPath[path] = opened
+            return opened
+        }
     }
 
     /// Which of `names` — symbols, by their exported spelling — the address
@@ -81,12 +90,12 @@ import MachOKitExtensions
     /// the table would hold wrong addresses and never match.
     @_spi(Internals) public func exportedName(atAddress address: UInt64, in image: MachOFile, among names: some Sequence<String>) -> String? {
         let path = image.imagePath
-        lock.lock()
-        if let addressesByName = exportedAddressesByImagePath[path] {
-            lock.unlock()
-            return addressesByName[address]
+        let storedAddressesByName = state.withLock { state in
+            state.exportedAddressesByImagePath[path]
         }
-        lock.unlock()
+        if let storedAddressesByName {
+            return storedAddressesByName[address]
+        }
         // Searched outside the lock: the answer is a function of the image,
         // so whichever caller stores it first stores the same table.
         var addressesByName: [UInt64: String] = [:]
@@ -98,11 +107,11 @@ import MachOKitExtensions
             else { continue }
             addressesByName[exportedAddress] = name
         }
-        lock.lock()
-        if exportedAddressesByImagePath[path] == nil {
-            exportedAddressesByImagePath[path] = addressesByName
+        state.withLock { state in
+            if state.exportedAddressesByImagePath[path] == nil {
+                state.exportedAddressesByImagePath[path] = addressesByName
+            }
         }
-        lock.unlock()
         return addressesByName[address]
     }
 }

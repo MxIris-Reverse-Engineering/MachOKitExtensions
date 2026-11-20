@@ -180,9 +180,10 @@ let package = Package(
             url: "https://github.com/p-x9/swift-fileio.git",
             from: "0.13.0"
         ),
-        // `Mutex` from OSToolbox, for the test support: the standard library's
-        // needs macOS 15, OSAllocatedUnfairLock macOS 13, and this package
-        // reaches back to macOS 10.15. MachOSwiftSection depends on it as well.
+        // `Mutex` from OSToolbox, the lock of every cache and registry here and
+        // of the test support: the standard library's needs macOS 15,
+        // OSAllocatedUnfairLock macOS 13, and this package reaches back to
+        // macOS 10.15. MachOSwiftSection depends on it as well.
         .package(
             url: "https://github.com/Mx-Iris/FrameworkToolbox",
             from: "0.17.0"
@@ -194,6 +195,7 @@ let package = Package(
             dependencies: [
                 "MachOKit",
                 .product(name: "AssociatedObject", package: "AssociatedObject"),
+                .product(name: "OSToolbox", package: "FrameworkToolbox"),
             ]
         ),
         .target(
@@ -226,6 +228,7 @@ let package = Package(
             dependencies: [
                 "MachOKit",
                 "MachOKitExtensions",
+                .product(name: "OSToolbox", package: "FrameworkToolbox"),
             ]
         ),
         .target(
@@ -233,6 +236,7 @@ let package = Package(
             dependencies: [
                 "MachOKit",
                 "MachOKitExtensions",
+                .product(name: "OSToolbox", package: "FrameworkToolbox"),
             ]
         ),
         .target(
@@ -242,6 +246,7 @@ let package = Package(
                 "MachOKitExtensions",
                 "MachOResolving",
                 "MachOCaches",
+                .product(name: "OSToolbox", package: "FrameworkToolbox"),
             ]
         ),
         .target(
@@ -275,6 +280,7 @@ let package = Package(
                 "MachOKitExtensions",
                 "MachOReading",
                 "ARM64InstructionDecoding",
+                .product(name: "OSToolbox", package: "FrameworkToolbox"),
             ]
         ),
         // The language-free core of the cross-reference analysis: image
@@ -289,6 +295,7 @@ let package = Package(
                 "MachOReading",
                 "MachOAddressResolution",
                 "ARM64InstructionDecoding",
+                .product(name: "OSToolbox", package: "FrameworkToolbox"),
             ]
         ),
         // LLVM's Itanium demangler, vendored verbatim from libc++abi under
@@ -314,6 +321,7 @@ let package = Package(
                 "MachOAddressResolution",
                 "MachODependencies",
                 "CPlusPlusDemangling",
+                .product(name: "OSToolbox", package: "FrameworkToolbox"),
             ]
         ),
         .target(

@@ -1,4 +1,5 @@
 import Foundation
+import OSToolbox
 
 /// The languages other packages taught this package to tell apart.
 ///
@@ -22,19 +23,20 @@ import Foundation
 /// registered, the first whose recognizer accepts the name winning; then
 /// ``SymbolLanguage/c``. ``SymbolIndexStore`` keeps C and C++ names and only
 /// the offsets of every other language's.
-public final class SymbolLanguageRegistry: @unchecked Sendable {
+public final class SymbolLanguageRegistry: Sendable {
     /// The registry every classification and ``SymbolIndexStore/shared`` use
     /// unless told otherwise.
     public static let shared = SymbolLanguageRegistry()
 
-    private let lock = NSLock()
+    private struct State {
+        var registrations: [SymbolLanguageRegistration] = []
 
-    /// Guarded by `lock`.
-    private var registrations: [SymbolLanguageRegistration] = []
+        /// How many languages have registered: an index built from an older
+        /// classification is out of date.
+        var registrationCount = 0
+    }
 
-    /// How many languages have registered: an index built from an older
-    /// classification is out of date. Guarded by `lock`.
-    private var registrationCount = 0
+    private let state = Mutex(State())
 
     /// An empty registry, for classifying apart from the shared one — a
     /// test, say.
@@ -58,33 +60,33 @@ public final class SymbolLanguageRegistry: @unchecked Sendable {
     /// dropped on that store's next query, and built again.
     public func register(_ language: SymbolLanguage, where recognizes: @escaping @Sendable (UnsafePointer<CChar>) -> Bool) {
         precondition(language != .c && language != .cPlusPlus, "\(language) is built into SymbolLanguage and cannot be registered")
-        lock.lock()
-        defer { lock.unlock() }
-        guard !registrations.contains(where: { $0.language == language }) else { return }
-        registrations.append(SymbolLanguageRegistration(language: language, recognizes: recognizes))
-        registrationCount += 1
+        state.withLock { state in
+            guard !state.registrations.contains(where: { $0.language == language }) else { return }
+            state.registrations.append(SymbolLanguageRegistration(language: language, recognizes: recognizes))
+            state.registrationCount += 1
+        }
     }
 
     /// The registered languages, in registration order.
     public var registeredLanguages: [SymbolLanguage] {
-        lock.lock()
-        defer { lock.unlock() }
-        return registrations.map(\.language)
+        state.withLock { state in
+            state.registrations.map(\.language)
+        }
     }
 
     /// How many languages have registered so far.
     var generation: Int {
-        lock.lock()
-        defer { lock.unlock() }
-        return registrationCount
+        state.withLock { state in
+            state.registrationCount
+        }
     }
 
     /// The registrations as they stand now, to classify many names without
     /// taking the lock for each.
     func classifier() -> SymbolLanguageClassifier {
-        lock.lock()
-        defer { lock.unlock() }
-        return SymbolLanguageClassifier(generation: registrationCount, registrations: registrations)
+        state.withLock { state in
+            SymbolLanguageClassifier(generation: state.registrationCount, registrations: state.registrations)
+        }
     }
 
     func language(ofSymbolNameBytes name: UnsafePointer<CChar>) -> SymbolLanguage {

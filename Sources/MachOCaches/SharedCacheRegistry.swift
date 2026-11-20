@@ -1,4 +1,5 @@
 import Foundation
+import OSToolbox
 
 /// A per-image cache the registry can inspect and evict by key. Every
 /// ``SharedCache`` conforms; a store that keeps something other than a
@@ -39,7 +40,7 @@ public protocol SharedCacheEvicting: AnyObject, Sendable {
 /// wants to shed cached state under pressure calls
 /// ``evictImagesWithoutLiveOwners()`` at a moment of its choosing.
 @_spi(Internals)
-public final class SharedCacheRegistry: @unchecked Sendable {
+public final class SharedCacheRegistry: Sendable {
     public static let shared = SharedCacheRegistry()
 
     private struct WeakCache {
@@ -54,11 +55,55 @@ public final class SharedCacheRegistry: @unchecked Sendable {
         var claims: Set<SharedCacheEvictionGroup> = []
     }
 
-    private let lock = NSLock()
-    private var cachesByGroup: [SharedCacheEvictionGroup: [WeakCache]] = [:]
-    /// Followed group → the groups that follow it, as the caches declared.
-    private var followersByGroup: [SharedCacheEvictionGroup: Set<SharedCacheEvictionGroup>] = [:]
-    private var entriesByImageKey: [SharedCacheKey: ImageEntry] = [:]
+    /// Everything the registry knows, behind one lock.
+    private struct State {
+        var cachesByGroup: [SharedCacheEvictionGroup: [WeakCache]] = [:]
+        /// Followed group → the groups that follow it, as the caches declared.
+        var followersByGroup: [SharedCacheEvictionGroup: Set<SharedCacheEvictionGroup>] = [:]
+        var entriesByImageKey: [SharedCacheKey: ImageEntry] = [:]
+
+        // MARK: - Under the lock
+
+        func presentGroups(for key: SharedCacheKey) -> Set<SharedCacheEvictionGroup> {
+            var present: Set<SharedCacheEvictionGroup> = []
+            for (group, caches) in cachesByGroup {
+                for weakCache in caches {
+                    guard let cache = weakCache.cache, cache.containsEntry(for: key) else { continue }
+                    present.insert(group)
+                    break
+                }
+            }
+            return present
+        }
+
+        /// `groups` plus everything that follows them, transitively: a group
+        /// following a follower goes too.
+        func expandingFollowers(of groups: Set<SharedCacheEvictionGroup>) -> Set<SharedCacheEvictionGroup> {
+            var expanded = groups
+            var pending = Array(groups)
+            while let group = pending.popLast() {
+                for follower in followersByGroup[group] ?? [] where expanded.insert(follower).inserted {
+                    pending.append(follower)
+                }
+            }
+            return expanded
+        }
+
+        mutating func evict(groups: Set<SharedCacheEvictionGroup>, for key: SharedCacheKey) {
+            for group in groups {
+                guard let caches = cachesByGroup[group] else { continue }
+                // Compact the dead references while here; a cache is a
+                // process-lifetime singleton in practice, a test's is not.
+                let liveCaches = caches.filter { $0.cache != nil }
+                cachesByGroup[group] = liveCaches
+                for weakCache in liveCaches {
+                    weakCache.cache?.removeEntry(for: key)
+                }
+            }
+        }
+    }
+
+    private let state = Mutex(State())
 
     /// `package` so a test can drive a registry of its own, with caches
     /// created against it, instead of the process-wide one.
@@ -68,37 +113,37 @@ public final class SharedCacheRegistry: @unchecked Sendable {
     /// ``SharedCache``'s initializer; held weakly. Declarations are unioned:
     /// a group follows every group any of its caches named.
     public func register(_ cache: any SharedCacheEvicting, group: SharedCacheEvictionGroup, follows: Set<SharedCacheEvictionGroup> = []) {
-        lock.lock()
-        defer { lock.unlock() }
-        cachesByGroup[group, default: []].append(WeakCache(cache: cache))
-        for followed in follows {
-            followersByGroup[followed, default: []].insert(group)
+        state.withLock { state in
+            state.cachesByGroup[group, default: []].append(WeakCache(cache: cache))
+            for followed in follows {
+                state.followersByGroup[followed, default: []].insert(group)
+            }
         }
     }
 
     /// Every group a cache registered under.
     public var registeredGroups: Set<SharedCacheEvictionGroup> {
-        lock.lock()
-        defer { lock.unlock() }
-        return Set(cachesByGroup.keys)
+        state.withLock { state in
+            Set(state.cachesByGroup.keys)
+        }
     }
 
     /// The groups evicted along with `group` when it is claimed and evicted:
     /// the ones that declared they follow it, transitively.
     public func followers(of group: SharedCacheEvictionGroup) -> Set<SharedCacheEvictionGroup> {
-        lock.lock()
-        defer { lock.unlock() }
-        var followers = expandingFollowers(of: [group])
-        followers.remove(group)
-        return followers
+        state.withLock { state in
+            var followers = state.expandingFollowers(of: [group])
+            followers.remove(group)
+            return followers
+        }
     }
 
     /// The groups with a finished entry for `key` in at least one of their
     /// caches.
     public func presentGroups(for key: SharedCacheKey) -> Set<SharedCacheEvictionGroup> {
-        lock.lock()
-        defer { lock.unlock() }
-        return presentGroupsLocked(for: key)
+        state.withLock { state in
+            state.presentGroups(for: key)
+        }
     }
 
     /// Registers `owner` as a live owner of `key`'s caches, claiming — in the
@@ -115,15 +160,15 @@ public final class SharedCacheRegistry: @unchecked Sendable {
     /// again samples the caches its own earlier preparation just built and
     /// would otherwise read "nobody had this, so I claim it" backwards.
     public func registerLiveOwner(_ owner: ObjectIdentifier, for key: SharedCacheKey) {
-        lock.lock()
-        defer { lock.unlock() }
-        var entry = entriesByImageKey[key, default: ImageEntry()]
-        let isFirstRegistration = entry.liveOwners.insert(owner).inserted
-        if isFirstRegistration {
-            let present = presentGroupsLocked(for: key)
-            entry.claims.formUnion(cachesByGroup.keys.filter { !present.contains($0) })
+        state.withLock { state in
+            var entry = state.entriesByImageKey[key, default: ImageEntry()]
+            let isFirstRegistration = entry.liveOwners.insert(owner).inserted
+            if isFirstRegistration {
+                let present = state.presentGroups(for: key)
+                entry.claims.formUnion(state.cachesByGroup.keys.filter { !present.contains($0) })
+            }
+            state.entriesByImageKey[key] = entry
         }
-        entriesByImageKey[key] = entry
     }
 
     /// Deregisters `owner`, and — only if it was `key`'s LAST live owner, so
@@ -135,38 +180,38 @@ public final class SharedCacheRegistry: @unchecked Sendable {
     /// still present in between and claim nothing. Safe because no cache
     /// calls back into the registry.
     public func deregisterLiveOwner(_ owner: ObjectIdentifier, for key: SharedCacheKey) {
-        lock.lock()
-        defer { lock.unlock() }
-        guard var entry = entriesByImageKey[key] else { return }
-        entry.liveOwners.remove(owner)
-        guard entry.liveOwners.isEmpty else {
-            entriesByImageKey[key] = entry
-            return
+        state.withLock { state in
+            guard var entry = state.entriesByImageKey[key] else { return }
+            entry.liveOwners.remove(owner)
+            guard entry.liveOwners.isEmpty else {
+                state.entriesByImageKey[key] = entry
+                return
+            }
+            state.entriesByImageKey.removeValue(forKey: key)
+            state.evict(groups: state.expandingFollowers(of: entry.claims), for: key)
         }
-        entriesByImageKey.removeValue(forKey: key)
-        evictLocked(groups: expandingFollowers(of: entry.claims), for: key)
     }
 
     /// Whether any live owner is registered for `key`.
     public func hasLiveOwners(for key: SharedCacheKey) -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return !(entriesByImageKey[key]?.liveOwners.isEmpty ?? true)
+        state.withLock { state in
+            !(state.entriesByImageKey[key]?.liveOwners.isEmpty ?? true)
+        }
     }
 
     /// The claims currently held for `key`, for tests and diagnostics.
     public func claims(for key: SharedCacheKey) -> Set<SharedCacheEvictionGroup> {
-        lock.lock()
-        defer { lock.unlock() }
-        return entriesByImageKey[key]?.claims ?? []
+        state.withLock { state in
+            state.entriesByImageKey[key]?.claims ?? []
+        }
     }
 
     /// Drops `key`'s entries from every cache in `groups` — exactly those
     /// groups, no followers: an explicit eviction names what it wants gone.
     public func evict(groups: Set<SharedCacheEvictionGroup>, for key: SharedCacheKey) {
-        lock.lock()
-        defer { lock.unlock() }
-        evictLocked(groups: groups, for: key)
+        state.withLock { state in
+            state.evict(groups: groups, for: key)
+        }
     }
 
     /// Drops every cached entry of every image that has no live owner, in
@@ -178,59 +223,19 @@ public final class SharedCacheRegistry: @unchecked Sendable {
     /// - Returns: The number of images cleared.
     @discardableResult
     public func evictImagesWithoutLiveOwners() -> Int {
-        lock.lock()
-        defer { lock.unlock() }
-        var keys: Set<SharedCacheKey> = []
-        for caches in cachesByGroup.values {
-            for weakCache in caches {
-                guard let cache = weakCache.cache else { continue }
-                keys.formUnion(cache.entryKeys)
+        state.withLock { state in
+            var keys: Set<SharedCacheKey> = []
+            for caches in state.cachesByGroup.values {
+                for weakCache in caches {
+                    guard let cache = weakCache.cache else { continue }
+                    keys.formUnion(cache.entryKeys)
+                }
             }
-        }
-        let unownedKeys = keys.filter { entriesByImageKey[$0]?.liveOwners.isEmpty ?? true }
-        for key in unownedKeys {
-            evictLocked(groups: Set(cachesByGroup.keys), for: key)
-        }
-        return unownedKeys.count
-    }
-
-    // MARK: - Under the lock
-
-    private func presentGroupsLocked(for key: SharedCacheKey) -> Set<SharedCacheEvictionGroup> {
-        var present: Set<SharedCacheEvictionGroup> = []
-        for (group, caches) in cachesByGroup {
-            for weakCache in caches {
-                guard let cache = weakCache.cache, cache.containsEntry(for: key) else { continue }
-                present.insert(group)
-                break
+            let unownedKeys = keys.filter { state.entriesByImageKey[$0]?.liveOwners.isEmpty ?? true }
+            for key in unownedKeys {
+                state.evict(groups: Set(state.cachesByGroup.keys), for: key)
             }
-        }
-        return present
-    }
-
-    /// `groups` plus everything that follows them, transitively: a group
-    /// following a follower goes too.
-    private func expandingFollowers(of groups: Set<SharedCacheEvictionGroup>) -> Set<SharedCacheEvictionGroup> {
-        var expanded = groups
-        var pending = Array(groups)
-        while let group = pending.popLast() {
-            for follower in followersByGroup[group] ?? [] where expanded.insert(follower).inserted {
-                pending.append(follower)
-            }
-        }
-        return expanded
-    }
-
-    private func evictLocked(groups: Set<SharedCacheEvictionGroup>, for key: SharedCacheKey) {
-        for group in groups {
-            guard let caches = cachesByGroup[group] else { continue }
-            // Compact the dead references while here; a cache is a
-            // process-lifetime singleton in practice, a test's is not.
-            let liveCaches = caches.filter { $0.cache != nil }
-            cachesByGroup[group] = liveCaches
-            for weakCache in liveCaches {
-                weakCache.cache?.removeEntry(for: key)
-            }
+            return unownedKeys.count
         }
     }
 }

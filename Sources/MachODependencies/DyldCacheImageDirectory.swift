@@ -1,6 +1,7 @@
 import Foundation
 import MachOKit
 import MachOKitExtensions
+import OSToolbox
 
 /// The images of one dyld shared cache as `FileDependencyLocator` looks them
 /// up — each one's install path, bare name and rank under that name, the
@@ -25,7 +26,7 @@ import MachOKitExtensions
 /// resolved — and the main header's UUID, so a cache replaced on disk while
 /// the process runs is read again. Entries are kept for the process's
 /// lifetime: a few hundred kilobytes per cache, and they hold nothing open.
-final class DyldCacheImageDirectory: @unchecked Sendable {
+final class DyldCacheImageDirectory: Sendable {
     struct Image: Sendable {
         let installPath: String
         let bareImageName: String
@@ -58,8 +59,7 @@ final class DyldCacheImageDirectory: @unchecked Sendable {
     /// In the cache's own image order.
     let images: [Image]
 
-    private let lookupsLock = NSLock()
-    private var lookupsByRootPlatforms: [Set<Platform>: Lookup] = [:]
+    private let lookupsByRootPlatforms = Mutex<[Set<Platform>: Lookup]>([:])
 
     private init(images: [Image]) {
         self.images = images
@@ -68,27 +68,27 @@ final class DyldCacheImageDirectory: @unchecked Sendable {
     /// The lookup tables for a root built for `rootPlatforms`, made once per
     /// platform set from ``images`` with `DependencyPlatforms.areCompatible`.
     func lookup(forRootPlatforms rootPlatforms: Set<Platform>) -> Lookup {
-        lookupsLock.lock()
-        defer { lookupsLock.unlock() }
-        if let lookup = lookupsByRootPlatforms[rootPlatforms] {
+        lookupsByRootPlatforms.withLock { lookupsByRootPlatforms in
+            if let lookup = lookupsByRootPlatforms[rootPlatforms] {
+                return lookup
+            }
+            var imageIndicesByInstallPath: [String: Int] = [:]
+            var bestImagesByBareName: [String: (rank: Int, imageIndex: Int)] = [:]
+            for (imageIndex, image) in images.enumerated() {
+                guard DependencyPlatforms.areCompatible(rootPlatforms, image.platforms) else { continue }
+                if imageIndicesByInstallPath[image.installPath] == nil {
+                    imageIndicesByInstallPath[image.installPath] = imageIndex
+                }
+                guard !image.bareImageName.isEmpty else { continue }
+                if let existing = bestImagesByBareName[image.bareImageName], existing.rank <= image.bareNameRank {
+                    continue
+                }
+                bestImagesByBareName[image.bareImageName] = (image.bareNameRank, imageIndex)
+            }
+            let lookup = Lookup(imageIndicesByInstallPath: imageIndicesByInstallPath, bestImagesByBareName: bestImagesByBareName)
+            lookupsByRootPlatforms[rootPlatforms] = lookup
             return lookup
         }
-        var imageIndicesByInstallPath: [String: Int] = [:]
-        var bestImagesByBareName: [String: (rank: Int, imageIndex: Int)] = [:]
-        for (imageIndex, image) in images.enumerated() {
-            guard DependencyPlatforms.areCompatible(rootPlatforms, image.platforms) else { continue }
-            if imageIndicesByInstallPath[image.installPath] == nil {
-                imageIndicesByInstallPath[image.installPath] = imageIndex
-            }
-            guard !image.bareImageName.isEmpty else { continue }
-            if let existing = bestImagesByBareName[image.bareImageName], existing.rank <= image.bareNameRank {
-                continue
-            }
-            bestImagesByBareName[image.bareImageName] = (image.bareNameRank, imageIndex)
-        }
-        let lookup = Lookup(imageIndicesByInstallPath: imageIndicesByInstallPath, bestImagesByBareName: bestImagesByBareName)
-        lookupsByRootPlatforms[rootPlatforms] = lookup
-        return lookup
     }
 
     /// A new `MachOFile` for `image`, read through `cache` — an opening of
@@ -133,38 +133,35 @@ final class DyldCacheImageDirectory: @unchecked Sendable {
         }
     }
 
-    private final class Registry: @unchecked Sendable {
+    private final class Registry: Sendable {
         /// One per cache, created under the registry's lock and filled in
         /// under its own, so a cache being read holds up only the requests
         /// for that cache.
-        private final class Slot: @unchecked Sendable {
-            let lock = NSLock()
-            var directory: DyldCacheImageDirectory?
+        private final class Slot: Sendable {
+            let directory = Mutex<DyldCacheImageDirectory?>(nil)
         }
 
-        private let lock = NSLock()
-        private var slotsByCacheIdentity: [CacheIdentity: Slot] = [:]
+        private let slotsByCacheIdentity = Mutex<[CacheIdentity: Slot]>([:])
 
         func directory(of cache: FullDyldCache) -> DyldCacheImageDirectory {
             let cacheIdentity = CacheIdentity(cache)
-            lock.lock()
-            let slot: Slot
-            if let existingSlot = slotsByCacheIdentity[cacheIdentity] {
-                slot = existingSlot
-            } else {
-                slot = Slot()
+            let slot = slotsByCacheIdentity.withLock { slotsByCacheIdentity in
+                if let existingSlot = slotsByCacheIdentity[cacheIdentity] {
+                    return existingSlot
+                }
+                let slot = Slot()
                 slotsByCacheIdentity[cacheIdentity] = slot
+                return slot
             }
-            lock.unlock()
 
-            slot.lock.lock()
-            defer { slot.lock.unlock() }
-            if let directory = slot.directory {
-                return directory
+            return slot.directory.withLock { directory in
+                if let directory {
+                    return directory
+                }
+                let readDirectory = DyldCacheImageDirectory(images: DyldCacheImageDirectory.readImages(of: cache))
+                directory = readDirectory
+                return readDirectory
             }
-            let directory = DyldCacheImageDirectory(images: DyldCacheImageDirectory.readImages(of: cache))
-            slot.directory = directory
-            return directory
         }
     }
 

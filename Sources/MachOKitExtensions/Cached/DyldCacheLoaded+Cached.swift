@@ -1,5 +1,6 @@
 import Foundation
 import MachOKit
+import OSToolbox
 
 extension DyldCacheLoaded {
     /// `DyldCacheLoaded.current`, built once per process; always `nil` where
@@ -67,18 +68,16 @@ extension DyldCacheLoadedCached {
 
 /// Backing store for a ``DyldCacheLoadedCached`` view, one per shared cache
 /// mapping.
-final class DyldCacheLoadedCacheStorage: @unchecked Sendable {
+final class DyldCacheLoadedCacheStorage: Sendable {
     private static let registry = Registry()
 
     static func storage(for cache: DyldCacheLoaded) -> DyldCacheLoadedCacheStorage {
         registry.storage(forCacheAddress: UInt(bitPattern: cache.ptr))
     }
 
-    private let lock = NSLock()
-
     /// Header info lists, keyed by the header optimization they were read
     /// from. Each value is a `[HeaderOptimization.HeaderInfo]`.
-    private var headerInfosByHeaderOptimization: [HeaderOptimizationKey: Any] = [:]
+    private let headerInfosByHeaderOptimization = Mutex<[HeaderOptimizationKey: Any]>([:])
 
     func headerInfos<HeaderOptimization: ObjCHeaderOptimizationROProtocol>(
         of headerOptimization: HeaderOptimization,
@@ -88,22 +87,27 @@ final class DyldCacheLoadedCacheStorage: @unchecked Sendable {
             type: ObjectIdentifier(HeaderOptimization.self),
             offset: headerOptimization.offset
         )
-        lock.lock()
-        if let headerInfos = headerInfosByHeaderOptimization[key] as? [HeaderOptimization.HeaderInfo] {
-            lock.unlock()
-            return headerInfos
+        let cachedHeaderInfos = headerInfosByHeaderOptimization.withLock { headerInfosByHeaderOptimization in
+            headerInfosByHeaderOptimization[key] as? [HeaderOptimization.HeaderInfo]
         }
-        lock.unlock()
+        if let cachedHeaderInfos {
+            return cachedHeaderInfos
+        }
 
         let computedHeaderInfos = Array(headerOptimization.headerInfos(in: cache))
 
-        lock.lock()
-        defer { lock.unlock() }
-        if let headerInfos = headerInfosByHeaderOptimization[key] as? [HeaderOptimization.HeaderInfo] {
-            return headerInfos
+        // The header infos are not `Sendable`, and the list goes to every
+        // thread that asks for it, which is what this storage is for. The
+        // list made outside the lock is stored through `withLockUnchecked`
+        // because `withLock` refuses to put a non-`Sendable` value the caller
+        // still holds into the guarded state. A stored list is never mutated.
+        return headerInfosByHeaderOptimization.withLockUnchecked { headerInfosByHeaderOptimization in
+            if let headerInfos = headerInfosByHeaderOptimization[key] as? [HeaderOptimization.HeaderInfo] {
+                return headerInfos
+            }
+            headerInfosByHeaderOptimization[key] = computedHeaderInfos
+            return computedHeaderInfos
         }
-        headerInfosByHeaderOptimization[key] = computedHeaderInfos
-        return computedHeaderInfos
     }
 }
 
@@ -113,19 +117,18 @@ extension DyldCacheLoadedCacheStorage {
         let offset: Int
     }
 
-    final class Registry: @unchecked Sendable {
-        private let lock = NSLock()
-        private var storagesByCacheAddress: [UInt: DyldCacheLoadedCacheStorage] = [:]
+    final class Registry: Sendable {
+        private let storagesByCacheAddress = Mutex<[UInt: DyldCacheLoadedCacheStorage]>([:])
 
         func storage(forCacheAddress cacheAddress: UInt) -> DyldCacheLoadedCacheStorage {
-            lock.lock()
-            defer { lock.unlock() }
-            if let storage = storagesByCacheAddress[cacheAddress] {
+            storagesByCacheAddress.withLock { storagesByCacheAddress in
+                if let storage = storagesByCacheAddress[cacheAddress] {
+                    return storage
+                }
+                let storage = DyldCacheLoadedCacheStorage()
+                storagesByCacheAddress[cacheAddress] = storage
                 return storage
             }
-            let storage = DyldCacheLoadedCacheStorage()
-            storagesByCacheAddress[cacheAddress] = storage
-            return storage
         }
     }
 }

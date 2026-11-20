@@ -1,6 +1,7 @@
 import Foundation
 import MachOKit
 import MachOKitExtensions
+import OSToolbox
 
 /// One opening of each Mach-O file that dependency locators read by path — an
 /// explicit `.machOFile(path:)` search path, or a file under a system root —
@@ -62,17 +63,15 @@ enum SharedMachOFileOpenings {
 
     private static let registry = Registry()
 
-    private final class Registry: @unchecked Sendable {
+    private final class Registry: Sendable {
         /// One per file and CPU, created under the registry's lock and filled
         /// in under its own, so a file being opened holds up only the requests
         /// for that file.
-        private final class Slot: @unchecked Sendable {
-            let lock = NSLock()
-            weak var machOFile: MachOFile?
+        private final class Slot: Sendable {
+            let machOFile = Mutex(WeakBox<MachOFile>())
         }
 
-        private let lock = NSLock()
-        private var slotsByKey: [Key: Slot] = [:]
+        private let slotsByKey = Mutex<[Key: Slot]>([:])
 
         func machOFile(at url: URL, preferredCPU: CPU?) throws -> MachOFile? {
             guard let fileIdentity = DependencyFileIdentity(fileAt: url) else {
@@ -83,26 +82,25 @@ enum SharedMachOFileOpenings {
                 preferredCPUTypeRawValue: preferredCPU?.typeRawValue,
                 preferredCPUSubtypeRawValue: preferredCPU?.subtypeRawValue
             )
-            lock.lock()
-            let slot: Slot
-            if let existingSlot = slotsByKey[key] {
-                slot = existingSlot
-            } else {
-                slot = Slot()
+            let slot = slotsByKey.withLock { slotsByKey in
+                if let existingSlot = slotsByKey[key] {
+                    return existingSlot
+                }
+                let slot = Slot()
                 slotsByKey[key] = slot
+                return slot
             }
-            lock.unlock()
 
-            slot.lock.lock()
-            defer { slot.lock.unlock() }
-            if let machOFile = slot.machOFile {
+            return try slot.machOFile.withLock { machOFileReference in
+                if let machOFile = machOFileReference.value {
+                    return machOFile
+                }
+                guard let machOFile = try SharedMachOFileOpenings.openPreferredSlice(at: url, preferredCPU: preferredCPU) else {
+                    return nil
+                }
+                machOFileReference.value = machOFile
                 return machOFile
             }
-            guard let machOFile = try SharedMachOFileOpenings.openPreferredSlice(at: url, preferredCPU: preferredCPU) else {
-                return nil
-            }
-            slot.machOFile = machOFile
-            return machOFile
         }
     }
 }

@@ -3,6 +3,7 @@ import MachOKit
 import MachOKitExtensions
 import MachODependencies
 @_spi(Internals) import MachOAddressResolution
+import OSToolbox
 
 /// Finds what an image refers to in other images: the image and offset of a
 /// base's typeinfo, the image an address lies in, and whether an address is
@@ -12,7 +13,7 @@ import MachODependencies
 /// a dyld shared cache, the other images of the same cache; a standalone
 /// file, the libraries its dependency search paths locate, following
 /// re-exports.
-final class BaseClassLocator: @unchecked Sendable {
+final class BaseClassLocator: Sendable {
     /// Re-exports are followed at most this deep.
     static let maximumReexportDepth = 4
 
@@ -20,17 +21,21 @@ final class BaseClassLocator: @unchecked Sendable {
     /// its libraries.
     static let maximumSearchedLibraryCount = 512
 
+    /// What the locator learns as it goes, behind one lock.
+    private struct State {
+        var cacheImageLocatorsByCachePath: [String: CacheImageLocator] = [:]
+        var codeRangesByImagePath: [String: Range<UInt64>?] = [:]
+        var textAddressesByInstallNameByCachePath: [String: [String: UInt64]] = [:]
+        /// Cache images by a data address looked for in them; `nil` for an
+        /// address no searched image holds.
+        var dataImagesByAddress: [UInt64: MachOFile?] = [:]
+        /// The segments of the cache images searched so far.
+        var knownSegmentRanges: [(range: Range<UInt64>, image: MachOFile)] = []
+        var imagePathsWithKnownSegments: Set<String> = []
+    }
+
     private let fileLocator: FileDependencyLocator?
-    private let lock = NSLock()
-    private var cacheImageLocatorsByCachePath: [String: CacheImageLocator] = [:]
-    private var codeRangesByImagePath: [String: Range<UInt64>?] = [:]
-    private var textAddressesByInstallNameByCachePath: [String: [String: UInt64]] = [:]
-    /// Cache images by a data address looked for in them; `nil` for an
-    /// address no searched image holds.
-    private var dataImagesByAddress: [UInt64: MachOFile?] = [:]
-    /// The segments of the cache images searched so far.
-    private var knownSegmentRanges: [(range: Range<UInt64>, image: MachOFile)] = []
-    private var imagePathsWithKnownSegments: Set<String> = []
+    private let state = Mutex(State())
 
     /// A locator for references out of `root`. For a standalone file,
     /// `dependencySearchPaths` locates its libraries — by default the paths
@@ -79,10 +84,12 @@ final class BaseClassLocator: @unchecked Sendable {
         func found(_ library: MachOFile) -> (image: IndexedImage, offset: Int) {
             (.file(library), Int(address - sharedRegionStart))
         }
-        lock.lock()
-        let remembered = dataImagesByAddress[address]
-        let inKnownSegments = knownSegmentRanges.first { $0.range.contains(address) }?.image
-        lock.unlock()
+        let (remembered, inKnownSegments) = state.withLock { state in
+            (
+                state.dataImagesByAddress[address],
+                state.knownSegmentRanges.first { $0.range.contains(address) }?.image
+            )
+        }
         if let remembered {
             return remembered.map(found)
         }
@@ -195,20 +202,20 @@ final class BaseClassLocator: @unchecked Sendable {
     private func cacheImageLocator(for file: MachOFile) -> CacheImageLocator? {
         guard let cache = file.cache else { return nil }
         let cachePath = (cache.mainCache ?? cache).url.path
-        lock.lock()
-        if let existing = cacheImageLocatorsByCachePath[cachePath] {
-            lock.unlock()
-            return existing
+        let storedLocator = state.withLock { state in
+            state.cacheImageLocatorsByCachePath[cachePath]
         }
-        lock.unlock()
+        if let storedLocator {
+            return storedLocator
+        }
         guard let created = CacheImageLocator(cacheOf: file) else { return nil }
-        lock.lock()
-        defer { lock.unlock() }
-        if let existing = cacheImageLocatorsByCachePath[cachePath] {
-            return existing
+        return state.withLock { state in
+            if let existing = state.cacheImageLocatorsByCachePath[cachePath] {
+                return existing
+            }
+            state.cacheImageLocatorsByCachePath[cachePath] = created
+            return created
         }
-        cacheImageLocatorsByCachePath[cachePath] = created
-        return created
     }
 
     /// The image of `file`'s cache installed at `installName`.
@@ -216,9 +223,9 @@ final class BaseClassLocator: @unchecked Sendable {
         guard let cache = file.cache else { return nil }
         let mainCache = cache.mainCache ?? cache
         let cachePath = mainCache.url.path
-        lock.lock()
-        var textAddressesByInstallName = textAddressesByInstallNameByCachePath[cachePath]
-        lock.unlock()
+        var textAddressesByInstallName = state.withLock { state in
+            state.textAddressesByInstallNameByCachePath[cachePath]
+        }
         if textAddressesByInstallName == nil {
             var built: [String: UInt64] = [:]
             if let imageInformations = mainCache.imageInfos {
@@ -228,27 +235,27 @@ final class BaseClassLocator: @unchecked Sendable {
                     }
                 }
             }
-            lock.lock()
-            textAddressesByInstallNameByCachePath[cachePath] = built
-            lock.unlock()
+            state.withLock { state in
+                state.textAddressesByInstallNameByCachePath[cachePath] = built
+            }
             textAddressesByInstallName = built
         }
         return textAddressesByInstallName?[installName].flatMap { cacheImageLocator.image(containing: $0) }
     }
 
     private func remember(_ library: MachOFile?, containing address: UInt64) {
-        lock.lock()
-        dataImagesByAddress.updateValue(library, forKey: address)
-        lock.unlock()
+        state.withLock { state in
+            _ = state.dataImagesByAddress.updateValue(library, forKey: address)
+        }
     }
 
     private func rememberSegments(of library: MachOFile) {
-        lock.lock()
-        defer { lock.unlock() }
-        guard imagePathsWithKnownSegments.insert(library.imagePath).inserted else { return }
-        for segment in library.segments where segment.segmentName != "__LINKEDIT" && segment.segmentName != "__TEXT" {
-            let start = UInt64(segment.virtualMemoryAddress)
-            knownSegmentRanges.append((start ..< start + UInt64(segment.virtualMemorySize), library))
+        state.withLock { state in
+            guard state.imagePathsWithKnownSegments.insert(library.imagePath).inserted else { return }
+            for segment in library.segments where segment.segmentName != "__LINKEDIT" && segment.segmentName != "__TEXT" {
+                let start = UInt64(segment.virtualMemoryAddress)
+                state.knownSegmentRanges.append((start ..< start + UInt64(segment.virtualMemorySize), library))
+            }
         }
     }
 
@@ -263,16 +270,16 @@ final class BaseClassLocator: @unchecked Sendable {
     }
 
     private func codeRange(forImagePath path: String, compute: () -> Range<UInt64>?) -> Range<UInt64>? {
-        lock.lock()
-        if let known = codeRangesByImagePath[path] {
-            lock.unlock()
+        let known = state.withLock { state in
+            state.codeRangesByImagePath[path]
+        }
+        if let known {
             return known
         }
-        lock.unlock()
         let computed = compute()
-        lock.lock()
-        codeRangesByImagePath[path] = computed
-        lock.unlock()
+        state.withLock { state in
+            state.codeRangesByImagePath[path] = computed
+        }
         return computed
     }
 

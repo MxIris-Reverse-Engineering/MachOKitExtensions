@@ -1,5 +1,6 @@
 import Foundation
 import MachOKit
+import OSToolbox
 @_spi(Internals) import ARM64InstructionDecoding
 
 /// One image's functions and the sections a scan reads, collected in one pass
@@ -68,8 +69,7 @@ import MachOKit
     /// The instructions of `__text`, from `textStart` on.
     private let instructions: UnsafePointer<UInt32>?
 
-    private let attachmentsLock = NSLock()
-    private var attachments: [ObjectIdentifier: any ImageFunctionTableAttachment] = [:]
+    private let attachments = Mutex<[ObjectIdentifier: any ImageFunctionTableAttachment]>([:])
 
     /// `isRuntimeHelperName` tells the functions a scan marks as runtime
     /// helpers by their symbols — the language layers know which.
@@ -289,19 +289,19 @@ import MachOKit
     /// kept as long as the table is: `make` runs once, under the table's lock,
     /// and must not ask the table for an attachment.
     @_spi(Internals) public func attachment<Attachment: ImageFunctionTableAttachment>(_ type: Attachment.Type, makingIt make: () -> Attachment) -> Attachment {
-        attachmentsLock.lock()
-        defer { attachmentsLock.unlock() }
-        if let existing = attachments[ObjectIdentifier(type)] as? Attachment { return existing }
-        let attachment = make()
-        attachments[ObjectIdentifier(type)] = attachment
-        return attachment
+        attachments.withLock { attachments in
+            if let existing = attachments[ObjectIdentifier(type)] as? Attachment { return existing }
+            let attachment = make()
+            attachments[ObjectIdentifier(type)] = attachment
+            return attachment
+        }
     }
 
     /// The attachment of type `type`, when something has made it.
     @_spi(Internals) public func existingAttachment<Attachment: ImageFunctionTableAttachment>(_ type: Attachment.Type) -> Attachment? {
-        attachmentsLock.lock()
-        defer { attachmentsLock.unlock() }
-        return attachments[ObjectIdentifier(type)] as? Attachment
+        attachments.withLock { attachments in
+            attachments[ObjectIdentifier(type)] as? Attachment
+        }
     }
 
     /// The memory the table takes, with its attachments; see
@@ -312,9 +312,9 @@ import MachOKit
         byteCount += ApproximateSize.of(runtimeHelperStarts) + ApproximateSize.of(symbolStubs)
         byteCount += ApproximateSize.of(symbolStubRanges) + ApproximateSize.of(globalOffsetTableRanges) + ApproximateSize.of(dataSegmentRanges)
         byteCount += ApproximateSize.of(segmentRanges) + ApproximateSize.of(dataInCodeRanges)
-        attachmentsLock.lock()
-        let attachments = Array(self.attachments.values)
-        attachmentsLock.unlock()
+        let attachments = self.attachments.withLock { attachments in
+            Array(attachments.values)
+        }
         return attachments.reduce(byteCount) { $0 + $1.approximateByteCount }
     }
 }

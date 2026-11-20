@@ -6,6 +6,7 @@ import MachOReading
 import MachOResolving
 @_spi(Internals) import MachOCaches
 @_spi(Internals) import MachOAddressResolution
+import OSToolbox
 
 /// The C++ classes of an image, read from its run-time type information
 /// and its vtables. An image's index is built on first use and shared by
@@ -504,24 +505,28 @@ extension IndexedImage {
 
 /// The locators of a store, one per image and set of search paths, so that
 /// a query does not locate the same libraries again.
-final class LocatorCache: @unchecked Sendable {
+final class LocatorCache: Sendable {
     private struct Key: Hashable {
         let imageKey: AnyHashable
         let dependencySearchPaths: [DependencySearchPath]?
     }
 
-    private let lock = NSLock()
-    private var locatorsByKey: [Key: BaseClassLocator] = [:]
+    private let locatorsByKey = Mutex<[Key: BaseClassLocator]>([:])
 
     func locator(for image: IndexedImage, dependencySearchPaths: [DependencySearchPath]?) -> BaseClassLocator {
         let key = Key(imageKey: image.key, dependencySearchPaths: dependencySearchPaths)
-        lock.lock()
-        defer { lock.unlock() }
-        if let existing = locatorsByKey[key] {
-            return existing
+        // The key is not `Sendable`: its image key is an `AnyHashable` (of an
+        // identifier that can hold a pointer), and `withLock` refuses to
+        // store a non-`Sendable` value this thread still holds. Made here,
+        // outside the lock, as before: the first `identifier` of a file
+        // reads its load commands.
+        return locatorsByKey.withLockUnchecked { locatorsByKey in
+            if let existing = locatorsByKey[key] {
+                return existing
+            }
+            let created = BaseClassLocator(root: image, dependencySearchPaths: dependencySearchPaths)
+            locatorsByKey[key] = created
+            return created
         }
-        let created = BaseClassLocator(root: image, dependencySearchPaths: dependencySearchPaths)
-        locatorsByKey[key] = created
-        return created
     }
 }

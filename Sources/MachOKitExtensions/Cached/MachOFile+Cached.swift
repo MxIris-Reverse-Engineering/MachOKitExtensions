@@ -1,6 +1,7 @@
 import Foundation
 import MachOKit
 import AssociatedObject
+import OSToolbox
 
 extension MachOFile {
     /// A concurrency-safe view over this file that memoizes expensive parsing
@@ -20,7 +21,9 @@ extension MachOFile {
     @AssociatedObject(.retain(.atomic))
     private var _cacheStorage: MachOCacheStorage<MachOFile>?
 
-    private static let cacheStorageCreationLock = NSLock()
+    /// Guards no value of its own: what it serializes is the store into
+    /// `_cacheStorage`, an association of each file.
+    private static let cacheStorageCreationLock = Mutex(())
 
     private var cacheStorage: MachOCacheStorage<MachOFile> {
         if let cacheStorage = _cacheStorage {
@@ -28,13 +31,13 @@ extension MachOFile {
         }
         // Serialize creation: two threads that both miss must end up sharing
         // one storage, or one of them would cache into a storage nobody keeps.
-        Self.cacheStorageCreationLock.lock()
-        defer { Self.cacheStorageCreationLock.unlock() }
-        if let cacheStorage = _cacheStorage {
+        return Self.cacheStorageCreationLock.withLock { _ in
+            if let cacheStorage = _cacheStorage {
+                return cacheStorage
+            }
+            let cacheStorage = MachOCacheStorage<MachOFile>()
+            _cacheStorage = cacheStorage
             return cacheStorage
         }
-        let cacheStorage = MachOCacheStorage<MachOFile>()
-        _cacheStorage = cacheStorage
-        return cacheStorage
     }
 }
