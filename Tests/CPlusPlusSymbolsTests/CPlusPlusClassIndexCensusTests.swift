@@ -86,7 +86,9 @@ struct CPlusPlusClassIndexCensusTests {
         #expect(fileCensus.slotCount > 1000)
         #expect(fileCensus.slotsWithOwnName + fileCensus.slotsNamedThroughBase > fileCensus.slotCount / 2)
         // Both readers see the same classes and the same tables.
-        #expect(fileSlotCounts == imageSlotCounts)
+        let onlyInFile = fileSlotCounts.filter { imageSlotCounts[$0.key] != $0.value }
+        let onlyInImage = imageSlotCounts.filter { fileSlotCounts[$0.key] != $0.value }
+        #expect(onlyInFile.isEmpty && onlyInImage.isEmpty, "only from the file: \(onlyInFile.prefix(8)); only from the process: \(onlyInImage.prefix(8))")
         #expect(fileCensus.slotsWithOwnName == imageCensus.slotsWithOwnName)
         #expect(fileCensus.slotsNamedThroughBase == imageCensus.slotsNamedThroughBase)
     }

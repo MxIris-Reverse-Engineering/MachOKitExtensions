@@ -96,6 +96,9 @@ final class ImagePointerSlots: @unchecked Sendable {
         case .standaloneFile(let contentsByOffset):
             return contentsByOffset[offset]
         case .cacheFile(let sharedRegionStart, let imageAddressRanges):
+            if let decodedCacheDataSlots, dataSectionRanges.contains(where: { $0.contains(offset) }) {
+                return decodedCacheDataSlots[offset]
+            }
             // A small integer is no pointer, though the cache's format would
             // decode it into an address near the shared region's start.
             guard case .file(let file) = image,
@@ -104,12 +107,7 @@ final class ImagePointerSlots: @unchecked Sendable {
                   let resolved = cache.resolveOptionalRebase(at: cacheOffset) else {
                 return nil
             }
-            let address = resolved & Self.addressBits
-            guard address != 0 else { return nil }
-            if imageAddressRanges.contains(where: { $0.contains(address) }), address >= sharedRegionStart {
-                return .internalPointer(offset: Int(address - sharedRegionStart), topByte: UInt8(truncatingIfNeeded: resolved >> 56))
-            }
-            return .externalAddress(address)
+            return Self.cacheContent(ofResolvedAddress: resolved, sharedRegionStart: sharedRegionStart, imageAddressRanges: imageAddressRanges)
         case .processImage(let headerAddress, let imageAddressRanges):
             #if canImport(Darwin)
             guard case .process(let processImage) = image else { return nil }
@@ -188,7 +186,13 @@ final class ImagePointerSlots: @unchecked Sendable {
             for offset in contentsByOffset.keys.sorted() where dataSectionRanges.contains(where: { $0.contains(offset) }) {
                 body(offset, contentsByOffset[offset]!)
             }
-        case .cacheFile, .processImage:
+        case .cacheFile:
+            let decoded = decodedCacheDataSlots ?? decodeCacheDataSlots()
+            decodedCacheDataSlots = decoded
+            for offset in decoded.keys.sorted() {
+                body(offset, decoded[offset]!)
+            }
+        case .processImage:
             for range in dataSectionRanges {
                 var offset = (range.lowerBound + 7) & ~7
                 while offset + 8 <= range.upperBound {
@@ -202,6 +206,43 @@ final class ImagePointerSlots: @unchecked Sendable {
     }
 
     // MARK: - Building
+
+    /// A cache file's data slots that hold pointers, decoded the first time
+    /// the data is walked; later lookups in the data read them from here.
+    private var decodedCacheDataSlots: [Int: Content]?
+
+    /// Decodes every pointer of a cache file's data sections: each section's
+    /// words are read at once and its place in the cache is looked up once.
+    private func decodeCacheDataSlots() -> [Int: Content] {
+        guard case .file(let file) = image, case .cacheFile(let sharedRegionStart, let imageAddressRanges) = source else { return [:] }
+        var contentsByOffset: [Int: Content] = [:]
+        for range in dataSectionRanges {
+            let start = (range.lowerBound + 7) & ~7
+            let wordCount = (range.upperBound - start) / 8
+            guard wordCount > 0,
+                  let words = try? file.readElements(offset: start, numberOfElements: wordCount) as [Int64],
+                  let (cache, startCacheOffset) = file.resolveCacheStartOffsetIfNeeded(offset: UInt64(start)) else {
+                continue
+            }
+            for (wordIndex, stored) in words.enumerated() where stored != 0 && !Self.isSmallInteger(stored) {
+                guard let resolved = cache.resolveOptionalRebase(at: startCacheOffset + UInt64(8 * wordIndex)),
+                      let content = Self.cacheContent(ofResolvedAddress: resolved, sharedRegionStart: sharedRegionStart, imageAddressRanges: imageAddressRanges) else {
+                    continue
+                }
+                contentsByOffset[start + 8 * wordIndex] = content
+            }
+        }
+        return contentsByOffset
+    }
+
+    private static func cacheContent(ofResolvedAddress resolved: UInt64, sharedRegionStart: UInt64, imageAddressRanges: [Range<UInt64>]) -> Content? {
+        let address = resolved & addressBits
+        guard address != 0 else { return nil }
+        if imageAddressRanges.contains(where: { $0.contains(address) }), address >= sharedRegionStart {
+            return .internalPointer(offset: Int(address - sharedRegionStart), topByte: UInt8(truncatingIfNeeded: resolved >> 56))
+        }
+        return .externalAddress(address)
+    }
 
     private static let excludedSectionNames: Set<String> = [
         "__got", "__auth_got", "__la_symbol_ptr", "__nl_symbol_ptr", "__cfstring", "__mod_init_func", "__mod_term_func", "__init_offsets",

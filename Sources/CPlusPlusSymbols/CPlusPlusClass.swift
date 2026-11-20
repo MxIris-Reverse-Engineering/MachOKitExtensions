@@ -45,7 +45,10 @@ public struct CPlusPlusClass: Hashable, Sendable, CustomStringConvertible {
     public let hasTypeInfoSymbol: Bool
 
     /// `false` when the typeinfo is not unique program-wide and is compared
-    /// by name — on Apple arm64, a hidden type's.
+    /// by name: on Apple arm64, the typeinfo of a type with default
+    /// visibility and no key function — a class whose virtual functions are
+    /// all inline, a template specialization — of which every image keeps a
+    /// hidden copy of its own.
     public let hasUniqueTypeInfo: Bool
 
     init(
