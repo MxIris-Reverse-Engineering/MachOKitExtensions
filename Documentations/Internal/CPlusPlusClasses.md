@@ -14,7 +14,7 @@
 
 ## 文件 → 子系统
 
-| 子系统 | 文件（`Sources/CPlusPlusSymbols/`） |
+| 子系统 | 文件（`Sources/Symbols/CPlusPlusSymbols/`） |
 |---|---|
 | 公开类型 | `CPlusPlusClass.swift`、`CPlusPlusVirtualTable.swift`（含 `CPlusPlusVirtualFunction`） |
 | store 与索引 | `CPlusPlusClassIndexStore.swift`（`Storage`、查询时的 `ClassResolver`、`LocatorCache`）、驱逐组 `.cPlusPlusClassStore` |

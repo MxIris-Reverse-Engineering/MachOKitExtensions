@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Draft - Sources/ 按层分组</title>
+<style>
+/* Evolution proposal page, shared style (style A, "Apple documentation").
+   Copy this whole <style> block verbatim. Page-specific rules, if any, go only
+   in the marked block at the end. Must render in WebKit (Safari, Xcode preview,
+   Quick Look): no JavaScript, no external resources. */
+:root {
+  --background: #ffffff; --foreground: #1d1d1f; --secondary: #6e6e73; --separator: #d2d2d7;
+  --panel: #f5f5f7; --code-background: #f2f2f4; --accent: #0071e3;
+  --added: #1f8a4c; --added-fill: #e3f5ea;
+  --changed: #b26a00; --changed-fill: #fdf0db;
+  --removed: #c62828; --removed-fill: #fbe4e4;
+  --moved: #0066cc; --moved-fill: #e5f0fc;
+  --kept: #6e6e73; --kept-fill: #ececef;
+  --token-keyword: #ad3da4; --token-type: #3900a0; --token-string: #c41a16; --token-number: #1c00cf;
+  --token-comment: #707f8c; --token-macro: #643820;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #1c1c1e; --foreground: #f2f2f7; --secondary: #a1a1a6; --separator: #3a3a3c;
+    --panel: #2c2c2e; --code-background: #2a2a2d; --accent: #4ea1ff;
+    --added: #4cd281; --added-fill: #183826;
+    --changed: #ffb340; --changed-fill: #3d2c10;
+    --removed: #ff6b6b; --removed-fill: #3d1a1a;
+    --moved: #5aa9ff; --moved-fill: #142b45;
+    --kept: #b0b0b5; --kept-fill: #333336;
+    --token-keyword: #fc5fa3; --token-type: #d0a8ff; --token-string: #fc6a5d; --token-number: #d0bf69;
+    --token-comment: #7f8c98; --token-macro: #fd8f3f;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--background); color: var(--foreground);
+  font: 15px/1.65 -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased; }
+.page { max-width: 1080px; margin: 0 auto; padding: 28px 24px 72px; }
+.svg-definitions { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+/* Header */
+.eyebrow { margin: 0 0 6px; font-size: 13px; color: var(--secondary); }
+.crumb + .crumb::before { content: " / "; }
+h1 { font-size: 28px; line-height: 1.3; letter-spacing: -0.01em; margin: 0 0 12px; }
+h1 code { font-size: 0.8em; }
+.proposal-number { color: var(--secondary); margin-right: 4px; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 0; font-size: 13px; color: var(--secondary); }
+.meta div { display: flex; gap: 6px; align-items: baseline; }
+.meta dd { margin: 0; color: var(--foreground); }
+.meta dd code { font-size: 12px; }
+.status { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; color: var(--kept); background: var(--kept-fill); }
+.status-accepted { color: var(--moved); background: var(--moved-fill); }
+.status-in-progress { color: var(--changed); background: var(--changed-fill); }
+.status-implemented { color: var(--added); background: var(--added-fill); }
+.status-rejected, .status-withdrawn { color: var(--removed); background: var(--removed-fill); }
+
+/* Table of contents */
+.toc { margin: 22px 0 8px; padding: 8px 10px; background: var(--panel); border-radius: 12px; }
+.toc ol { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 2px 4px; }
+.toc li { margin: 0; }
+.toc a { display: inline-block; padding: 3px 11px; border-radius: 999px; color: var(--accent); text-decoration: none; font-size: 14px; }
+.toc a:hover { background: var(--background); }
+
+/* Text */
+section { scroll-margin-top: 16px; }
+h2 { font-size: 21px; margin: 40px 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--separator); }
+h3 { font-size: 16px; margin: 22px 0 8px; }
+h4 { font-size: 15px; margin: 18px 0 6px; }
+p { margin: 10px 0; }
+a { color: var(--accent); }
+ul, ol { padding-left: 22px; }
+li { margin: 4px 0; }
+blockquote { margin: 12px 0; padding: 2px 14px; border-left: 3px solid var(--separator); color: var(--secondary); }
+hr { border: none; border-top: 1px solid var(--separator); margin: 24px 0; }
+
+/* Code */
+code { font: 0.86em/1.4 ui-monospace, "SF Mono", Menlo, monospace; background: var(--code-background); padding: 1px 5px; border-radius: 5px; }
+pre { background: var(--code-background); border-radius: 10px; padding: 14px 16px; overflow-x: auto; -webkit-overflow-scrolling: touch; font: 12.5px/1.6 ui-monospace, "SF Mono", Menlo, monospace; }
+pre code { font: inherit; background: none; padding: 0; border-radius: 0; }
+.token-keyword { color: var(--token-keyword); font-weight: 600; }
+.token-type { color: var(--token-type); }
+.token-string { color: var(--token-string); }
+.token-number { color: var(--token-number); }
+.token-comment { color: var(--token-comment); }
+.token-macro { color: var(--token-macro); }
+
+/* Callouts */
+.callout { background: var(--panel); border-left: 4px solid var(--accent); border-radius: 10px; padding: 12px 16px; margin: 14px 0; }
+.callout-note { border-left-color: var(--secondary); }
+.callout-warning { border-left-color: var(--changed); }
+.callout-title { margin: 0 0 6px; font-weight: 600; }
+.callout > :last-child { margin-bottom: 0; }
+.callout ol, .callout ul { margin: 6px 0 0; }
+
+/* Diagrams */
+.legend { list-style: none; padding: 0; margin: 8px 0 12px; display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--secondary); }
+.legend li { margin: 0; }
+.swatch { display: inline-block; width: 14px; height: 14px; border-radius: 4px; border: 1.5px solid; vertical-align: -2px; margin-right: 6px; }
+.swatch-added { background: var(--added-fill); border-color: var(--added); }
+.swatch-changed { background: var(--changed-fill); border-color: var(--changed); }
+.swatch-removed { background: var(--removed-fill); border-color: var(--removed); border-style: dashed; }
+.swatch-moved { background: var(--moved-fill); border-color: var(--moved); }
+.swatch-kept { background: var(--kept-fill); border-color: var(--kept); }
+.figure { overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--separator); border-radius: 12px; padding: 12px; margin: 12px 0; }
+.figure svg { display: block; width: 100%; min-width: 760px; height: auto; }
+.figure-narrow svg { min-width: 0; max-width: 640px; margin: 0 auto; }
+.figure-caption { font-size: 13px; color: var(--secondary); margin-top: 8px; }
+svg text { font: 12px ui-monospace, "SF Mono", Menlo, monospace; fill: var(--foreground); }
+svg .group-label { font-size: 13px; font-weight: 700; }
+svg .caption { font-size: 10.5px; fill: var(--secondary); }
+svg .strike { text-decoration: line-through; }
+svg .group { fill: none; stroke: var(--separator); stroke-width: 1.5; stroke-dasharray: 5 4; }
+svg .box-added { fill: var(--added-fill); stroke: var(--added); stroke-width: 1.5; }
+svg .box-changed { fill: var(--changed-fill); stroke: var(--changed); stroke-width: 1.5; }
+svg .box-removed { fill: var(--removed-fill); stroke: var(--removed); stroke-width: 1.5; stroke-dasharray: 4 3; }
+svg .box-moved { fill: var(--moved-fill); stroke: var(--moved); stroke-width: 1.5; }
+svg .box-kept { fill: var(--kept-fill); stroke: var(--kept); stroke-width: 1.2; }
+svg .arrow { fill: none; stroke: var(--secondary); stroke-width: 1.4; marker-end: url(#arrowhead); }
+svg .arrow-weak { stroke-dasharray: 4 3; }
+svg .arrow-removed { stroke: var(--removed); stroke-dasharray: 4 3; }
+svg .arrowhead { fill: var(--secondary); }
+
+/* Tables */
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 10px 0; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th, td { border: 1px solid var(--separator); padding: 7px 9px; text-align: left; vertical-align: top; }
+th { background: var(--panel); font-weight: 600; }
+.numeric { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tag { display: inline-block; white-space: nowrap; padding: 0 7px; border-radius: 5px; font-size: 12px; font-weight: 600; color: var(--kept); background: var(--kept-fill); }
+.tag-added { color: var(--added); background: var(--added-fill); }
+.tag-changed { color: var(--changed); background: var(--changed-fill); }
+.tag-removed { color: var(--removed); background: var(--removed-fill); }
+.tag-moved { color: var(--moved); background: var(--moved-fill); }
+
+/* Collapsible sections */
+details { border: 1px solid var(--separator); border-radius: 12px; margin: 12px 0; overflow: hidden; }
+summary { cursor: pointer; list-style: none; padding: 11px 16px; font-weight: 600; background: var(--panel); }
+summary::-webkit-details-marker { display: none; }
+summary::before { content: "›"; display: inline-block; width: 1em; color: var(--secondary); -webkit-transition: -webkit-transform 0.15s; transition: transform 0.15s; }
+details[open] > summary::before { -webkit-transform: rotate(90deg); transform: rotate(90deg); }
+details[open] > summary { border-bottom: 1px solid var(--separator); }
+.details-body { padding: 4px 16px 12px; }
+
+@media (max-width: 640px) {
+  .page { padding: 20px 16px 56px; }
+  h1 { font-size: 23px; }
+}
+
+/* ===== Page-specific styles (only for elements the shared style lacks, e.g. UI mockups) ===== */
+</style>
+</head>
+<body>
+<svg class="svg-definitions" aria-hidden="true" focusable="false">
+  <defs><marker id="arrowhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrowhead" d="M 0 0 L 10 5 L 0 10 z"/></marker></defs>
+</svg>
+<div class="page">
+<header class="doc-header">
+  <p class="eyebrow"><span class="crumb">MachOKitExtensions</span><span class="crumb">Evolutions</span><span class="crumb">Draft</span></p>
+  <h1><span class="proposal-number">Draft</span> <code>Sources/</code> 按层分组</h1>
+  <dl class="meta">
+    <div><dt>状态</dt><dd><span class="status status-in-progress">In Progress</span></dd></div>
+    <div><dt>最后更新</dt><dd>2026-11-20</dd></div>
+    <div><dt>项目类型</dt><dd>库</dd></div>
+    <div><dt>原文</dt><dd><code>draft-group-sources-by-layer.md</code></dd></div>
+  </dl>
+</header>
+<nav class="toc" aria-label="目录"><ol>
+  <li><a href="#summary">摘要</a></li><li><a href="#decide">要你定</a></li><li><a href="#architecture">架构图</a></li><li><a href="#map">改动地图</a></li><li><a href="#design">详细设计</a></li><li><a href="#motivation">动机</a></li><li><a href="#research">调研</a></li><li><a href="#alternatives">替代方案</a></li><li><a href="#impact">影响</a></li><li><a href="#steps">落地步骤</a></li><li><a href="#log">决策日志</a></li>
+</ol></nav>
+<main class="content">
+<section id="summary">
+  <h2>摘要</h2>
+  <p>16 个源码 target 从平铺的 <code>Sources/&lt;Target&gt;</code> 分进 7 个层级目录：<code>Core</code>、<code>Reading</code>、<code>Images</code>、<code>Symbols</code>、<code>Analysis</code>、<code>Umbrellas</code>、<code>TestSupport</code>。<code>Package.swift</code> 给每个 target 写明 <code>path: &quot;Sources/&lt;Group&gt;/&lt;Target&gt;&quot;</code>；product、模块名与公开 API 都不变，使用方不受影响。<code>Tests/</code> 仍然平铺。</p>
+</section>
+<section id="decide">
+  <h2>要你定</h2>
+  <div class="callout callout-note"><p class="callout-title">已实现，在功能分支上等用户看过后随 3.2.0 收尾；没有要定的事。</p></div>
+</section>
+<section id="architecture">
+  <h2>架构图</h2>
+  <ul class="legend"><li><i class="swatch swatch-moved"></i>移动</li></ul>
+  <div class="figure">
+  <svg viewBox="0 0 1000 402" role="img" aria-label="Sources grouped by layer">
+    <rect class="group" x="10" y="10" width="980" height="382" rx="10"/>
+    <text class="group-label" x="22" y="30">Sources/</text>
+    <rect class="box-moved" x="25" y="42" width="950" height="42" rx="6"/><text x="35" y="60">Core/</text><text class="caption" x="35" y="76">MachOKitExtensions</text>
+    <rect class="box-moved" x="25" y="92" width="950" height="42" rx="6"/><text x="35" y="110">Reading/</text><text class="caption" x="35" y="126">MachOReading, MachOResolving, MachOPointers</text>
+    <rect class="box-moved" x="25" y="142" width="950" height="42" rx="6"/><text x="35" y="160">Images/</text><text class="caption" x="35" y="176">MachOCaches, MachODependencies</text>
+    <rect class="box-moved" x="25" y="192" width="950" height="42" rx="6"/><text x="35" y="210">Symbols/</text><text class="caption" x="35" y="226">MachOSymbols, CPlusPlusDemangling, CPlusPlusSymbols</text>
+    <rect class="box-moved" x="25" y="242" width="950" height="42" rx="6"/><text x="35" y="260">Analysis/</text><text class="caption" x="35" y="276">ARM64InstructionDecoding, MachOAddressResolution, MachOCodeReferences</text>
+    <rect class="box-moved" x="25" y="292" width="950" height="42" rx="6"/><text x="35" y="310">Umbrellas/</text><text class="caption" x="35" y="326">MachOBase, MachOFoundation</text>
+    <rect class="box-moved" x="25" y="342" width="950" height="42" rx="6"/><text x="35" y="360">TestSupport/</text><text class="caption" x="35" y="376">MachOFixtureSupport, MachOTestingSupport</text>
+  </svg>
+  </div>
+  <p class="figure-caption">每组只依赖排在它前面的组；<code>Umbrellas</code> 只汇总 import，<code>TestSupport</code> 只给测试用。<code>Tests/</code> 仍然平铺。</p>
+</section>
+<section id="map">
+  <h2>改动地图</h2>
+  <div class="table-wrap"><table><thead><tr><th>文件 / 类型</th><th>动作</th><th>改什么</th><th>为什么</th><th>步骤</th></tr></thead><tbody><tr><td><code>Sources/&lt;Target&gt;/</code>（16 个目录）</td><td><span class="tag tag-moved">移动</span></td><td><code>git mv</code> 到 <code>Sources/&lt;Group&gt;/&lt;Target&gt;/</code></td><td>按层分组</td><td class="numeric">1</td></tr><tr><td><code>Package.swift</code></td><td><span class="tag tag-changed">修改</span></td><td>16 个 target 写明 <code>path:</code></td><td>路径不再是默认值</td><td class="numeric">1</td></tr><tr><td><code>SourceScanTests</code>、<code>ReaderKindCastScanTests</code></td><td><span class="tag tag-changed">修改</span></td><td>扫描的目录改成分组后的路径</td><td>它们按 <code>#filePath</code> 拼路径</td><td class="numeric">2</td></tr><tr><td><code>README.md</code></td><td><span class="tag tag-changed">修改</span></td><td>新增 Layout 一节；许可一节里 <code>CPlusPlusDemangling</code> 的路径</td><td>规则与路径</td><td class="numeric">3</td></tr><tr><td><code>CPlusPlusSymbols.md</code>、<code>CPlusPlusClasses.md</code>、<code>ReadingContextAbstraction.md</code></td><td><span class="tag tag-changed">修改</span></td><td>源码路径</td><td>路径变了</td><td class="numeric">3</td></tr></tbody></table></div>
+</section>
+<section id="design">
+  <h2>详细设计</h2>
+  <div class="table-wrap"><table><thead><tr><th>分组</th><th>target</th></tr></thead><tbody><tr><td><code>Core</code></td><td><code>MachOKitExtensions</code></td></tr><tr><td><code>Reading</code></td><td><code>MachOReading</code>, <code>MachOResolving</code>, <code>MachOPointers</code></td></tr><tr><td><code>Images</code></td><td><code>MachOCaches</code>, <code>MachODependencies</code></td></tr><tr><td><code>Symbols</code></td><td><code>MachOSymbols</code>, <code>CPlusPlusDemangling</code>, <code>CPlusPlusSymbols</code></td></tr><tr><td><code>Analysis</code></td><td><code>ARM64InstructionDecoding</code>, <code>MachOAddressResolution</code>, <code>MachOCodeReferences</code></td></tr><tr><td><code>Umbrellas</code></td><td><code>MachOBase</code>, <code>MachOFoundation</code></td></tr><tr><td><code>TestSupport</code></td><td><code>MachOFixtureSupport</code>, <code>MachOTestingSupport</code></td></tr></tbody></table></div>
+  <ul><li>**分组的依据是依赖方向**：每组只依赖排在它前面的组（<code>Analysis</code> 依赖 <code>Reading</code>，<code>Symbols</code> 依赖 <code>Images</code> 与 <code>Reading</code>），<code>Umbrellas</code> 只把前面几组汇成一个 import，<code>TestSupport</code> 只给测试用。</li><li>**<code>Images</code> 放什么**：按镜像共享的缓存（<code>MachOCaches</code>）与镜像之间的依赖闭包（<code>MachODependencies</code>），两者都是「以镜像为单位」的基础设施，依赖相同。</li><li>**源码扫描测试**：路径从 <code>#filePath</code> 爬三层到包根（测试文件 → 测试目录 → <code>Tests</code> → 包根），再进 <code>Sources/&lt;Group&gt;/&lt;Target&gt;</code>。两个测试都断言至少扫到若干文件，所以路径错了会直接失败，不会扫空了照样通过——这次移动时它们正是这样报出来的。</li></ul>
+  <h3>非目标</h3>
+  <ul><li>改 target、product、模块名。</li><li>给 <code>Tests/</code> 分组。</li><li>改旧提案里的路径。</li></ul>
+</section>
+<section id="motivation">
+  <h2>动机</h2>
+  <ul><li>**平铺看不出层次。** 2.0.0 迁入 MachOSwiftSection 的 Mach-O 层，3.x 又加了 C++ 与交叉引用的模块，<code>Sources/</code> 下已有 16 个目录，读取层、符号、分析、汇总模块与测试支持混在一起，新人得翻 <code>Package.swift</code> 的依赖才看得出谁在谁下面。</li><li>**两个包对齐。** MachOSwiftSection 在 0055 已按层分组，规则写在它的 <code>AGENTS.md</code>；两个包按同一种方式组织，来回切换时不用换思路。</li></ul>
+</section>
+<section id="research">
+  <h2>调研</h2>
+  <details><summary>依赖方向、按路径读源码的地方、别的仓库、文档</summary><div class="details-body"><ul><li>**依赖方向**（<code>Package.swift</code>）：<code>MachOKitExtensions</code> 在最底下；<code>MachOReading</code> → <code>MachOResolving</code> → <code>MachOPointers</code> 是读取层；<code>MachOCaches</code>、<code>MachODependencies</code> 只依赖 <code>MachOKit</code> 与 <code>MachOKitExtensions</code>，是按镜像的基础设施；<code>MachOSymbols</code>、<code>CPlusPlusDemangling</code>、<code>CPlusPlusSymbols</code> 是符号；<code>ARM64InstructionDecoding</code>、<code>MachOAddressResolution</code>、<code>MachOCodeReferences</code> 是交叉引用的分析层；<code>MachOBase</code>、<code>MachOFoundation</code> 只是汇总 import；<code>MachOFixtureSupport</code>、<code>MachOTestingSupport</code> 是测试支持。</li><li>**按路径读源码的地方**：两个源码扫描测试从自己的 <code>#filePath</code> 爬到包根再拼 <code>Sources/&lt;Target&gt;</code>（<code>Tests/MachOCodeReferencesTests/SourceScanTests.swift:136</code>、<code>Tests/MachOReadingTests/ReaderKindCastScanTests.swift:70</code>）。源码里没有依赖目录深度的 <code>#filePath</code>。</li><li>**别的仓库**：MachOSwiftSection 的 <code>TuistScript.sh</code> 扫上游包的源码时取清单里的 <code>path</code>，没有才退到 <code>Sources/&lt;name&gt;</code>（<code>:636</code>、<code>:667</code>），不受影响；MachOSwiftSection、MachOObjCSection、RuntimeViewer、MachOKitUI 都没有按路径引用本包的源码。</li><li>**文档**：README、<code>Internal/CPlusPlusSymbols.md</code>、<code>Internal/CPlusPlusClasses.md</code>、<code>Internal/ReadingContextAbstraction.md</code> 里写着源码路径。旧提案（0002–0006）里的路径是当时的记录。</li></ul></div></details>
+</section>
+<section id="alternatives">
+  <h2>替代方案</h2>
+  <ul><li>**<code>MachOCaches</code> 放进 <code>Core</code>，<code>MachODependencies</code> 单独成组 <code>Dependencies</code>**：<code>Core</code> 收下最底层的两块，但依赖闭包一个 target 自成一组。用户选择了 <code>Images</code> 的分法。</li><li>**保持平铺**：不动最省事，但层次只能靠读清单，与 MachOSwiftSection 也不一致。</li></ul>
+</section>
+<section id="impact">
+  <h2>影响</h2>
+  <p>源码兼容性：无，product、模块名与公开 API 都不变。ABI：不适用，以 SPM 源码分发。下游：无，使用方按 product 依赖；MachOSwiftSection 的 Tuist 开发 workspace 读清单里的 <code>path</code>。</p>
+</section>
+<section id="steps">
+  <h2>落地步骤</h2>
+  <ol><li><strong>移动目录与清单</strong>（完成）</li><li><strong>源码扫描测试的路径</strong>（完成）</li><li><strong>文档</strong>（完成）—— README 的 Layout 一节与三份实现说明；不另写实现说明，没有新术语。</li></ol>
+</section>
+<section id="log">
+  <h2>决策日志</h2>
+  <details><summary>5 条，最近一条：实现完成，待用户看过后收尾</summary><div class="details-body"><div class="table-wrap"><table><thead><tr><th>日期</th><th>变更</th><th>说明</th></tr></thead><tbody><tr><td class="numeric">2026-11-20</td><td>Created as Draft</td><td>用户要求把 target 按层分组、不再平铺在 <code>Sources/</code> 根目录，照 MachOSwiftSection 0055 的做法。</td></tr><tr><td class="numeric">2026-11-20</td><td>分组用 <code>Images</code> 收下 <code>MachOCaches</code> 与 <code>MachODependencies</code></td><td>用户选择。否决：<code>MachOCaches</code> 放进 <code>Core</code>、依赖闭包单独一组。</td></tr><tr><td class="numeric">2026-11-20</td><td>与测试支持统一同一条分支、随 3.2.0 发布</td><td>用户选择。否决：单独分支、另行发版。</td></tr><tr><td class="numeric">2026-11-20</td><td>状态 → Accepted → In Progress</td><td>用户批准，开始实现。</td></tr><tr><td class="numeric">2026-11-20</td><td>实现完成，待用户看过后收尾</td><td>移动后两个源码扫描测试按旧路径扫空、断言失败，改成分组后的路径后通过。Ultra 上（Xcode 27.2）全量 <code>swift test</code> 通过，原始退出码 0。文档：README 加 Layout 一节，三份实现说明的路径已改；不另写实现说明；没有新术语。</td></tr></tbody></table></div></div></details>
+</section>
+</main>
+</div>
+</body>
+</html>

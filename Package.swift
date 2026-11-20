@@ -196,7 +196,8 @@ let package = Package(
                 "MachOKit",
                 .product(name: "AssociatedObject", package: "AssociatedObject"),
                 .product(name: "OSToolbox", package: "FrameworkToolbox"),
-            ]
+            ],
+            path: "Sources/Core/MachOKitExtensions"
         ),
         .target(
             name: "MachOReading",
@@ -204,7 +205,8 @@ let package = Package(
                 "MachOKit",
                 "MachOKitExtensions",
                 .product(name: "FileIO", package: "swift-fileio"),
-            ]
+            ],
+            path: "Sources/Reading/MachOReading"
         ),
         .target(
             name: "MachOResolving",
@@ -212,7 +214,8 @@ let package = Package(
                 "MachOKit",
                 "MachOKitExtensions",
                 "MachOReading",
-            ]
+            ],
+            path: "Sources/Reading/MachOResolving"
         ),
         .target(
             name: "MachOPointers",
@@ -221,7 +224,8 @@ let package = Package(
                 "MachOKitExtensions",
                 "MachOReading",
                 "MachOResolving",
-            ]
+            ],
+            path: "Sources/Reading/MachOPointers"
         ),
         .target(
             name: "MachOCaches",
@@ -229,7 +233,8 @@ let package = Package(
                 "MachOKit",
                 "MachOKitExtensions",
                 .product(name: "OSToolbox", package: "FrameworkToolbox"),
-            ]
+            ],
+            path: "Sources/Images/MachOCaches"
         ),
         .target(
             name: "MachODependencies",
@@ -237,7 +242,8 @@ let package = Package(
                 "MachOKit",
                 "MachOKitExtensions",
                 .product(name: "OSToolbox", package: "FrameworkToolbox"),
-            ]
+            ],
+            path: "Sources/Images/MachODependencies"
         ),
         .target(
             name: "MachOSymbols",
@@ -247,7 +253,8 @@ let package = Package(
                 "MachOResolving",
                 "MachOCaches",
                 .product(name: "OSToolbox", package: "FrameworkToolbox"),
-            ]
+            ],
+            path: "Sources/Symbols/MachOSymbols"
         ),
         .target(
             name: "MachOBase",
@@ -256,7 +263,8 @@ let package = Package(
                 "MachOReading",
                 "MachOResolving",
                 "MachOPointers",
-            ]
+            ],
+            path: "Sources/Umbrellas/MachOBase"
         ),
         .target(
             name: "MachOFoundation",
@@ -264,12 +272,14 @@ let package = Package(
                 "MachOBase",
                 "MachOSymbols",
                 "MachODependencies",
-            ]
+            ],
+            path: "Sources/Umbrellas/MachOFoundation"
         ),
         // Hand readers for the few A64 encodings the analyses decode, and the
         // trampoline shapes the linker and the dyld cache builder emit.
         .target(
-            name: "ARM64InstructionDecoding"
+            name: "ARM64InstructionDecoding",
+            path: "Sources/Analysis/ARM64InstructionDecoding"
         ),
         // One image's address space and the stubs and pointer slots on the
         // way to a function, read from a Mach-O file.
@@ -281,7 +291,8 @@ let package = Package(
                 "MachOReading",
                 "ARM64InstructionDecoding",
                 .product(name: "OSToolbox", package: "FrameworkToolbox"),
-            ]
+            ],
+            path: "Sources/Analysis/MachOAddressResolution"
         ),
         // The language-free core of the cross-reference analysis: image
         // memory, function tables, the instruction scan and the recognizer
@@ -296,7 +307,8 @@ let package = Package(
                 "MachOAddressResolution",
                 "ARM64InstructionDecoding",
                 .product(name: "OSToolbox", package: "FrameworkToolbox"),
-            ]
+            ],
+            path: "Sources/Analysis/MachOCodeReferences"
         ),
         // LLVM's Itanium demangler, vendored verbatim from libc++abi under
         // `ItaniumDemangle/` (Apache-2.0 WITH LLVM-exception), behind a plain
@@ -304,6 +316,7 @@ let package = Package(
         // interoperability.
         .target(
             name: "CPlusPlusDemangling",
+            path: "Sources/Symbols/CPlusPlusDemangling",
             exclude: [
                 "ItaniumDemangle/ItaniumNodes.def",
                 "ItaniumDemangle/LICENSE.TXT",
@@ -322,7 +335,8 @@ let package = Package(
                 "MachODependencies",
                 "CPlusPlusDemangling",
                 .product(name: "OSToolbox", package: "FrameworkToolbox"),
-            ]
+            ],
+            path: "Sources/Symbols/CPlusPlusSymbols"
         ),
         .target(
             name: "MachOFixtureSupport",
@@ -330,7 +344,8 @@ let package = Package(
                 "MachOKit",
                 "MachOKitExtensions",
                 .product(name: "OSToolbox", package: "FrameworkToolbox"),
-            ]
+            ],
+            path: "Sources/TestSupport/MachOFixtureSupport"
         ),
         .target(
             name: "MachOTestingSupport",
@@ -339,7 +354,8 @@ let package = Package(
                 "MachOReading",
                 "MachOKitExtensions",
                 "MachOKit",
-            ]
+            ],
+            path: "Sources/TestSupport/MachOTestingSupport"
         ),
         .testTarget(
             name: "MachOTestingSupportTests",

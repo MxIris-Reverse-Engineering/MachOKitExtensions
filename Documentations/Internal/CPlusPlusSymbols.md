@@ -17,9 +17,9 @@
 
 | 子系统 | 文件 |
 |---|---|
-| 引入的解析器 | `Sources/CPlusPlusDemangling/ItaniumDemangle/`（五个源文件与 `LICENSE.TXT`）、`Sources/CPlusPlusDemangling/abort_message.h` |
-| C 接口与遍历 | `Sources/CPlusPlusDemangling/include/CPlusPlusDemangling.h`、`Sources/CPlusPlusDemangling/CPlusPlusDemangling.cpp` |
-| Swift 侧的解析器包装 | `Sources/CPlusPlusSymbols/CPlusPlusDemangler.swift`（internal） |
+| 引入的解析器 | `Sources/Symbols/CPlusPlusDemangling/ItaniumDemangle/`（五个源文件与 `LICENSE.TXT`）、`Sources/Symbols/CPlusPlusDemangling/abort_message.h` |
+| C 接口与遍历 | `Sources/Symbols/CPlusPlusDemangling/include/CPlusPlusDemangling.h`、`Sources/Symbols/CPlusPlusDemangling/CPlusPlusDemangling.cpp` |
+| Swift 侧的解析器包装 | `Sources/Symbols/CPlusPlusSymbols/CPlusPlusDemangler.swift`（internal） |
 | 单个名字 | `CPlusPlusSymbolName.swift` |
 | 作用域树 | `CPlusPlusScope.swift`、`CPlusPlusSymbol.swift`、`CPlusPlusSymbolIndexStore.swift`（含 `Storage`、`ScopeTreeBuilder`、`CPlusPlusSymbolTableRouting`）、`SharedCacheEvictionGroup+CPlusPlusSymbols.swift`（`.cPlusPlusSymbolStore`） |
 | 测试夹具 | `Tests/CPlusPlusSymbolsFixture/` |

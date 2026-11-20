@@ -61,7 +61,7 @@
 - `MachOContext.runtimePointer(at:)` 建在 `asMachOImage` 上：包装的是本进程镜像时给出指针，否则为 `nil`。
 - 契约：包装类型在每个偏移读到的内容与底下的读取器相同，`identifier` 也相同，所以两者共用按镜像的缓存。
 
-`ReaderKindCastScanTests` 扫描本包的 `Sources/MachOReading` 与 `Sources/MachOResolving`，禁止 `as? MachOImage` 一类写死读取器类型的判断。MachOKitExtensions 模块不在扫描范围内：三个取法本身就是做类型转换的地方。
+`ReaderKindCastScanTests` 扫描本包的 `Sources/Reading/MachOReading` 与 `Sources/Reading/MachOResolving`，禁止 `as? MachOImage` 一类写死读取器类型的判断。MachOKitExtensions 模块不在扫描范围内：三个取法本身就是做类型转换的地方。
 
 ## 与提案的差异
 

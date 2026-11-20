@@ -200,6 +200,26 @@ let document = ImageDocument(machOImage: machOImage)
 document.asMachOImage   // the image beneath, not nil
 ```
 
+## Layout
+
+`Sources/` is grouped by layer, the way MachOSwiftSection's is; each group holds the targets of
+that layer, and `Package.swift` gives every target its path (`path: "Sources/<Group>/<Target>"`), so
+a new target goes into a group directory and declares its path. Products and module names do not
+depend on where the sources sit.
+
+| Group | Targets |
+|---|---|
+| `Core` | `MachOKitExtensions` |
+| `Reading` | `MachOReading`, `MachOResolving`, `MachOPointers` |
+| `Images` | `MachOCaches`, `MachODependencies` |
+| `Symbols` | `MachOSymbols`, `CPlusPlusDemangling`, `CPlusPlusSymbols` |
+| `Analysis` | `ARM64InstructionDecoding`, `MachOAddressResolution`, `MachOCodeReferences` |
+| `Umbrellas` | `MachOBase`, `MachOFoundation` |
+| `TestSupport` | `MachOFixtureSupport`, `MachOTestingSupport` |
+
+`Tests/` stays flat, one directory per test target. A test that scans a module's sources climbs from
+its own `#filePath` to the package root and then into `Sources/<Group>/<Target>`.
+
 ## Platforms
 
 macOS 10.15+, iOS 13+, watchOS 6+, tvOS 13+ and visionOS 1+.
@@ -217,8 +237,8 @@ Linux is not supported. Since 3.2.0 the package guards its shared state with the
 
 MachOKitExtensions is released under the MIT License. See [LICENSE](LICENSE).
 
-`Sources/CPlusPlusDemangling/ItaniumDemangle` holds LLVM's Itanium demangler, copied unchanged
-from libc++abi, and `Sources/CPlusPlusDemangling/CPlusPlusDemangling.cpp` holds two short excerpts
+`Sources/Symbols/CPlusPlusDemangling/ItaniumDemangle` holds LLVM's Itanium demangler, copied unchanged
+from libc++abi, and `Sources/Symbols/CPlusPlusDemangling/CPlusPlusDemangling.cpp` holds two short excerpts
 of libc++abi's `cxa_demangle.cpp`. They are part of the LLVM Project, under the Apache License
 v2.0 with LLVM Exceptions. See
-[Sources/CPlusPlusDemangling/ItaniumDemangle/LICENSE.TXT](Sources/CPlusPlusDemangling/ItaniumDemangle/LICENSE.TXT).
+[Sources/Symbols/CPlusPlusDemangling/ItaniumDemangle/LICENSE.TXT](Sources/Symbols/CPlusPlusDemangling/ItaniumDemangle/LICENSE.TXT).

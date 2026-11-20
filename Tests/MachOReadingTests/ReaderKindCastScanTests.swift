@@ -15,7 +15,7 @@ struct ReaderKindCastScanTests {
     @Test("no reading module tells readers apart with a cast")
     func readingModulesDoNotCastReaders() throws {
         let sourceFiles = try Self.readingModuleSourceFiles()
-        try #require(!sourceFiles.isEmpty, "found no source file to scan under Sources/MachOReading or Sources/MachOResolving")
+        try #require(!sourceFiles.isEmpty, "found no source file to scan under Sources/Reading/MachOReading or Sources/Reading/MachOResolving")
         var offendingLines: [String] = []
         for fileURL in sourceFiles {
             let contents = try String(contentsOf: fileURL, encoding: .utf8)
@@ -67,7 +67,7 @@ struct ReaderKindCastScanTests {
             .deletingLastPathComponent()  // MachOReadingTests
             .deletingLastPathComponent()  // Tests
             .deletingLastPathComponent()  // package root
-            .appendingPathComponent("Sources")
+            .appendingPathComponent("Sources/Reading")
         var files: [URL] = []
         for moduleName in ["MachOReading", "MachOResolving"] {
             let moduleDirectory = sourcesDirectory.appendingPathComponent(moduleName)
