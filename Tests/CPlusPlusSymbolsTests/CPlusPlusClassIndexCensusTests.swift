@@ -157,6 +157,13 @@ struct CPlusPlusClassIndexCensusTests {
         let searchPaths: [DependencySearchPath] = [.machOFile(path: Self.persistencePath), .systemDyldSharedCache]
         let (census, _) = Self.census(of: tables, label: "TSTables (iWork 14.5)") { $0.virtualTables(of: $1, in: tables, dependencySearchPaths: searchPaths) }
         print("C++ class index census —\n\(census)")
+        // A protobuf message class: its slots follow `google::protobuf::Message`
+        // of TSPersistence.
+        let store = CPlusPlusClassIndexStore(symbolStore: .shared)
+        if let cellID = store.class(named: "TST::CellID", in: tables) {
+            let primary = store.virtualTables(of: cellID, in: tables, dependencySearchPaths: searchPaths).first
+            print("TST::CellID bases \(cellID.bases.map { "\($0.qualifiedName) \($0.location)" }) —\n" + (primary?.functions.map { "\($0.slotIndex) \($0.implementation) own \($0.symbolName?.demangledName ?? "-") base \($0.baseFunction.map { "\($0.className) \($0.name?.demangledName ?? "-") inherited \($0.isInherited)" } ?? "-")" }.joined(separator: "\n") ?? "no table"))
+        }
         #if arch(arm64)
         // The arm64 slice the proposal counted.
         #expect(census.classCount == 611)
