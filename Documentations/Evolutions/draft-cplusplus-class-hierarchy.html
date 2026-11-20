@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Draft - 从 RTTI 与 vtable 恢复 C++ 类</title>
+<style>
+/* Evolution proposal page, shared style (style A, "Apple documentation").
+   Copy this whole <style> block verbatim. Page-specific rules, if any, go only
+   in the marked block at the end. Must render in WebKit (Safari, Xcode preview,
+   Quick Look): no JavaScript, no external resources. */
+:root {
+  --background: #ffffff; --foreground: #1d1d1f; --secondary: #6e6e73; --separator: #d2d2d7;
+  --panel: #f5f5f7; --code-background: #f2f2f4; --accent: #0071e3;
+  --added: #1f8a4c; --added-fill: #e3f5ea;
+  --changed: #b26a00; --changed-fill: #fdf0db;
+  --removed: #c62828; --removed-fill: #fbe4e4;
+  --moved: #0066cc; --moved-fill: #e5f0fc;
+  --kept: #6e6e73; --kept-fill: #ececef;
+  --token-keyword: #ad3da4; --token-type: #3900a0; --token-string: #c41a16; --token-number: #1c00cf;
+  --token-comment: #707f8c; --token-macro: #643820;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #1c1c1e; --foreground: #f2f2f7; --secondary: #a1a1a6; --separator: #3a3a3c;
+    --panel: #2c2c2e; --code-background: #2a2a2d; --accent: #4ea1ff;
+    --added: #4cd281; --added-fill: #183826;
+    --changed: #ffb340; --changed-fill: #3d2c10;
+    --removed: #ff6b6b; --removed-fill: #3d1a1a;
+    --moved: #5aa9ff; --moved-fill: #142b45;
+    --kept: #b0b0b5; --kept-fill: #333336;
+    --token-keyword: #fc5fa3; --token-type: #d0a8ff; --token-string: #fc6a5d; --token-number: #d0bf69;
+    --token-comment: #7f8c98; --token-macro: #fd8f3f;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--background); color: var(--foreground);
+  font: 15px/1.65 -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased; }
+.page { max-width: 1080px; margin: 0 auto; padding: 28px 24px 72px; }
+.svg-definitions { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+/* Header */
+.eyebrow { margin: 0 0 6px; font-size: 13px; color: var(--secondary); }
+.crumb + .crumb::before { content: " / "; }
+h1 { font-size: 28px; line-height: 1.3; letter-spacing: -0.01em; margin: 0 0 12px; }
+h1 code { font-size: 0.8em; }
+.proposal-number { color: var(--secondary); margin-right: 4px; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 0; font-size: 13px; color: var(--secondary); }
+.meta div { display: flex; gap: 6px; align-items: baseline; }
+.meta dd { margin: 0; color: var(--foreground); }
+.meta dd code { font-size: 12px; }
+.status { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; color: var(--kept); background: var(--kept-fill); }
+.status-accepted { color: var(--moved); background: var(--moved-fill); }
+.status-in-progress { color: var(--changed); background: var(--changed-fill); }
+.status-implemented { color: var(--added); background: var(--added-fill); }
+.status-rejected, .status-withdrawn { color: var(--removed); background: var(--removed-fill); }
+
+/* Table of contents */
+.toc { margin: 22px 0 8px; padding: 8px 10px; background: var(--panel); border-radius: 12px; }
+.toc ol { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 2px 4px; }
+.toc li { margin: 0; }
+.toc a { display: inline-block; padding: 3px 11px; border-radius: 999px; color: var(--accent); text-decoration: none; font-size: 14px; }
+.toc a:hover { background: var(--background); }
+
+/* Text */
+section { scroll-margin-top: 16px; }
+h2 { font-size: 21px; margin: 40px 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--separator); }
+h3 { font-size: 16px; margin: 22px 0 8px; }
+h4 { font-size: 15px; margin: 18px 0 6px; }
+p { margin: 10px 0; }
+a { color: var(--accent); }
+ul, ol { padding-left: 22px; }
+li { margin: 4px 0; }
+blockquote { margin: 12px 0; padding: 2px 14px; border-left: 3px solid var(--separator); color: var(--secondary); }
+hr { border: none; border-top: 1px solid var(--separator); margin: 24px 0; }
+
+/* Code */
+code { font: 0.86em/1.4 ui-monospace, "SF Mono", Menlo, monospace; background: var(--code-background); padding: 1px 5px; border-radius: 5px; }
+pre { background: var(--code-background); border-radius: 10px; padding: 14px 16px; overflow-x: auto; -webkit-overflow-scrolling: touch; font: 12.5px/1.6 ui-monospace, "SF Mono", Menlo, monospace; }
+pre code { font: inherit; background: none; padding: 0; border-radius: 0; }
+.token-keyword { color: var(--token-keyword); font-weight: 600; }
+.token-type { color: var(--token-type); }
+.token-string { color: var(--token-string); }
+.token-number { color: var(--token-number); }
+.token-comment { color: var(--token-comment); }
+.token-macro { color: var(--token-macro); }
+
+/* Callouts */
+.callout { background: var(--panel); border-left: 4px solid var(--accent); border-radius: 10px; padding: 12px 16px; margin: 14px 0; }
+.callout-note { border-left-color: var(--secondary); }
+.callout-warning { border-left-color: var(--changed); }
+.callout-title { margin: 0 0 6px; font-weight: 600; }
+.callout > :last-child { margin-bottom: 0; }
+.callout ol, .callout ul { margin: 6px 0 0; }
+
+/* Diagrams */
+.legend { list-style: none; padding: 0; margin: 8px 0 12px; display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--secondary); }
+.legend li { margin: 0; }
+.swatch { display: inline-block; width: 14px; height: 14px; border-radius: 4px; border: 1.5px solid; vertical-align: -2px; margin-right: 6px; }
+.swatch-added { background: var(--added-fill); border-color: var(--added); }
+.swatch-changed { background: var(--changed-fill); border-color: var(--changed); }
+.swatch-removed { background: var(--removed-fill); border-color: var(--removed); border-style: dashed; }
+.swatch-moved { background: var(--moved-fill); border-color: var(--moved); }
+.swatch-kept { background: var(--kept-fill); border-color: var(--kept); }
+.figure { overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--separator); border-radius: 12px; padding: 12px; margin: 12px 0; }
+.figure svg { display: block; width: 100%; min-width: 760px; height: auto; }
+.figure-narrow svg { min-width: 0; max-width: 640px; margin: 0 auto; }
+.figure-caption { font-size: 13px; color: var(--secondary); margin-top: 8px; }
+svg text { font: 12px ui-monospace, "SF Mono", Menlo, monospace; fill: var(--foreground); }
+svg .group-label { font-size: 13px; font-weight: 700; }
+svg .caption { font-size: 10.5px; fill: var(--secondary); }
+svg .strike { text-decoration: line-through; }
+svg .group { fill: none; stroke: var(--separator); stroke-width: 1.5; stroke-dasharray: 5 4; }
+svg .box-added { fill: var(--added-fill); stroke: var(--added); stroke-width: 1.5; }
+svg .box-changed { fill: var(--changed-fill); stroke: var(--changed); stroke-width: 1.5; }
+svg .box-removed { fill: var(--removed-fill); stroke: var(--removed); stroke-width: 1.5; stroke-dasharray: 4 3; }
+svg .box-moved { fill: var(--moved-fill); stroke: var(--moved); stroke-width: 1.5; }
+svg .box-kept { fill: var(--kept-fill); stroke: var(--kept); stroke-width: 1.2; }
+svg .arrow { fill: none; stroke: var(--secondary); stroke-width: 1.4; marker-end: url(#arrowhead); }
+svg .arrow-weak { stroke-dasharray: 4 3; }
+svg .arrow-removed { stroke: var(--removed); stroke-dasharray: 4 3; }
+svg .arrowhead { fill: var(--secondary); }
+
+/* Tables */
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 10px 0; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th, td { border: 1px solid var(--separator); padding: 7px 9px; text-align: left; vertical-align: top; }
+th { background: var(--panel); font-weight: 600; }
+.numeric { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tag { display: inline-block; white-space: nowrap; padding: 0 7px; border-radius: 5px; font-size: 12px; font-weight: 600; color: var(--kept); background: var(--kept-fill); }
+.tag-added { color: var(--added); background: var(--added-fill); }
+.tag-changed { color: var(--changed); background: var(--changed-fill); }
+.tag-removed { color: var(--removed); background: var(--removed-fill); }
+.tag-moved { color: var(--moved); background: var(--moved-fill); }
+
+/* Collapsible sections */
+details { border: 1px solid var(--separator); border-radius: 12px; margin: 12px 0; overflow: hidden; }
+summary { cursor: pointer; list-style: none; padding: 11px 16px; font-weight: 600; background: var(--panel); }
+summary::-webkit-details-marker { display: none; }
+summary::before { content: "›"; display: inline-block; width: 1em; color: var(--secondary); -webkit-transition: -webkit-transform 0.15s; transition: transform 0.15s; }
+details[open] > summary::before { -webkit-transform: rotate(90deg); transform: rotate(90deg); }
+details[open] > summary { border-bottom: 1px solid var(--separator); }
+.details-body { padding: 4px 16px 12px; }
+
+@media (max-width: 640px) {
+  .page { padding: 20px 16px 56px; }
+  h1 { font-size: 23px; }
+}
+
+/* ===== Page-specific styles (only for elements the shared style lacks, e.g. UI mockups) ===== */
+</style>
+</head>
+<body>
+<svg class="svg-definitions" aria-hidden="true" focusable="false">
+  <defs><marker id="arrowhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrowhead" d="M 0 0 L 10 5 L 0 10 z"/></marker></defs>
+</svg>
+<div class="page">
+
+<header class="doc-header">
+  <p class="eyebrow"><span class="crumb">MachOKitExtensions</span><span class="crumb">Evolutions</span><span class="crumb">Draft</span></p>
+  <h1><span class="proposal-number">Draft</span> 从 RTTI 与 vtable 恢复 C++ 类：继承关系、虚函数表，以及沿基类给无名虚函数补名</h1>
+  <dl class="meta">
+    <div><dt>状态</dt><dd><span class="status status-accepted">Accepted</span></dd></div>
+    <div><dt>最后更新</dt><dd>2026-11-20</dd></div>
+    <div><dt>项目类型</dt><dd>库</dd></div>
+    <div><dt>原文</dt><dd><code>draft-cplusplus-class-hierarchy.md</code></dd></div>
+  </dl>
+</header>
+
+<nav class="toc" aria-label="目录">
+  <ol>
+    <li><a href="#summary">摘要</a></li>
+    <li><a href="#decide">要你定</a></li>
+    <li><a href="#architecture">架构图</a></li>
+    <li><a href="#map">改动地图</a></li>
+    <li><a href="#proposal">提议方案</a></li>
+    <li><a href="#design">详细设计</a></li>
+    <li><a href="#research">调研</a></li>
+    <li><a href="#alternatives">替代方案</a></li>
+    <li><a href="#impact">影响</a></li>
+    <li><a href="#steps">落地步骤</a></li>
+    <li><a href="#log">决策日志</a></li>
+  </ol>
+</nav>
+
+<main class="content">
+
+<section id="summary">
+  <h2>摘要</h2>
+  <p><code>CPlusPlusSymbols</code> 模块新增一个按镜像建索引的 store <code>CPlusPlusClassIndexStore</code>，从镜像的数据里读 Itanium C++ ABI 的运行时类型信息（RTTI，即 <code>std::type_info</code> 对象）和虚函数表（vtable），不依赖符号表。它给出三样东西：</p>
+  <ul>
+    <li><strong>类</strong>（<code>CPlusPlusClass</code>）：镜像里每个有 typeinfo 的类，名字取自 typeinfo 里的名字串，符号被剥离的类也找得到；带直接基类，以及每个基类的偏移、是否虚继承、是否 public，基类可能在别的镜像里。</li>
+    <li><strong>虚函数表</strong>（<code>CPlusPlusVirtualTable</code>）：主表与多重继承、虚继承下的副表，每张表的 offset-to-top 和每个槽位指向的实现。</li>
+    <li><strong>虚函数</strong>（<code>CPlusPlusVirtualFunction</code>）：实现自己有 C++ 名字就用它；没有（只剩 <code>&lt;redacted function N&gt;</code>）时，沿主基类链找同一槽位的名字，基类在别的镜像里也跟过去——进程内在进程里找，dyld shared cache 里在同一个 cache 里找，独立文件按调用方给的依赖搜索路径找。</li>
+  </ul>
+  <p>现有的作用域树（<code>CPlusPlusSymbolIndexStore</code>）不变；两边的限定名用同一个解析器打印，调用方拿类名去作用域树里取非虚成员。纯新增 API，随本包 3.1.0 发布。</p>
+</section>
+
+<section id="decide">
+  <h2>要你定</h2>
+  <div class="callout callout-note">
+    <p class="callout-title">没有待定的问题。下面几条是我没问就采用的，可以推翻：</p>
+    <ul>
+      <li>放进现有 <code>CPlusPlusSymbols</code> 模块；新 store 与作用域树分开，按限定名关联。</li>
+      <li>测试用几个预编译的小 dylib（源码与重建脚本一起入库），覆盖剥离后的无名槽位、<code>@rpath</code> 跨镜像基类和旧式 opcode。</li>
+      <li>有虚基类、又没有符号、找到不止一组表时，取地址最小的那组，记为已知局限。</li>
+      <li>版本号 3.1.0。</li>
+    </ul>
+  </div>
+</section>
+
+<section id="architecture">
+  <h2>架构图</h2>
+  <ul class="legend">
+    <li><i class="swatch swatch-added"></i>新增</li>
+    <li><i class="swatch swatch-changed"></i>修改</li>
+    <li><i class="swatch swatch-kept"></i>不变</li>
+  </ul>
+  <div class="figure">
+  <svg viewBox="0 0 1000 470" role="img" aria-label="Module structure">
+    <rect class="group" x="10" y="10" width="610" height="452" rx="10"/>
+    <text class="group-label" x="22" y="30">CPlusPlusSymbols (product, dependencies changed)</text>
+    <rect class="box-kept" x="25" y="42" width="270" height="44" rx="6"/><text x="35" y="60">CPlusPlusSymbolName</text><text class="caption" x="35" y="77">one name taken apart</text>
+    <rect class="box-kept" x="320" y="42" width="270" height="44" rx="6"/><text x="330" y="60">CPlusPlusSymbolIndexStore</text><text class="caption" x="330" y="77">scope tree, symbols only</text>
+    <rect class="box-added" x="25" y="102" width="270" height="44" rx="6"/><text x="35" y="120">CPlusPlusClassIndexStore</text><text class="caption" x="35" y="137">.shared, .cPlusPlusClassStore</text>
+    <rect class="box-added" x="320" y="102" width="270" height="44" rx="6"/><text x="330" y="120">CPlusPlusClass</text><text class="caption" x="330" y="137">name, bases, typeinfo offset</text>
+    <rect class="box-added" x="320" y="158" width="270" height="44" rx="6"/><text x="330" y="176">CPlusPlusVirtualTable / Function</text><text class="caption" x="330" y="193">tables, slots, base function</text>
+    <rect class="group" x="25" y="222" width="580" height="226" rx="10"/>
+    <text class="group-label" x="37" y="242">RuntimeTypeInformation/ (internal)</text>
+    <rect class="box-added" x="40" y="254" width="250" height="44" rx="6"/><text x="50" y="272">ImagePointerSlots</text><text class="caption" x="50" y="289">file | dyld cache | process</text>
+    <rect class="box-added" x="40" y="314" width="250" height="44" rx="6"/><text x="50" y="332">TypeInfoScanner</text><text class="caption" x="50" y="349">typeinfo objects, names, bases</text>
+    <rect class="box-added" x="40" y="374" width="250" height="44" rx="6"/><text x="50" y="392">VirtualTableScanner</text><text class="caption" x="50" y="409">RTTI slots, groups, owners</text>
+    <rect class="box-added" x="320" y="254" width="260" height="44" rx="6"/><text x="330" y="272">VirtualFunctionNaming</text><text class="caption" x="330" y="289">own name, base function</text>
+    <rect class="box-added" x="320" y="314" width="260" height="44" rx="6"/><text x="330" y="332">BaseClassLocator</text><text class="caption" x="330" y="349">process | same cache | search paths</text>
+    <rect class="group" x="640" y="10" width="350" height="320" rx="10"/>
+    <text class="group-label" x="652" y="30">Other modules of the package</text>
+    <rect class="box-kept" x="655" y="42" width="320" height="44" rx="6"/><text x="665" y="60">MachOReading</text><text class="caption" x="665" y="77">InProcessContext.addressMask</text>
+    <rect class="box-kept" x="655" y="102" width="320" height="44" rx="6"/><text x="665" y="120">MachOAddressResolution (SPI)</text><text class="caption" x="665" y="137">CacheImageLocator, ImageAddressSpace</text>
+    <rect class="box-kept" x="655" y="162" width="320" height="44" rx="6"/><text x="665" y="180">MachODependencies</text><text class="caption" x="665" y="197">FileDependencyLocator</text>
+    <rect class="box-kept" x="655" y="222" width="320" height="44" rx="6"/><text x="665" y="240">CPlusPlusDemangling</text><text class="caption" x="665" y="257">ItaniumDemangle behind a C API</text>
+    <rect class="box-kept" x="655" y="276" width="320" height="44" rx="6"/><text x="665" y="294">MachOKit</text><text class="caption" x="665" y="311">chained fixups, DyldCache</text>
+    <path class="arrow" d="M 160 146 L 160 252"/>
+    <path class="arrow" d="M 290 270 L 653 66"/>
+    <path class="arrow" d="M 290 282 L 653 300"/>
+    <path class="arrow" d="M 290 336 L 653 246"/>
+    <path class="arrow" d="M 580 330 L 653 126"/>
+    <path class="arrow" d="M 580 340 L 653 186"/>
+    <path class="arrow arrow-weak" d="M 580 266 L 606 266 L 606 64 L 592 64"/>
+  </svg>
+  </div>
+  <p class="figure-caption">新 store 与作用域树并列；读指针、找 typeinfo、找 vtable、补名、跨镜像定位放在内部的 RuntimeTypeInformation 目录。虚线：补名时经作用域树的 <code>symbols(for:in:)</code> 取槽位实现的 C++ 名字。</p>
+
+  <div class="figure">
+  <svg viewBox="0 0 1000 250" role="img" aria-label="Index build and query flow">
+    <text class="group-label" x="12" y="24">Build once per image</text>
+    <rect class="box-kept" x="12" y="38" width="150" height="44" rx="6"/><text x="22" y="56">machO</text><text class="caption" x="22" y="73">file, cache image, process</text>
+    <rect class="box-added" x="200" y="38" width="170" height="44" rx="6"/><text x="210" y="56">ImagePointerSlots</text><text class="caption" x="210" y="73">walk fixup chains once</text>
+    <rect class="box-added" x="408" y="38" width="170" height="44" rx="6"/><text x="418" y="56">TypeInfoScanner</text><text class="caption" x="418" y="73">vtable+16 ∪ __ZTI</text>
+    <rect class="box-added" x="616" y="38" width="170" height="44" rx="6"/><text x="626" y="56">VirtualTableScanner</text><text class="caption" x="626" y="73">offset-to-top, slots</text>
+    <rect class="box-added" x="824" y="38" width="164" height="44" rx="6"/><text x="834" y="56">Storage</text><text class="caption" x="834" y="73">classes, tables (cached)</text>
+    <path class="arrow" d="M 162 60 L 198 60"/>
+    <path class="arrow" d="M 370 60 L 406 60"/>
+    <path class="arrow" d="M 578 60 L 614 60"/>
+    <path class="arrow" d="M 786 60 L 822 60"/>
+    <text class="group-label" x="12" y="134">Per query</text>
+    <rect class="box-added" x="12" y="148" width="190" height="44" rx="6"/><text x="22" y="166">virtualTables(of:in:)</text><text class="caption" x="22" y="183">reads Storage</text>
+    <rect class="box-added" x="240" y="148" width="200" height="44" rx="6"/><text x="250" y="166">VirtualFunctionNaming</text><text class="caption" x="250" y="183">own name, else base slot</text>
+    <rect class="box-added" x="478" y="148" width="180" height="44" rx="6"/><text x="488" y="166">BaseClassLocator</text><text class="caption" x="488" y="183">base in another image</text>
+    <rect class="box-kept" x="696" y="148" width="292" height="44" rx="6"/><text x="706" y="166">other image's Storage</text><text class="caption" x="706" y="183">same store, class(atTypeInfoOffset:)</text>
+    <path class="arrow" d="M 202 170 L 238 170"/>
+    <path class="arrow" d="M 440 170 L 476 170"/>
+    <path class="arrow" d="M 658 170 L 694 170"/>
+    <path class="arrow arrow-weak" d="M 842 192 L 842 228 L 340 228 L 340 194"/>
+    <text class="caption" x="470" y="242">recursive: the base's own primary base</text>
+  </svg>
+  </div>
+  <p class="figure-caption">建索引时读完数据段就丢掉槽位表，只留类与表；补名在查询时做，基类在别的镜像就到那个镜像的索引里递归取。</p>
+</section>
+
+<section id="map">
+  <h2>改动地图</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>文件 / 类型</th><th>动作</th><th>改什么</th><th>为什么</th><th>步骤</th></tr></thead>
+    <tbody>
+      <tr><td><code>Package.swift</code></td><td><span class="tag tag-changed">修改</span></td><td><code>CPlusPlusSymbols</code> 加依赖 <code>MachOAddressResolution</code>、<code>MachODependencies</code>、<code>MachOReading</code>；测试 target 加资源 <code>Resources/ClassHierarchyFixture</code> 与 <code>MachODependencies</code>；文件末尾的 Tuist 适配块（<code>origin/main</code> 的 <code>9d5a945</code>）保持在最后</td><td>读指针、跨镜像定位；预编译夹具</td><td class="numeric">1</td></tr>
+      <tr><td><code>RuntimeTypeInformation/ImagePointerSlots.swift</code> · <code>ImagePointerSlots</code>、<code>PointerSlotContent</code>、<code>ExternalPointerTarget</code>（internal）</td><td><span class="tag tag-added">新增</span></td><td>独立文件遍历链式 fixup 或 opcode 建表；cache 逐槽解码；进程内读内存去签名</td><td>上层不关心读取器</td><td class="numeric">1</td></tr>
+      <tr><td><code>RuntimeTypeInformation/TypeInfoScanner.swift</code> · <code>TypeInfoScanner</code>、<code>TypeInfoRecord</code>（internal）</td><td><span class="tag tag-added">新增</span></td><td>认三个 <code>__cxxabiv1</code> vtable、扫描找 typeinfo、并入 <code>__ZTI</code> 符号、解析基类、读名字串并清 bit 63</td><td>方案第 3、4 条</td><td class="numeric">2</td></tr>
+      <tr><td><code>CPlusPlusClass.swift</code> · <code>CPlusPlusClass</code>、<code>Base</code>、<code>Location</code>、<code>InheritanceShape</code></td><td><span class="tag tag-added">新增</span></td><td>公开的类值类型</td><td>查询结果</td><td class="numeric">2</td></tr>
+      <tr><td><code>CPlusPlusClassIndexStore.swift</code> · <code>CPlusPlusClassIndexStore</code>、<code>Storage</code></td><td><span class="tag tag-added">新增</span></td><td><code>.shared</code>；类的查询、<code>prepare</code> / <code>contains</code> / <code>remove</code>；第 3 步加 <code>virtualTables(of:in:)</code>，第 4 步加带 <code>dependencySearchPaths:</code> 的重载</td><td>方案第 1 条</td><td class="numeric">2、3、4</td></tr>
+      <tr><td><code>SharedCacheEvictionGroup+CPlusPlusSymbols.swift</code></td><td><span class="tag tag-changed">修改</span></td><td>加 <code>.cPlusPlusClassStore</code></td><td>与作用域树分开驱逐</td><td class="numeric">2</td></tr>
+      <tr><td><code>RuntimeTypeInformation/VirtualTableScanner.swift</code>（internal）</td><td><span class="tag tag-added">新增</span></td><td>认 RTTI 格、读 offset-to-top 与槽位、分组、取 <code>__ZTV</code> 所在组、读虚基类偏移、给副表认主人</td><td>方案第 5～7 条</td><td class="numeric">3</td></tr>
+      <tr><td><code>CPlusPlusVirtualTable.swift</code> · <code>CPlusPlusVirtualTable</code>、<code>CPlusPlusVirtualFunction</code>、<code>Implementation</code>、<code>BaseFunction</code></td><td><span class="tag tag-added">新增</span></td><td>公开的表与槽位值类型</td><td>查询结果</td><td class="numeric">3</td></tr>
+      <tr><td><code>RuntimeTypeInformation/VirtualFunctionNaming.swift</code>（internal）</td><td><span class="tag tag-added">新增</span></td><td>槽位自己的名字、沿主基类链取基类函数、判断覆盖或继承；取名函数可注入</td><td>方案第 8 条</td><td class="numeric">3、4</td></tr>
+      <tr><td><code>RuntimeTypeInformation/BaseClassLocator.swift</code>（internal）</td><td><span class="tag tag-added">新增</span></td><td>进程内按地址找镜像；cache 用 <code>CacheImageLocator</code>；文件用 <code>FileDependencyLocator</code> 并跟随 re-export；按「根镜像 + 搜索路径」缓存</td><td>方案第 9、10 条</td><td class="numeric">4</td></tr>
+      <tr><td><code>Tests/CPlusPlusSymbolsFixture/</code></td><td><span class="tag tag-changed">修改</span></td><td>加多重继承、纯虚、<code>= delete</code> 的虚函数、hidden 类、匿名命名空间类、<code>std::exception</code> 子类</td><td>进程内与文件两种读法的确定输入</td><td class="numeric">1、2、3</td></tr>
+      <tr><td><code>Tests/CPlusPlusSymbolsTests/Resources/ClassHierarchyFixture/</code></td><td><span class="tag tag-added">新增</span></td><td>预编译 dylib：<code>Derived</code> 经 <code>@rpath</code> 链接 <code>Base</code>、hidden 覆盖被 <code>strip -x</code>；<code>Legacy</code> 按 macOS 10.15 链接走 opcode；源码、<code>build.sh</code>、<code>README.md</code></td><td>测试包给不出这些输入</td><td class="numeric">1、4</td></tr>
+      <tr><td><code>ImagePointerSlotsTests.swift</code></td><td><span class="tag tag-added">新增</span></td><td>文件、cache、进程三种读法逐槽一致</td><td>第 1 步行为</td><td class="numeric">1</td></tr>
+      <tr><td><code>CPlusPlusClassIndexStoreTests.swift</code></td><td><span class="tag tag-added">新增</span></td><td>夹具上的类、基类、表、槽位、各查询；进程内与文件各跑一遍</td><td>第 2、3 步行为</td><td class="numeric">2、3</td></tr>
+      <tr><td><code>CPlusPlusVirtualFunctionNamingTests.swift</code></td><td><span class="tag tag-added">新增</span></td><td>注入取名函数的单元测试，加预编译夹具的跨镜像补名</td><td>第 4 步行为</td><td class="numeric">4</td></tr>
+      <tr><td><code>CPlusPlusClassIndexCensusTests.swift</code></td><td><span class="tag tag-added">新增</span></td><td>JavaScriptCore 与 TSTables（卷不在时跳过）的数量、耗时、常驻字节；扫描表长与符号边界一致</td><td>记录规模、核对表长规则</td><td class="numeric">5</td></tr>
+      <tr><td><code>Documentations/Internal/CPlusPlusClasses.md</code></td><td><span class="tag tag-added">新增</span></td><td>实现说明</td><td>实现说明随代码</td><td class="numeric">6</td></tr>
+      <tr><td><code>Documentations/Internal/CPlusPlusSymbols.md</code>、<code>README.md</code>、两个索引</td><td><span class="tag tag-changed">修改</span></td><td>指路、示例、登记</td><td>对外说明与索引</td><td class="numeric">6</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="proposal">
+  <h2>提议方案</h2>
+  <ol>
+    <li><strong>新 store，放在现有 <code>CPlusPlusSymbols</code> 里。</strong>形状照 0005：<code>.shared</code>，方法带 <code>in: machO</code>，每个镜像第一次查询时建一次，缓存在驱逐组 <code>.cPlusPlusClassStore</code> 下。作用域树不动。</li>
+    <li><strong>读指针分三条路。</strong>独立文件把链式 fixup 遍历一次（旧文件读 <code>LC_DYLD_INFO</code> 的 opcode）建表、用完即丢；cache 镜像逐槽按 cache 指针格式解码，不经带记忆的 <code>resolveRebase(fileOffset:)</code>；进程内直接读内存，用 <code>InProcessContext.addressMask</code> 去签名。</li>
+    <li><strong>找 typeinfo：扫描加符号。</strong>数据段普通节里内容是「三个 <code>__cxxabiv1</code> 类 typeinfo 的 vtable + 16」的槽位，就是一个 typeinfo 的开头；再并入 <code>__ZTI…</code> 符号。</li>
+    <li><strong>读 typeinfo。</strong>名字指针清 bit 63，名字串拼上 <code>__ZTS</code> 交给现有解析器；si 读一个基类，vmi 读标记与全部基类。外部基类记下符号名与来源库（文件）或地址（cache、进程内）。</li>
+    <li><strong>找 vtable。</strong>指向本镜像某个 typeinfo、不在 typeinfo 对象里、前一格不是指针且在 <code>[-2^31, 0]</code> 内的槽位是 RTTI 格；之后逐格读到不是函数为止。</li>
+    <li><strong>分组。</strong>相连、只隔着非指针格的同类表是一组；offset-to-top 为 0 的是主表。有 <code>__ZTV</code> 符号取它所在的组；没有符号又有多组时（只会是有虚基类的类，多出来的是 construction vtable）取地址最小的那组，记为已知局限。</li>
+    <li><strong>副表归属。</strong>非虚基类按偏移递归展开，虚基类读主表前缀里的虚基类偏移；offset-to-top 等于负的子对象偏移的那个基类就是副表的主人。</li>
+    <li><strong>槽位的名字。</strong>实现自己有名字就用；再沿主基类链取同一槽位的名字作为「基类函数」，并判断覆盖还是原样继承。槽位号超出基类表长的是类自己引入的虚函数。</li>
+    <li><strong>跨镜像找基类。</strong>进程内按地址、cache 用 <code>CacheImageLocator</code>、独立文件用 <code>FileDependencyLocator</code> 并跟随 re-export；找到后在那个镜像上同样建索引，基类的基类也能继续找。</li>
+    <li><strong>独立文件的搜索路径。</strong>通用方法默认用推断路径加本机 cache；<code>@rpath</code> 兄弟框架用带 <code>dependencySearchPaths:</code> 的重载显式给出。</li>
+    <li><strong>发版</strong>：3.1.0，纯新增。</li>
+  </ol>
+  <h3>非目标</h3>
+  <ul>
+    <li>类的字段（protobuf 另写提案；ObjC ivar 编码在下游合并）。</li>
+    <li>非类的 typeinfo（指针、枚举、函数、数组、成员指针、基本类型）。</li>
+    <li>把 RTTI 类并进 0005 的作用域树。</li>
+    <li>没有符号时可靠区分自己的 vtable 与 construction vtable；VTT 的内容。</li>
+    <li>反查某个函数出现在哪些 vtable 槽位。</li>
+    <li>用 arm64e 槽位签名的判别值核对覆盖关系（推测，未验证）。</li>
+    <li>MSVC 的 RTTI；32 位 Mach-O；Linux 验证；下游采用。</li>
+  </ul>
+</section>
+
+<section id="design">
+  <h2>详细设计</h2>
+  <details open>
+    <summary>三个调用点</summary>
+    <div class="details-body">
+<pre><code>// Simplest: the classes of an image, including the ones without symbols.
+let store = CPlusPlusClassIndexStore.shared
+let hiddenClasses = store.classes(in: machO).filter { !$0.hasTypeInfoSymbol }
+
+// Most common: the virtual functions of a class, named through its bases.
+if let cellID = store.class(named: "TST::CellID", in: machO) {
+    for function in store.virtualTables(of: cellID, in: machO).first?.functions ?? [] {
+        print(function.slotIndex, function.name?.demangledName ?? "?", function.baseFunction?.isInherited == false)
+    }
+}
+
+// Most involved: a standalone file whose bases sit in an @rpath sibling.
+let tables = store.virtualTables(
+    of: cellID,
+    in: tablesFile,
+    dependencySearchPaths: [.machOFile(path: persistencePath), .systemDyldSharedCache]
+)</code></pre>
+      <p><code>class(named:in:)</code> 声明时加反引号，调用点按 SE-0071 不用。先例：<code>CPlusPlusSymbolIndexStore.scope(named:in:)</code>、<code>symbol(named:in:)</code>。</p>
+    </div>
+  </details>
+  <details>
+    <summary>公开类型</summary>
+    <div class="details-body">
+<pre><code>public struct CPlusPlusClass: Hashable, Sendable, CustomStringConvertible {
+    public let qualifiedName: String          // "TST::CellID", printed like CPlusPlusScope.qualifiedName
+    public let scopePath: [String]
+    public let baseName: String
+    public let mangledTypeName: String        // "N3TST6CellIDE"
+    public let typeInfoOffset: Int
+    public let bases: [Base]
+    public let inheritanceShape: InheritanceShape
+    public let hasVirtualTable: Bool
+    public let hasTypeInfoSymbol: Bool
+    public let hasUniqueTypeInfo: Bool        // false for a hidden type on Apple arm64
+}
+
+extension CPlusPlusClass {
+    public struct Base: Hashable, Sendable {
+        public let qualifiedName: String
+        public let mangledTypeName: String
+        public let isVirtual: Bool
+        public let isPublic: Bool
+        public let offset: Int                // subobject offset; for a virtual base, the vbase-offset slot
+        public let location: Location
+    }
+    public enum Location: Hashable, Sendable {
+        case sameImage(typeInfoOffset: Int)
+        case otherImage(installName: String?)
+    }
+    public struct InheritanceShape: OptionSet, Hashable, Sendable {
+        public static let repeatedBase: InheritanceShape
+        public static let diamond: InheritanceShape
+    }
+}
+
+public struct CPlusPlusVirtualTable: Hashable, Sendable {
+    public let addressPointOffset: Int
+    public let offsetToTop: Int
+    public let subobjectClassName: String?
+    public let functions: [CPlusPlusVirtualFunction]
+    public var isPrimary: Bool { offsetToTop == 0 }
+}
+
+public struct CPlusPlusVirtualFunction: Hashable, Sendable {
+    public let slotIndex: Int
+    public let implementation: Implementation
+    public let symbolName: CPlusPlusSymbolName?
+    public let baseFunction: BaseFunction?
+    public var name: CPlusPlusSymbolName? { symbolName ?? baseFunction?.name }
+}
+
+extension CPlusPlusVirtualFunction {
+    public enum Implementation: Hashable, Sendable {
+        case function(offset: Int)
+        case imported(symbolName: String, installName: String?)
+        case otherImage(address: UInt64)
+        case pureVirtual
+        case deletedVirtual
+    }
+    public struct BaseFunction: Hashable, Sendable {
+        public let className: String
+        public let name: CPlusPlusSymbolName?
+        public let isInherited: Bool
+    }
+}</code></pre>
+    </div>
+  </details>
+  <details>
+    <summary>Store 的方法</summary>
+    <div class="details-body">
+<pre><code>public final class CPlusPlusClassIndexStore: Sendable {
+    public static let shared: CPlusPlusClassIndexStore
+    public func classes(in machO: some MachORepresentableWithCache) -&gt; [CPlusPlusClass]
+    public func `class`(named qualifiedName: String, in machO: some MachORepresentableWithCache) -&gt; CPlusPlusClass?
+    public func `class`(atTypeInfoOffset offset: Int, in machO: some MachORepresentableWithCache) -&gt; CPlusPlusClass?
+    public func derivedClasses(of baseClass: CPlusPlusClass, in machO: some MachORepresentableWithCache) -&gt; [CPlusPlusClass]
+    public func virtualTables(of polymorphicClass: CPlusPlusClass, in machO: some MachORepresentableWithCache) -&gt; [CPlusPlusVirtualTable]
+    public func virtualTables(of polymorphicClass: CPlusPlusClass, in machO: MachOFile, dependencySearchPaths: [DependencySearchPath]) -&gt; [CPlusPlusVirtualTable]
+    public func prepare(in machO: some MachORepresentableWithCache)
+    public func contains(in machO: some MachORepresentableWithCache) -&gt; Bool
+    public func remove(for machO: some MachORepresentableWithCache)
+}</code></pre>
+      <ul>
+        <li><code>classes(in:)</code> 按限定名升序；<code>class(named:in:)</code> 遇到不同编译单元同名的 hidden 类时取 typeinfo 偏移最小的。</li>
+        <li>通用的 <code>virtualTables(of:in:)</code>：进程内镜像在进程里找基类，cache 镜像在同一个 cache 里找，独立文件用推断路径加本机 cache。</li>
+      </ul>
+    </div>
+  </details>
+  <details>
+    <summary>索引的常驻内容与发现细节</summary>
+    <div class="details-body">
+      <ul>
+        <li>常驻：每个类的 <code>CPlusPlusClass</code> 值、vtable 组（address point、offset-to-top、所属子对象、槽位）、派生类下标；限定名与 typeinfo 偏移两张索引。槽位不存名字，查询时经作用域树的 <code>symbols(for:in:)</code> 取。外部基类的定位结果由 <code>BaseClassLocator</code> 按「根 + 搜索路径」缓存。槽位表建完即丢。</li>
+        <li>扫描的节：<code>__DATA*</code> 与 <code>__AUTH*</code> 段的普通节，跳过 zerofill、<code>__got</code>、<code>__auth_got</code>、<code>__la_symbol_ptr</code>、<code>__nl_symbol_ptr</code>、<code>__objc_*</code>、<code>__cfstring</code>、<code>__mod_init_func</code>、<code>__thread_*</code>。</li>
+        <li>三个 <code>__cxxabiv1</code> vtable：文件看 bind 名与 addend 16；cache 在同一 cache 的 <code>/usr/lib/libc++abi.dylib</code> 导出表取地址；进程内 <code>dlsym</code>；镜像就是 libc++abi 时比自己的 rebase 目标。</li>
+        <li>typeinfo 的范围：class 16 字节、si 24 字节、vmi <code>24 + 16 × __base_count</code>（超过 1,024 视为不是 typeinfo）。</li>
+        <li>名字：清 bit 63 后读 C 字符串，拼 <code>__ZTS</code> 交给 <code>CPlusPlusDemangler</code>；解析不了的类仍收录，限定名用原样的修饰名。</li>
+        <li>槽位是不是函数：本镜像目标在可执行节；bind 名不以 <code>__ZTV</code>、<code>__ZTI</code>、<code>__ZTS</code>、<code>_OBJC_</code> 开头；别的镜像的目标在它的可执行段。</li>
+        <li>主基类：第一个偏移为 0、非虚、带 vtable 的直接基类（「几乎为空的虚基类」当主基类的情况不处理）；递归深度上限 64。</li>
+        <li>原样继承：同一镜像比偏移；导入比符号名；跨镜像一边在派生类镜像就是覆盖。</li>
+        <li>线程安全：<code>Storage</code> 建成后不可变；定位器缓存用 <code>NSLock</code>。</li>
+      </ul>
+    </div>
+  </details>
+</section>
+
+<section id="research">
+  <h2>调研</h2>
+  <details open>
+    <summary>TSTables（iWork 14.5，arm64 切片）实测</summary>
+    <div class="details-body">
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>项</th><th>数量</th></tr></thead>
+        <tbody>
+          <tr><td>导出的 C++ 符号（hidden 的已剥离）</td><td class="numeric">13,164</td></tr>
+          <tr><td>typeinfo：class / si / vmi</td><td class="numeric">611（53 / 558 / 0）</td></tr>
+          <tr><td>其中有 <code>__ZTI</code> 符号的</td><td class="numeric">444</td></tr>
+          <tr><td>名字指针带 bit 63（非唯一 RTTI）</td><td class="numeric">54</td></tr>
+          <tr><td>单继承的基类：本镜像 / TSPersistence 的 <code>Message</code> / libc++ 的 <code>std::exception</code></td><td class="numeric">123 / 434 / 1</td></tr>
+          <tr><td>vtable（全是主表）；没有 vtable 的 typeinfo</td><td class="numeric">606；5</td></tr>
+          <tr><td>槽位：指向本镜像 / 绑到别的镜像（纯虚或 deleted）</td><td class="numeric">10,310 / 2,208（6）</td></tr>
+          <tr><td>本镜像的不同虚函数：有 C++ 名 / 只有 redacted</td><td class="numeric">4,040 / 2,988</td></tr>
+          <tr><td>缺 C++ 名的槽位 / 沿基类链补回</td><td class="numeric">5,805 / 2,163</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p>补不回的主要是类自己新引入的虚函数。<code>std::exception</code> 绑到 libc++，实际定义在 libc++abi，要跟着 re-export 走。</p>
+    </div>
+  </details>
+  <details>
+    <summary>Itanium ABI 布局与 Apple arm64 的非唯一 RTTI</summary>
+    <div class="details-body">
+      <ul>
+        <li><code>libcxxabi/src/private_typeinfo.h</code>：<code>type_info</code> 是 <code>vptr</code> 加名字指针；si 在 <code>+16</code> 放基类指针；vmi 在 <code>+16</code> 放 <code>__flags</code>（<code>0x1</code> 重复基类、<code>0x2</code> 菱形）、<code>+20</code> 放 <code>__base_count</code>、<code>+24</code> 起是基类条目（指针加 <code>__offset_flags</code>：<code>0x1</code> 虚、<code>0x2</code> public、偏移在 <code>&gt;&gt; 8</code>）。</li>
+        <li><code>libcxx/include/typeinfo:144-181</code>、<code>:233</code>：Apple arm64 上非唯一类型的名字指针 bit 63 置 1，比较时比字符串。</li>
+      </ul>
+    </div>
+  </details>
+  <details>
+    <summary>vtable 的形状（clang 21 探针）</summary>
+    <div class="details-body">
+      <ul>
+        <li>主表：<code>[虚基类与 vcall 偏移……][offset-to-top = 0][RTTI][槽位……]</code>；vptr 指向第一个槽位。</li>
+        <li>多重继承：主表后紧跟副表 <code>[offset-to-top = -16][RTTI，同一个类][thunk……]</code>。</li>
+        <li>虚继承：construction vtable <code>__ZTC8Complete0_12Intermediate</code> 的 RTTI 指向 <code>Intermediate</code> 自己的 typeinfo，是另一组独立对象。</li>
+        <li>虚析构函数占两格；纯虚绑 <code>___cxa_pure_virtual</code>，<code>= delete</code> 绑 <code>___cxa_deleted_virtual</code>。</li>
+      </ul>
+    </div>
+  </details>
+  <details>
+    <summary>本包现有的基础设施</summary>
+    <div class="details-body">
+      <ul>
+        <li>MachOKit 的 <code>MachOFile.resolveBind(at:)</code>（<code>MachOFile.swift:927-950</code>）每次都把所有链式指针列一遍；逐槽调用是平方级，所以自己遍历一次。</li>
+        <li><code>MachOAddressResolution</code>：<code>SlotResolver</code>（只收 <code>MachOFile</code>）、<code>ImageAddressSpace</code>、<code>CacheImageLocator</code>；cache 镜像的 offset 是「未滑动地址减 <code>sharedRegionStart</code>」。</li>
+        <li><code>MachODependencies</code>：<code>FileDependencyLocator.locate(loadName:)</code>；<code>@rpath</code> 不展开，兄弟框架要显式给 <code>.machOFile(path:)</code>。</li>
+        <li><code>MachOReading</code>：<code>InProcessContext.addressMask</code> 去掉进程内指针的签名与 tag。</li>
+        <li>测试包二进制是链式 fixup 还是 opcode：未查证，第 1 步先确认。</li>
+      </ul>
+    </div>
+  </details>
+</section>
+
+<section id="alternatives">
+  <h2>替代方案</h2>
+  <details>
+    <summary>6 条被否的路</summary>
+    <div class="details-body">
+      <ul>
+        <li><strong>只用 <code>__ZTI</code> / <code>__ZTV</code> 符号</strong>：TSTables 的 167 个无符号类恰好是最需要恢复的。</li>
+        <li><strong>逐槽调用 <code>SlotResolver</code> 或 <code>resolveBind(fileOffset:)</code></strong>：平方级，且带记忆的版本会让每个槽常驻。</li>
+        <li><strong>并进 0005 的作用域树</strong>：建树要多读数据段，两份索引的成本与种类判断会绑在一起；先分开。</li>
+        <li><strong>只在本镜像内补名</strong>：TSTables 434 个类的基类在 TSPersistence；用户选择跨镜像。</li>
+        <li><strong>字段一起做</strong>：ObjC 编码只能在下游合并且几乎不重叠；protobuf 是另一套格式。用户选择另写提案。</li>
+        <li><strong>只用测试包自己的二进制测试</strong>：给不出剥离后的无名槽位与 <code>@rpath</code> 跨镜像基类；改用预编译的小 dylib。</li>
+      </ul>
+    </div>
+  </details>
+</section>
+
+<section id="impact">
+  <h2>影响</h2>
+  <ul>
+    <li><strong>源码兼容性</strong>：纯新增；新依赖都是本包已有的模块，使用方不用改清单。</li>
+    <li><strong>ABI</strong>：不适用，SPM 源码分发。</li>
+    <li><strong>下游</strong>：RuntimeViewer、MachOKitUI、swift-section 不受影响，采用时各自写提案；之后的 protobuf 提案依赖 <code>CPlusPlusClass</code>。</li>
+    <li><strong>演进</strong>：<code>Implementation</code> 与 <code>Location</code> 用 enum（取值由 ABI 定死）；<code>InheritanceShape</code> 用 <code>OptionSet</code>；补名规则以后可能更聪明，<code>baseFunction</code> 可能从 <code>nil</code> 变成有值。版本 3.1.0。</li>
+  </ul>
+</section>
+
+<section id="steps">
+  <h2>落地步骤</h2>
+  <ol>
+    <li><strong>读指针的三条路</strong>：先确认测试包的 fixup 格式。行为：<code>fileSlotsMatchTheProcessForEveryDataPointerOfTheFixtureImage</code>、<code>cacheSlotsMatchTheProcessForEveryDataPointerOfJavaScriptCore</code>、<code>chainedAndLegacyFixupFilesAgreeOnEverySlot</code>、<code>aBindSlotNamesItsSymbolAndLibrary</code>、<code>aWordThatIsNoPointerHasNoContent</code>。</li>
+    <li><strong>类与基类</strong>。行为：<code>everyFixtureClassWithATypeInfoIsFound</code>、<code>aClassWithoutSymbolsIsFoundThroughItsTypeInfo</code>、<code>aHiddenClassHasANonUniqueTypeInfoAndItsNameStillReads</code>、<code>singleInheritanceRecordsTheBaseAtOffsetZero</code>、<code>multipleInheritanceRecordsEveryBaseWithItsOffset</code>、<code>virtualInheritanceRecordsTheVirtualBaseOffsetSlot</code>、<code>aBaseInAnotherImageIsNamedAndLocatedThere</code>、<code>qualifiedNameFindsTheSameScopeInTheScopeTree</code>、<code>derivedClassesListTheDirectSubclassesInTheImage</code>、<code>processImageAndItsFileGiveTheSameClasses</code>。</li>
+    <li><strong>vtable 与本镜像内的补名</strong>。行为：<code>primaryTableListsSlotsInDeclarationOrder</code>、<code>virtualDestructorTakesTwoSlots</code>、<code>secondaryTableBelongsToTheBaseAtItsOffset</code>、<code>secondaryTableSlotsAreThunksNamedAfterTheOverrider</code>、<code>theOwnTableIsPickedOverAConstructionTable</code>、<code>pureAndDeletedVirtualSlotsAreMarked</code>、<code>anOverrideIsNotInheritedAndAnUntouchedSlotIs</code>、<code>aSlotTheClassIntroducesHasNoBaseFunction</code>、<code>anUnnamedSlotTakesItsNameFromTheBase</code>、<code>tableScanStopsAtTheNextObject</code>。</li>
+    <li><strong>跨镜像补名</strong>。行为：<code>strippedOverridesAreNamedFromTheBaseInTheRPathSibling</code>、<code>withoutTheSiblingTheBaseFunctionIsUnknown</code>、<code>aBaseBoundThroughAReexportingLibraryIsFound</code>、<code>aProcessImageReachesBasesInOtherLoadedImages</code>、<code>aCacheImageReachesBasesInTheSameCache</code>、<code>basesOfBasesInOtherImagesAreFollowed</code>。</li>
+    <li><strong>普查</strong>。行为：<code>classIndexCensusOfJavaScriptCore</code>、<code>scannedTableLengthsMatchSymbolBoundsInJavaScriptCore</code>、<code>classIndexCensusOfTSTables</code>（卷不在时跳过；期望 611 / 167 / 606，给 TSPersistence 后补回至少 2,163 个槽位名）。</li>
+    <li><strong>文档</strong>：实现说明必写；不写使用指南；本包没有术语表，术语在实现说明里第一次出现时解释。</li>
+  </ol>
+</section>
+
+<section id="log">
+  <h2>决策日志</h2>
+  <details>
+    <summary>6 条，最近一条：测试用预编译的小 dylib</summary>
+    <div class="details-body">
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>日期</th><th>变更</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td class="numeric">2026-11-20</td><td>Created as Draft</td><td>用户要求给 C++ 加成员恢复：通过 RTTI 等手段还原类型与成员方法。先在 iWork 的 TSTables 上统计了能恢复多少。</td></tr>
+          <tr><td class="numeric">2026-11-20</td><td>范围：RTTI + vtable + 跨镜像补名</td><td>用户选择。否决只读本镜像。</td></tr>
+          <tr><td class="numeric">2026-11-20</td><td>字段不在本提案</td><td>用户选择。RTTI 与 vtable 不带字段；ObjC 编码只能在下游合并且几乎不重叠。</td></tr>
+          <tr><td class="numeric">2026-11-20</td><td>protobuf 描述符另写提案，排在之后</td><td>用户看了 proto-dump 后选择。TSTables 的 434 个消息与继承 <code>Message</code> 的 434 个类一一对上；proto-dump 原样接不进本包。</td></tr>
+          <tr><td class="numeric">2026-11-20</td><td>放进 <code>CPlusPlusSymbols</code>，与作用域树分开</td><td>两份索引的输入不同，分开后作用域树不变；按限定名关联。</td></tr>
+          <tr><td class="numeric">2026-11-20</td><td>测试用预编译的小 dylib</td><td>测试包给不出剥离后的无名槽位、<code>@rpath</code> 跨镜像基类与旧式 opcode。</td></tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </details>
+</section>
+
+</main>
+</div>
+</body>
+</html>
