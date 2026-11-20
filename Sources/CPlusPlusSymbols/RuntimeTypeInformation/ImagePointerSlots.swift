@@ -99,10 +99,10 @@ final class ImagePointerSlots: @unchecked Sendable {
             if let decodedCacheDataSlots, dataSectionRanges.contains(where: { $0.contains(offset) }) {
                 return decodedCacheDataSlots[offset]
             }
-            // A small integer is no pointer, though the cache's format would
-            // decode it into an address near the shared region's start.
+            // An offset-to-top or a vcall offset is no pointer, though the
+            // cache's format would decode it into an address.
             guard case .file(let file) = image,
-                  let stored = word(atOffset: offset), !Self.isSmallInteger(stored),
+                  let stored = word(atOffset: offset), !Self.isNonPositiveSmallInteger(stored),
                   let (cache, cacheOffset) = file.resolveCacheStartOffsetIfNeeded(offset: UInt64(offset)),
                   let resolved = cache.resolveOptionalRebase(at: cacheOffset) else {
                 return nil
@@ -167,10 +167,18 @@ final class ImagePointerSlots: @unchecked Sendable {
         return Self.isSmallInteger(value)
     }
 
-    /// Whether a stored word is an integer no pointer of a cache file or of
-    /// this process can be.
+    /// Whether a stored word is an integer no pointer of this process can
+    /// be.
     static func isSmallInteger(_ value: Int64) -> Bool {
         value >= -(1 << 31) && value < (1 << 31)
+    }
+
+    /// Whether a stored word is an integer no pointer of a cache file can be.
+    /// A small positive word can: a pointer that ends its page's chain and
+    /// targets the first two gigabytes of the cache is stored as its offset.
+    /// Such an integer decodes into the cache's header, which no image holds.
+    static func isNonPositiveSmallInteger(_ value: Int64) -> Bool {
+        value >= -(1 << 31) && value <= 0
     }
 
     /// Whether `offset` lies in the image's code.
@@ -224,7 +232,7 @@ final class ImagePointerSlots: @unchecked Sendable {
                   let (cache, startCacheOffset) = file.resolveCacheStartOffsetIfNeeded(offset: UInt64(start)) else {
                 continue
             }
-            for (wordIndex, stored) in words.enumerated() where stored != 0 && !Self.isSmallInteger(stored) {
+            for (wordIndex, stored) in words.enumerated() where !Self.isNonPositiveSmallInteger(stored) {
                 guard let resolved = cache.resolveOptionalRebase(at: startCacheOffset + UInt64(8 * wordIndex)),
                       let content = Self.cacheContent(ofResolvedAddress: resolved, sharedRegionStart: sharedRegionStart, imageAddressRanges: imageAddressRanges) else {
                     continue

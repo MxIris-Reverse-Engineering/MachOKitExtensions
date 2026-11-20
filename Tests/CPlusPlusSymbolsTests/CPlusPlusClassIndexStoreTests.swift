@@ -144,6 +144,22 @@ struct CPlusPlusClassIndexStoreTests {
         #expect(shape(of: Self.store.classes(in: image)) == shape(of: Self.store.classes(in: file)))
     }
 
+    /// A standalone file binds `std::exception`'s typeinfo from libc++,
+    /// which re-exports libc++abi, where it is defined.
+    @Test func aStandaloneFileReachesABaseThroughAReexportingLibrary() throws {
+        let file = try ClassIndexTestImages.fixtureFile()
+        let failure = try Self.requireClass("hierarchy::Failure", in: file)
+        let storage = try #require(Self.store.storage(in: file))
+        let record = try #require(storage.record(atTypeInfoOffset: failure.typeInfoOffset))
+        let reference = try #require(record.bases.first?.reference)
+        let locator = BaseClassLocator(root: .file(file), dependencySearchPaths: nil)
+        let located = locator.locate(reference, from: .file(file))
+        let (image, offset) = try #require(located, "\(reference) not located")
+        #expect(image.imagePath == "/usr/lib/libc++abi.dylib")
+        let exception = Self.store.class(atTypeInfoOffset: offset, in: image.representable)
+        #expect(exception?.qualifiedName == "std::exception", "\(reference) located at \(offset) in \(image.imagePath), \(Self.store.classes(in: image.representable).count) classes there")
+    }
+
     // MARK: Vtables
 
     @Test(arguments: Reader.allCases)

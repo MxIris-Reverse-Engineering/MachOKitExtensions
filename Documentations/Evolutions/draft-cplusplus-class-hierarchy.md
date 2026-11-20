@@ -34,7 +34,7 @@
   - `__si_class_type_info`（`:146`）：恰好一个 public、非虚、偏移为 0 的基类，`+16` 是基类 typeinfo 的指针，对象 24 字节。
   - `__vmi_class_type_info`（`:180-190`）：`+16` 是 `unsigned __flags`（`__non_diamond_repeat_mask = 0x1`、`__diamond_shaped_mask = 0x2`），`+20` 是 `unsigned __base_count`，`+24` 起是 `__base_count` 个 `__base_class_type_info`（`:162-173`）：基类 typeinfo 指针，加一个 `long __offset_flags`（`__virtual_mask = 0x1`、`__public_mask = 0x2`、偏移在 `>> 8`）。非虚基类的偏移是子对象在类里的偏移；虚基类的偏移是「虚基类偏移存在 vtable 里的哪一格」（相对 address point，为负）。
   - 其余 typeinfo（指针、基本类型、枚举、函数、数组、成员指针，`:29-50`、`:204-250`）不描述类，本提案不读。
-- **Apple arm64 的非唯一 RTTI 标记**（`/Volumes/SwiftProjects/swift-project/llvm-project/libcxx/include/typeinfo:144-181`、`:233`）：arm64 的 Apple 平台上 `_LIBCPP_TYPEINFO_COMPARISON_IMPLEMENTATION` 为 3，非唯一（hidden）类型的 `__type_name` 指针最高位（bit 63）置 1，表示比较时要比字符串；取名字前要清掉这一位。TSTables 的 611 个 typeinfo 里有 54 个带这个标记（`dyld_info -fixups` 显示目标形如 `0x800000000116CB3D`）；不清掉就读到一串乱码。
+- **Apple arm64 的非唯一 RTTI 标记**（`/Volumes/SwiftProjects/swift-project/llvm-project/libcxx/include/typeinfo:144-181`、`:233`）：arm64 的 Apple 平台上 `_LIBCPP_TYPEINFO_COMPARISON_IMPLEMENTATION` 为 3，非唯一类型的 `__type_name` 指针最高位（bit 63）置 1，表示比较时要比字符串；取名字前要清掉这一位。哪些类型非唯一，由 clang 的 `classifyRTTIUniqueness` 决定：只有链接属性为 linkonce_odr 或 weak_odr、且默认可见性的类型——没有 key function 的类（虚函数全是内联的）、模板特化——每个镜像各留一份隐藏的副本并置这一位；hidden 类型反而是唯一的（实现时由夹具测出，见决策日志）。TSTables 的 611 个 typeinfo 里有 54 个带这个标记（`dyld_info -fixups` 显示目标形如 `0x800000000116CB3D`）；不清掉就读到一串乱码。
 
 **vtable 的形状**（本机 Xcode 27.2 的 Apple clang 21，`clang++ -arch arm64 -shared -O1` 编一个带虚继承与多重继承的小探针，用 `nm` 与 `dyld_info -fixups` 看）
 
@@ -109,22 +109,23 @@
 
 | 文件 / 类型 | 动作 | 改什么 | 为什么 | 步骤 |
 |---|---|---|---|---|
-| `Package.swift` | 修改 | `CPlusPlusSymbols` 加依赖 `MachOAddressResolution`、`MachODependencies`、`MachOReading`；`CPlusPlusSymbolsTests` 加 `resources: [.copy("Resources/ClassHierarchyFixture")]` 与 `MachODependencies` 依赖。文件末尾那段 Tuist 适配块（`origin/main` 的 `9d5a945`，来自 MachOSwiftSection 提案 0099，只在 `TUIST_MAPS_LOCAL_PACKAGE_TESTS=1` 时生效）保持在最后：它要在所有 target 与 product 声明完之后才运行 | 读指针、跨镜像定位；预编译夹具 | 1 |
-| `Sources/CPlusPlusSymbols/RuntimeTypeInformation/ImagePointerSlots.swift` · `ImagePointerSlots`、`PointerSlotContent`、`ExternalPointerTarget`（internal） | 新增 | 三种读取器各一种实现：独立文件遍历链式 fixup 或 opcode 建表，cache 逐槽解码，进程内读内存去签名；回答 `content(atOffset:)`、可执行范围判断、数据节的槽位遍历 | 上层的发现与解析不关心读取器 | 1 |
-| `Sources/CPlusPlusSymbols/RuntimeTypeInformation/TypeInfoScanner.swift` · `TypeInfoScanner`、`TypeInfoRecord`（internal） | 新增 | 找三个 `__cxxabiv1` vtable 的标识（名字或地址）、扫描槽位找 typeinfo、并入 `__ZTI` 符号、解析 si / vmi 的基类、读名字串并清 bit 63 | 方案第 3、4 条 | 2 |
+| `Package.swift` | 修改 | `CPlusPlusSymbols` 加依赖 `MachOReading`、`MachOAddressResolution`、`MachODependencies`；`CPlusPlusSymbolsTests` 加 `MachOReading`、`MachODependencies` 依赖。文件末尾那段 Tuist 适配块（`origin/main` 的 `9d5a945`，来自 MachOSwiftSection 提案 0099，只在 `TUIST_MAPS_LOCAL_PACKAGE_TESTS=1` 时生效）保持在最后：它要在所有 target 与 product 声明完之后才运行 | 读指针、跨镜像定位 | 1 |
+| `Sources/CPlusPlusSymbols/RuntimeTypeInformation/IndexedImage.swift`、`ImagePointerSlots.swift` · `IndexedImage`、`ImagePointerSlots`（含 `Content`）（internal） | 新增 | 三种读取器：独立文件复用 `cached.fixupPointers` 或读 opcode 的 rebase 与 bind，cache 文件把数据段的指针一次解码，进程内读内存去签名；小整数不当指针；回答 `content(atOffset:)`、`word(atOffset:)`、可执行范围、数据节的槽位遍历 | 上层的发现与解析不关心读取器 | 1 |
+| `Sources/CPlusPlusSymbols/RuntimeTypeInformation/RuntimeLibraryMarkers.swift` · `RuntimeLibraryMarkers`（internal） | 新增 | libc++abi 三个类 typeinfo vtable 与 `__cxa_pure_virtual`、`__cxa_deleted_virtual` 在本镜像里的样子：bind 名、cache 里的地址（按 cache 镜像清单找到 libc++abi 再查导出表）、进程内 `dlsym`、镜像自己就是 libc++abi 时的偏移 | 方案第 3 条 | 2 |
+| `Sources/CPlusPlusSymbols/RuntimeTypeInformation/TypeInfoScanner.swift` · `TypeInfoScanner`、`TypeInfoRecord`、`TypeInfoReference`（internal） | 新增 | 扫描槽位找 typeinfo、解析 si / vmi 的基类、读名字串并清 bit 63 | 方案第 3、4 条 | 2 |
 | `Sources/CPlusPlusSymbols/CPlusPlusClass.swift` · `CPlusPlusClass`、`Base`、`Base.Location`、`InheritanceShape` | 新增 | 公开的类值类型 | 查询结果 | 2 |
-| `Sources/CPlusPlusSymbols/CPlusPlusClassIndexStore.swift` · `CPlusPlusClassIndexStore`、`Storage` | 新增 | `.shared`；`classes(in:)`、`class(named:in:)`、`class(atTypeInfoOffset:in:)`、`derivedClasses(of:in:)`、`prepare`、`contains`、`remove`；第 3 步加 `virtualTables(of:in:)`，第 4 步加带 `dependencySearchPaths:` 的重载 | 方案第 1 条 | 2、3、4 |
+| `Sources/CPlusPlusSymbols/CPlusPlusClassIndexStore.swift` · `CPlusPlusClassIndexStore`、`Storage`、`ClassHandle`、`ClassResolver`、`LocatorCache` | 新增 | `.shared`；`classes(in:)`、`class(named:in:)`、`class(atTypeInfoOffset:in:)`、`derivedClasses(of:in:)`、`virtualTables(of:in:)` 与带 `dependencySearchPaths:` 的重载、`prepare`、`contains`、`remove`；`Storage` 建索引，`ClassResolver` 在查询时跨镜像取基类与槽位，`LocatorCache` 按「镜像 + 搜索路径」缓存定位器 | 方案第 1 条 | 2、3、4 |
 | `Sources/CPlusPlusSymbols/SharedCacheEvictionGroup+CPlusPlusSymbols.swift` | 修改 | 加 `.cPlusPlusClassStore` | 与作用域树分开驱逐 | 2 |
-| `Sources/CPlusPlusSymbols/RuntimeTypeInformation/VirtualTableScanner.swift` · `VirtualTableScanner`、`VirtualTableGroupRecord`、`VirtualTableRecord`、`VirtualSlotRecord`（internal） | 新增 | 认 RTTI 格、读 offset-to-top 与槽位、分组、取 `__ZTV` 所在组、读虚基类偏移、给副表认主人 | 方案第 5～7 条 | 3 |
+| `Sources/CPlusPlusSymbols/RuntimeTypeInformation/VirtualTableScanner.swift` · `VirtualTableScanner`、`VirtualTableRecord`、`VirtualSlotRecord`（internal） | 新增 | 认 RTTI 格、读 offset-to-top 与槽位、分组、取 `__ZTV` 所在组 | 方案第 5、6 条 | 3 |
 | `Sources/CPlusPlusSymbols/CPlusPlusVirtualTable.swift` · `CPlusPlusVirtualTable`、`CPlusPlusVirtualFunction`、`Implementation`、`BaseFunction` | 新增 | 公开的表与槽位值类型 | 查询结果 | 3 |
 | `Sources/CPlusPlusSymbols/RuntimeTypeInformation/VirtualFunctionNaming.swift` · `VirtualFunctionNaming`（internal） | 新增 | 槽位自己的名字、沿主基类链取基类函数、判断覆盖或继承；取名与取基类的两个函数由调用方注入，单元测试可替换 | 方案第 8 条 | 3、4 |
 | `Sources/CPlusPlusSymbols/RuntimeTypeInformation/BaseClassLocator.swift` · `BaseClassLocator`（internal） | 新增 | 进程内按地址找镜像；cache 用 `CacheImageLocator`；独立文件用 `FileDependencyLocator`，跟随导出表的 re-export 与 `LC_REEXPORT_DYLIB`；按「根镜像 + 搜索路径」缓存定位器 | 方案第 9、10 条 | 4 |
-| `Tests/CPlusPlusSymbolsFixture/Fixture.cpp`、`include/CPlusPlusSymbolsFixture.h` | 修改 | 加多重继承（`Left`、`Right`、`Both`）、纯虚（抽象类）、`= delete` 的虚函数、hidden 可见性的类、匿名命名空间里的类、派生自 `std::exception` 的类；新增类都标 `used` 并防优化 | 进程内与测试包文件两种读法的确定输入 | 1、2、3 |
-| `Tests/CPlusPlusSymbolsTests/Resources/ClassHierarchyFixture/`（`Base.cpp`、`Derived.cpp`、`build.sh`、`README.md`、`libClassHierarchyBase.dylib`、`libClassHierarchyDerived.dylib`、`libClassHierarchyDerivedLegacy.dylib`） | 新增 | 预编译的小 dylib：`Derived` 经 `@rpath` 链接 `Base`、hidden 的覆盖函数被 `strip -x` 剥掉名字；`Legacy` 是同一份源码按 macOS 10.15 部署目标链接、走旧式 opcode；都是 arm64 + x86_64；`build.sh` 写明重建命令，`README.md` 写明来源 | 覆盖链式 fixup、opcode、剥离后的无名槽位与跨 `@rpath` 镜像，这些测试包本身给不出 | 1、4 |
-| `Tests/CPlusPlusSymbolsTests/ImagePointerSlotsTests.swift` | 新增 | 进程内镜像与它的磁盘文件逐槽一致；cache 文件与进程内的同一镜像逐槽一致；opcode 与链式两种文件结果一致 | 第 1 步行为 | 1 |
+| `Tests/CPlusPlusSymbolsFixture/Fixture.cpp` | 修改 | 新命名空间 `hierarchy`：多重继承（`Left`、`Right`、`Both`）、纯虚（`Shape`、`Square`）、`= delete` 的虚函数（`Retired`）、派生自 `std::exception` 的 `Failure`、默认可见性又没有 key function 的 `InlineOnly`（非唯一 RTTI）、匿名命名空间里的类；经基类指针调用，防止去虚化后丢掉 vtable | 进程内与测试包文件两种读法的确定输入 | 1、2、3 |
+| `Tests/CPlusPlusSymbolsTests/ClassIndexTestImages.swift` · `ClassIndexTestImages`、`ClassHierarchyLibraries` | 新增 | 夹具镜像的两种读取器、取宿主架构的切片；测试运行时用 `xcrun clang++` 现编两个小 dylib：`Base` 导出类，`Derived` 经 `@rpath` 链接它、hidden 的覆盖被 `strip -x` 剥掉名字，另一份 `Derived` 用 `-Wl,-no_fixup_chains` 走旧式 opcode | 覆盖链式 fixup、opcode、剥离后的无名槽位与跨 `@rpath` 镜像，这些测试包本身给不出 | 1、4 |
+| `Tests/CPlusPlusSymbolsTests/ImagePointerSlotsTests.swift` | 新增 | 夹具镜像的文件与进程逐槽一致；JavaScriptCore 的 cache 文件与进程逐槽一致（只比进程里确是指针的字）；libc++abi 的 `std::exception` 在 cache 文件与进程里给出同一张表；bind 给出符号名与来源库；offset-to-top 不是指针 | 第 1 步行为 | 1 |
 | `Tests/CPlusPlusSymbolsTests/CPlusPlusClassIndexStoreTests.swift` | 新增 | 夹具上的类、基类、表、槽位、各查询；每个测试对进程内镜像与测试包文件各跑一遍 | 第 2、3 步行为 | 2、3 |
-| `Tests/CPlusPlusSymbolsTests/CPlusPlusVirtualFunctionNamingTests.swift` | 新增 | 注入取名函数的单元测试，加上预编译夹具的跨镜像补名 | 第 4 步行为 | 4 |
-| `Tests/CPlusPlusSymbolsTests/CPlusPlusClassIndexCensusTests.swift` | 新增 | JavaScriptCore（进程内与 cache 文件）与 TSTables（卷不在时跳过）的数量、耗时、常驻字节，以及「有 `__ZTV` 符号的表，扫描出的表长与符号边界一致」 | 记录规模、核对表长规则 | 5 |
+| `Tests/CPlusPlusSymbolsTests/CPlusPlusVirtualFunctionNamingTests.swift` | 新增 | 补名规则在编造的类上的单元测试，加上现编 dylib 的跨镜像补名、opcode 与链式两种文件结果一致 | 第 3、4 步行为 | 3、4 |
+| `Tests/CPlusPlusSymbolsTests/CPlusPlusClassIndexCensusTests.swift` | 新增 | Espresso（进程内与 cache 文件）与 TSTables（目录不在时跳过，可用 `CPLUSPLUS_CLASS_CENSUS_FRAMEWORKS` 指定）的数量与耗时，以及「有 `__ZTV` 符号的表组，扫描出的末尾不越过下一个符号」 | 记录规模、核对表长规则 | 5 |
 | `Documentations/Internal/CPlusPlusClasses.md` | 新增 | 实现说明：三条读指针的路、发现与表长规则、分组与副表归属、补名规则、跨镜像定位、已知局限、普查数字 | 实现说明随代码 | 6 |
 | `Documentations/Internal/CPlusPlusSymbols.md` | 修改 | 「契约与坑」里「以后读 RTTI」一句改成指向新文档；说明作用域树仍只看符号 | 两份文档互相指路 | 6 |
 | `README.md` | 修改 | `CPlusPlusSymbols` 的说明与示例加上类、vtable 与补名 | 对外说明 | 6 |
@@ -216,7 +217,8 @@ public struct CPlusPlusClass: Hashable, Sendable, CustomStringConvertible {
     /// its run-time type information shows.
     public let hasTypeInfoSymbol: Bool
     /// `false` when the typeinfo is not unique program-wide and is compared by
-    /// name — on Apple arm64, a hidden type's.
+    /// name — on Apple arm64, a type with default visibility and no key
+    /// function, of which every image keeps a hidden copy.
     public let hasUniqueTypeInfo: Bool
 
     public var description: String { qualifiedName }
