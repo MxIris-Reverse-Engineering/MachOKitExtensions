@@ -98,7 +98,19 @@ struct CPlusPlusClassIndexCensusTests {
         #expect(fileCensus.slotsWithOwnName == imageCensus.slotsWithOwnName)
         let fileBaseNamed = Self.baseNamedSlotsByLabel[fileCensus.label] ?? []
         let imageBaseNamed = Self.baseNamedSlotsByLabel[imageCensus.label] ?? []
-        #expect(fileCensus.slotsNamedThroughBase == imageCensus.slotsNamedThroughBase, "named through a base only in the process: \(imageBaseNamed.subtracting(fileBaseNamed).sorted().prefix(8)); only from the file: \(fileBaseNamed.subtracting(imageBaseNamed).sorted().prefix(8))")
+        // For the first class the readers name differently, what each sees.
+        var comparison = ""
+        if let firstDifference = imageBaseNamed.subtracting(fileBaseNamed).sorted().first,
+           let className = firstDifference.split(separator: "[").first.map(String.init) {
+            let store = CPlusPlusClassIndexStore(symbolStore: .shared)
+            func describe(_ machO: some MachORepresentableWithCache) -> String {
+                guard let polymorphicClass = store.class(named: className, in: machO) else { return "no class" }
+                let functions = store.virtualTables(of: polymorphicClass, in: machO).first?.functions.prefix(3) ?? []
+                return "bases \(polymorphicClass.bases.map { "\($0.qualifiedName) \($0.location)" }), slots \(functions.map { "\($0.implementation) own \($0.symbolName?.demangledName ?? "-") base \(String(describing: $0.baseFunction))" })"
+            }
+            comparison = "\(className) — file: \(describe(file)); process: \(describe(image))"
+        }
+        #expect(fileCensus.slotsNamedThroughBase == imageCensus.slotsNamedThroughBase, "named through a base only in the process: \(imageBaseNamed.subtracting(fileBaseNamed).sorted().prefix(8)); only from the file: \(fileBaseNamed.subtracting(imageBaseNamed).sorted().prefix(8)); \(comparison)")
     }
 
     /// No group of tables the scan finds runs past the next symbol after

@@ -32,7 +32,7 @@ MachOSwiftSection keeps what is Swift-specific, its Swift symbol index included.
 | `MachOCaches` | `SharedCache`: one lazily built value per image, shared by every caller, with an eviction registry (behind the `Internals` SPI) |
 | `MachODependencies` | The images a binary links, found in this process, on disk or in a dyld shared cache: `DependencyClosure`, `DependencySearchPath`, `FileDependencyLocator` |
 | `MachOSymbols` | `SymbolIndexStore`, an index of an image's C and C++ symbols by offset, by nearest offset, by name and by export status; `SymbolLanguage`, which tells a symbol name's language from its leading bytes — C++ here, every other language through `SymbolLanguageRegistry`, where the package that owns it registers it |
-| `CPlusPlusSymbols` | `CPlusPlusSymbolName`, a C++ symbol name taken apart — what it names, the scopes it sits in, its signature — and `CPlusPlusSymbolIndexStore`, an image's C++ symbols arranged in a tree of the namespaces, types and functions they sit in. Built on LLVM's Itanium demangler, vendored as C++ behind a plain C interface: no C++ interoperability needed |
+| `CPlusPlusSymbols` | `CPlusPlusSymbolName`, a C++ symbol name taken apart — what it names, the scopes it sits in, its signature — `CPlusPlusSymbolIndexStore`, an image's C++ symbols arranged in a tree of the namespaces, types and functions they sit in, and `CPlusPlusClassIndexStore`, an image's C++ classes read from their run-time type information and vtables — bases and virtual functions, for stripped classes too. Built on LLVM's Itanium demangler, vendored as C++ behind a plain C interface: no C++ interoperability needed |
 | `MachOBase` | `MachOKitExtensions`, `MachOReading`, `MachOResolving` and `MachOPointers` as one import |
 | `MachOFoundation` | `MachOBase`, `MachOSymbols` and `MachODependencies` as one import (not `CPlusPlusSymbols`) |
 | `ARM64InstructionDecoding` | Hand decoders for the few A64 encodings MachOSwiftSection's analyses read, and the trampoline shapes the linker and the dyld cache builder emit. Its interface is the `Internals` SPI, for MachOSwiftSection |
@@ -137,6 +137,26 @@ let store = CPlusPlusSymbolIndexStore.shared
 for scope in store.childScopes(of: .global, in: machOImage) where scope.kind == .type {
     let constructors = store.members(of: scope, in: machOImage).filter { $0.name.kind == .constructor }
     print(scope.qualifiedName, scope.evidence, constructors.map(\.name.demangledName))
+}
+```
+
+`CPlusPlusClassIndexStore` reads an image's data instead of its symbols: every class `typeinfo`
+(`std::type_info` object) and every vtable that points at one. A class whose symbols are stripped
+is found by its typeinfo's name, with its bases — in other images too — and its vtables. A slot
+whose function has no name of its own is named after the function the same slot holds in the
+primary base's table, walking up the bases. An image of this process reaches bases in the other
+loaded images, a file out of a dyld shared cache in the same cache, and a standalone file in the
+libraries its dependency search paths locate:
+
+```swift
+let classes = CPlusPlusClassIndexStore.shared
+let hiddenClasses = classes.classes(in: machOFile).filter { !$0.hasTypeInfoSymbol }
+if let cellID = classes.class(named: "TST::CellID", in: machOFile) {
+    // `@rpath` siblings are not searched unless named.
+    let tables = classes.virtualTables(of: cellID, in: machOFile, dependencySearchPaths: [.machOFile(path: persistencePath), .systemDyldSharedCache])
+    for function in tables.first?.functions ?? [] {
+        print(function.slotIndex, function.name?.demangledName ?? "?", function.baseFunction?.className ?? "")
+    }
 }
 ```
 

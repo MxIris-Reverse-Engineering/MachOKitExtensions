@@ -111,12 +111,20 @@ final class BaseClassLocator: @unchecked Sendable {
         guard depth <= Self.maximumReexportDepth, let fileLocator, let library = fileLocator.locate(loadName: loadName) else {
             return nil
         }
-        // A library that re-exports another lists the other's symbols in its
-        // export trie as re-exports; those are no definitions.
-        let isReexport = library.cached.exportTrie?.search(by: symbolName)?.flags.contains(.reexport) ?? false
-        if !isReexport, let symbol = CPlusPlusSymbolIndexStore.shared.symbol(named: symbolName, in: library) {
+        // A library can re-export a symbol of another one by listing it in
+        // its export trie, with the other library's ordinal and the name it
+        // has there.
+        if let exported = library.cached.exportTrie?.search(by: symbolName), exported.flags.contains(.reexport) {
+            guard let ordinal = exported.ordinal,
+                  let installName = IndexedImage.file(library).installName(forLibraryOrdinal: Int(ordinal)) else {
+                return nil
+            }
+            return definition(of: exported.importedName.flatMap { $0.isEmpty ? nil : $0 } ?? symbolName, inLibraryNamed: installName, depth: depth + 1)
+        }
+        if let symbol = CPlusPlusSymbolIndexStore.shared.symbol(named: symbolName, in: library) {
             return (.file(library), symbol.offset)
         }
+        // Or re-export a whole library.
         for reexportedName in IndexedImage.file(library).reexportedInstallNames {
             if let definition = definition(of: symbolName, inLibraryNamed: reexportedName, depth: depth + 1) {
                 return definition

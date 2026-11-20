@@ -491,3 +491,15 @@ README 的 `CPlusPlusSymbols` 一节加上类与 vtable 的示例；新增实现
 | 2026-11-20 | 放进现有 `CPlusPlusSymbols` 模块，新 store 与作用域树分开 | 两份索引的输入不同（符号表 / 数据段），分开后作用域树的成本与行为不变；按限定名关联。 |
 | 2026-11-20 | 测试用预编译的小 dylib | 测试包给不出剥离后的无名槽位、`@rpath` 跨镜像基类与旧式 opcode，源码与重建脚本一起入库。 |
 | 2026-11-20 | 状态 → Accepted | 用户批准，开始实现。集成分支用 `main`：本地的 `next` 只在公司那台、没推送，且落后 `main`。 |
+| 2026-11-20 | 状态 → In Progress | 功能分支 `feature/cplusplus-class-hierarchy` 从 `main` 切出。本包在公司那台不编译，构建与测试都在 Ultra 上跑。 |
+| 2026-11-20 | 测试改为运行时现编 dylib，不往仓库放二进制 | 照 `FixupResolutionMemoTests` 的先例，测试第一次需要时用 `xcrun clang++` 编出 `Base`、`Derived` 与走 opcode 的 `Derived`（`-Wl,-no_fixup_chains`），再 `strip -x`。`Package.swift` 因此不加 `resources`。否决：提案原定的预编译 dylib 入库（要维护二进制和重建脚本）。 |
+| 2026-11-20 | 独立文件复用 `cached.fixupPointers` | 本包的 cached 视图已经有整文件的链式指针表（随 `MachOFile` 常驻、与别的使用方共享），不另建用完即丢的表。 |
+| 2026-11-20 | `__ZTI` 符号只用来标 `hasTypeInfoSymbol` | typeinfo 的虚指针一定是 fixup，扫描不会漏，提案原想的「并入符号防漏」不需要。 |
+| 2026-11-20 | cache 里的 libc++abi 按镜像清单的 install name 找 | `CacheImageLocator.exportedName(atAddress:in:among:)` 按第一次问的名字集合缓存整张表，后来换一组名字问会答错，所以不用它，自己查导出表。 |
+| 2026-11-20 | 更正非唯一 RTTI 的条件 | 夹具测出 hidden 的类反而是唯一的。clang 的 `classifyRTTIUniqueness` 只给 linkonce_odr / weak_odr 且默认可见性的类型置 bit 63（没有 key function 的类、模板特化）。夹具改用默认可见性、只有内联虚函数的 `InlineOnly`，前期调研与 `hasUniqueTypeInfo` 的文档注释一并改正。 |
+| 2026-11-20 | 几乎为空的虚基类当主基类 | 夹具的 `Intermediate : virtual VirtualBase` 只有一张表：`VirtualBase` 只有虚指针，按 Itanium 规则成了主基类、共用主表。提案原把这种情况列为不处理的局限，实现时补上：没有非虚主基类时，类自己主表里虚基类偏移为 0 的那个虚基类就是主基类。 |
+| 2026-11-20 | 区分小整数与指针 | cache 的指针格式会把小整数解码成 cache 头部附近的地址，进程内的小整数也会被当成指针。进程内把 `[-2^31, 2^31)` 当整数；cache 里只把不大于 0 的小整数当整数——页内链末尾、目标在 cache 前 2 GB 的指针原样存成一个小正数，起初被当成整数，Espresso 因此少了 7 个类。 |
+| 2026-11-20 | cache 文件的数据段指针一次解码 | 每节一次读出、一次定位所在的子 cache，之后的查询读解码结果。Espresso 建索引从 3.5 秒降到 2.5 秒（进程内 0.3 秒），仍有余地，记为后续项。 |
+| 2026-11-20 | 独立文件定位基类时跳过 re-export 条目 | 导出表里标了 re-export 的条目不是定义，跳过后沿 `LC_REEXPORT_DYLIB` 继续找。 |
+| 2026-11-20 | 普查改用 Espresso | WebKit 编译时关了 RTTI，JavaScriptCore 一个类都没有。Espresso 导出近 400 个 typeinfo，是 C++ 重度、带 RTTI 的系统框架。JavaScriptCore 留在逐槽对照测试里。 |
+| 2026-11-20 | `Location.otherImage(installName:)` 对 cache 与进程内也给路径 | 提案原写这两种情况给 `nil`；实现时能拿到所在镜像的路径，就给了。 |

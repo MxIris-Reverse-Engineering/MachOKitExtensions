@@ -12,6 +12,7 @@
 | [Internal/ReadingContextAbstraction.md](Internal/ReadingContextAbstraction.md) | 实现说明：读取层（`ReadingContext`、`Resolvable`）两个模块各管什么、读文件为何直接用 MachOKit 的映射、本进程地址掩码、缓存范围、怎样看穿包装类型读取器 |
 | [Internal/SymbolIndex.md](Internal/SymbolIndex.md) | 实现说明：符号表、按 routing 分表的采集、`SymbolLanguage` 与别的包在加载时注册语言、C/C++ 符号索引与已注册语言的边界；零拷贝名字何时可用、同名多处定义怎么登记 |
 | [Internal/CPlusPlusSymbols.md](Internal/CPlusPlusSymbols.md) | 实现说明：引入的 LLVM `ItaniumDemangle` 与更新方法、C 接口与 AST 遍历、特殊名字归位、按证据定作用域种类、查询时重新解析；JavaScriptCore 上的规模与耗时 |
+| [Internal/CPlusPlusClasses.md](Internal/CPlusPlusClasses.md) | 实现说明：从 RTTI 与 vtable 恢复 C++ 类——读指针的三条路、找 typeinfo 与 vtable、分组与副表归属、沿基类补名、跨镜像定位、已知局限与普查数字 |
 | [Internal/SharedCache.md](Internal/SharedCache.md) | 实现说明：按镜像共享的缓存（`SharedCache`）、键与驱逐登记 |
 | [Internal/DependencyResolution.md](Internal/DependencyResolution.md) | 实现说明：依赖闭包、搜索路径与定位器 |
 | [Internal/MachOCodeReferences.md](Internal/MachOCodeReferences.md) | 实现说明：交叉引用与语言无关的核心层——镜像集、函数表、指令扫描、识别器扩展点；接口只开 `Internals` SPI 给 MachOSwiftSection 与 MachOObjCSection，进程内部分只在 Darwin 上有 |
