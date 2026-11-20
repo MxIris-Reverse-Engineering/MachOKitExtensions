@@ -8,7 +8,7 @@ import MachOKitExtensions
 /// both as this process loaded it and from its file.
 @Suite
 struct CPlusPlusClassIndexStoreTests {
-    private typealias Reader = ClassIndexTestImages.Reader
+    typealias Reader = ClassIndexTestImages.Reader
 
     private static let store = CPlusPlusClassIndexStore.shared
 
