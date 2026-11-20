@@ -133,6 +133,21 @@ let package = Package(
             name: "CPlusPlusSymbols",
             targets: ["CPlusPlusSymbols"]
         ),
+        // Test support this package's tests and MachOSwiftSection's share
+        // (MachOSwiftSection proposal shared-macho-testing-support). Link them
+        // to test targets only. `MachOFixtureSupport` names and opens the
+        // images tests read and compiles throwaway libraries without the
+        // testing library; `MachOTestingSupport` adds what needs it: test
+        // base classes, cross-reader assertions and the per-image exclusion
+        // trait.
+        .library(
+            name: "MachOFixtureSupport",
+            targets: ["MachOFixtureSupport"]
+        ),
+        .library(
+            name: "MachOTestingSupport",
+            targets: ["MachOTestingSupport"]
+        ),
     ],
     dependencies: [
         .package(
@@ -292,6 +307,32 @@ let package = Package(
                 "MachOAddressResolution",
                 "MachODependencies",
                 "CPlusPlusDemangling",
+            ]
+        ),
+        .target(
+            name: "MachOFixtureSupport",
+            dependencies: [
+                "MachOKit",
+                "MachOKitExtensions",
+            ]
+        ),
+        .target(
+            name: "MachOTestingSupport",
+            dependencies: [
+                "MachOFixtureSupport",
+                "MachOReading",
+                "MachOKitExtensions",
+                "MachOKit",
+            ]
+        ),
+        .testTarget(
+            name: "MachOTestingSupportTests",
+            dependencies: [
+                "MachOTestingSupport",
+                "MachOFixtureSupport",
+                "MachOReading",
+                "MachOKitExtensions",
+                "MachOKit",
             ]
         ),
         // C++ code with known symbols for the C++ symbol index tests. Not a
