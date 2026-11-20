@@ -503,3 +503,5 @@ README 的 `CPlusPlusSymbols` 一节加上类与 vtable 的示例；新增实现
 | 2026-11-20 | 独立文件定位基类时跳过 re-export 条目 | 导出表里标了 re-export 的条目不是定义，跳过后沿 `LC_REEXPORT_DYLIB` 继续找。 |
 | 2026-11-20 | 普查改用 Espresso | WebKit 编译时关了 RTTI，JavaScriptCore 一个类都没有。Espresso 导出近 400 个 typeinfo，是 C++ 重度、带 RTTI 的系统框架。JavaScriptCore 留在逐槽对照测试里。 |
 | 2026-11-20 | `Location.otherImage(installName:)` 对 cache 与进程内也给路径 | 提案原写这两种情况给 `nil`；实现时能拿到所在镜像的路径，就给了。 |
+| 2026-11-20 | cache 里的数据地址按段范围找所在镜像 | `CacheImageLocator` 按 `__TEXT` 起点二分，只适合代码地址；cache 把各镜像的数据段集中放在后面，Espresso 普查里 libc++ 的 typeinfo 被归到了 `libobjcMsgSend11.dylib`，7 个类少补了 14 个槽位名。改为核对候选镜像的段范围，对不上再沿根镜像的依赖找。 |
+| 2026-11-20 | 独立文件按导出表条目逐个跟随转出 | macOS 27 的 libc++ 没有 `LC_REEXPORT_DYLIB`，而是在导出表里逐个符号把 libc++abi 的符号标成 re-export，条目里带库序号与原名；按它跟过去。 |

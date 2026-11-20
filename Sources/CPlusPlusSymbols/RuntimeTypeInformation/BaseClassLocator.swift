@@ -25,6 +25,11 @@ final class BaseClassLocator: @unchecked Sendable {
     private var cacheImageLocatorsByCachePath: [String: CacheImageLocator] = [:]
     private var codeRangesByImagePath: [String: Range<UInt64>?] = [:]
     private var textAddressesByInstallNameByCachePath: [String: [String: UInt64]] = [:]
+    /// Cache images by a data address found in them.
+    private var dataImagesByAddress: [UInt64: MachOFile] = [:]
+    /// The segments of the cache images searched so far.
+    private var knownSegmentRanges: [(range: Range<UInt64>, image: MachOFile)] = []
+    private var imagePathsWithKnownSegments: Set<String> = []
 
     /// A locator for references out of `root`. For a standalone file,
     /// `dependencySearchPaths` locates its libraries — by default the paths
@@ -70,8 +75,18 @@ final class BaseClassLocator: @unchecked Sendable {
         }
         let sharedRegionStart = UInt64(cache.mainCacheHeader.sharedRegionStart)
         guard address >= sharedRegionStart else { return nil }
+        func found(_ library: MachOFile) -> (image: IndexedImage, offset: Int) {
+            (.file(library), Int(address - sharedRegionStart))
+        }
+        lock.lock()
+        let known = dataImagesByAddress[address] ?? knownSegmentRanges.first { $0.range.contains(address) }?.image
+        lock.unlock()
+        if let known {
+            return found(known)
+        }
         if let candidate = cacheImageLocator.image(containing: address), Self.segments(of: candidate, contain: address) {
-            return (.file(candidate), Int(address - sharedRegionStart))
+            remember(candidate, containing: address)
+            return found(candidate)
         }
         var visitedInstallNames: Set<String> = [file.imagePath]
         var pendingInstallNames = image.dependencyInstallNames
@@ -83,8 +98,10 @@ final class BaseClassLocator: @unchecked Sendable {
                   let library = cacheImage(atInstallName: installName, of: file, using: cacheImageLocator) else {
                 continue
             }
+            rememberSegments(of: library)
             if Self.segments(of: library, contain: address) {
-                return (.file(library), Int(address - sharedRegionStart))
+                remember(library, containing: address)
+                return found(library)
             }
             pendingInstallNames += IndexedImage.file(library).dependencyInstallNames
         }
@@ -211,6 +228,22 @@ final class BaseClassLocator: @unchecked Sendable {
             textAddressesByInstallName = built
         }
         return textAddressesByInstallName?[installName].flatMap { cacheImageLocator.image(containing: $0) }
+    }
+
+    private func remember(_ library: MachOFile, containing address: UInt64) {
+        lock.lock()
+        dataImagesByAddress[address] = library
+        lock.unlock()
+    }
+
+    private func rememberSegments(of library: MachOFile) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard imagePathsWithKnownSegments.insert(library.imagePath).inserted else { return }
+        for segment in library.segments where segment.segmentName != "__LINKEDIT" && segment.segmentName != "__TEXT" {
+            let start = UInt64(segment.virtualMemoryAddress)
+            knownSegmentRanges.append((start ..< start + UInt64(segment.virtualMemorySize), library))
+        }
     }
 
     /// Whether one of the image's segments, other than `__LINKEDIT`, holds

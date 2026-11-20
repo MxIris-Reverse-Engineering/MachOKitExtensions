@@ -67,7 +67,7 @@
 | 根镜像 | 怎么找基类所在的镜像 |
 |---|---|
 | 进程内 | `dladdr` 找到地址所在的已加载镜像 |
-| cache 里的文件 | `CacheImageLocator`（每个 cache 一个，按 cache 路径缓存）在同一个 cache 里找 |
+| cache 里的文件 | 同一个 cache 里找。代码地址用 `CacheImageLocator`（按各镜像 `__TEXT` 的起点二分，每个 cache 一个）。typeinfo 这样的数据地址不能这么找：cache 把各镜像的数据段集中放在文本之后，按起点找会落到不相干的镜像（实测把 libc++ 的 typeinfo 归到了 `libobjcMsgSend11.dylib`）。所以先核对候选镜像的段范围，对不上再沿根镜像的依赖逐个打开核对（最多 512 个，按 cache 镜像清单的 install name 找到各自的文本起点） |
 | 独立文件 | `FileDependencyLocator` 按 bind 来源库的 install name 找。库的导出表里这个符号若标着 re-export，就按条目里的库序号与原名到那个库里找（macOS 27 的 libc++ 就这样逐个符号转出 libc++abi 的 `std::exception`，它没有 `LC_REEXPORT_DYLIB`）；不是 re-export 又没有定义，再跟着 `LC_REEXPORT_DYLIB` 整库转出往下找。最多 4 层。flat 或 weak 查找的 bind 没有来源库，按根镜像的依赖顺序逐个找 |
 
 - 独立文件的默认搜索路径是 `DependencySearchPath.inferred(forRoot:)` 加本机 cache；`@rpath` 兄弟框架要用带 `dependencySearchPaths:` 的重载显式给出（`MachODependencies` 不展开 `@rpath`）。
