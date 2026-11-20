@@ -163,7 +163,7 @@ details[open] > summary { border-bottom: 1px solid var(--separator); }
   <p class="eyebrow"><span class="crumb">MachOKitExtensions</span><span class="crumb">Evolutions</span><span class="crumb">Draft</span></p>
   <h1><span class="proposal-number">Draft</span> 从 RTTI 与 vtable 恢复 C++ 类：继承关系、虚函数表，以及沿基类给无名虚函数补名</h1>
   <dl class="meta">
-    <div><dt>状态</dt><dd><span class="status status-accepted">Accepted</span></dd></div>
+    <div><dt>状态</dt><dd><span class="status status-in-progress">In Progress</span></dd></div>
     <div><dt>最后更新</dt><dd>2026-11-20</dd></div>
     <div><dt>项目类型</dt><dd>库</dd></div>
     <div><dt>原文</dt><dd><code>draft-cplusplus-class-hierarchy.md</code></dd></div>
@@ -202,12 +202,12 @@ details[open] > summary { border-bottom: 1px solid var(--separator); }
 <section id="decide">
   <h2>要你定</h2>
   <div class="callout callout-note">
-    <p class="callout-title">没有待定的问题。下面几条是我没问就采用的，可以推翻：</p>
+    <p class="callout-title">实现已完成、待你看过后收尾。实现中自己定下的、偏离提案的地方都在决策日志里，主要几条：</p>
     <ul>
-      <li>放进现有 <code>CPlusPlusSymbols</code> 模块；新 store 与作用域树分开，按限定名关联。</li>
-      <li>测试用几个预编译的小 dylib（源码与重建脚本一起入库），覆盖剥离后的无名槽位、<code>@rpath</code> 跨镜像基类和旧式 opcode。</li>
-      <li>有虚基类、又没有符号、找到不止一组表时，取地址最小的那组，记为已知局限。</li>
-      <li>版本号 3.1.0。</li>
+      <li>测试改为运行时现编 dylib，不往仓库放二进制。</li>
+      <li>非唯一 RTTI 的条件更正为「默认可见性、没有 key function」，hidden 的类反而唯一。</li>
+      <li>补上了几乎为空的虚基类当主基类、逐符号转出、cache 里按段范围找数据地址所在镜像。</li>
+      <li>普查改用 Espresso（JavaScriptCore 关了 RTTI）；TSTables 的普查因 Ultra 上没有 iWork 资料而没有运行。</li>
     </ul>
   </div>
 </section>
@@ -286,24 +286,27 @@ details[open] > summary { border-bottom: 1px solid var(--separator); }
   <table>
     <thead><tr><th>文件 / 类型</th><th>动作</th><th>改什么</th><th>为什么</th><th>步骤</th></tr></thead>
     <tbody>
-      <tr><td><code>Package.swift</code></td><td><span class="tag tag-changed">修改</span></td><td><code>CPlusPlusSymbols</code> 加依赖 <code>MachOAddressResolution</code>、<code>MachODependencies</code>、<code>MachOReading</code>；测试 target 加资源 <code>Resources/ClassHierarchyFixture</code> 与 <code>MachODependencies</code>；文件末尾的 Tuist 适配块（<code>origin/main</code> 的 <code>9d5a945</code>）保持在最后</td><td>读指针、跨镜像定位；预编译夹具</td><td class="numeric">1</td></tr>
-      <tr><td><code>RuntimeTypeInformation/ImagePointerSlots.swift</code> · <code>ImagePointerSlots</code>、<code>PointerSlotContent</code>、<code>ExternalPointerTarget</code>（internal）</td><td><span class="tag tag-added">新增</span></td><td>独立文件遍历链式 fixup 或 opcode 建表；cache 逐槽解码；进程内读内存去签名</td><td>上层不关心读取器</td><td class="numeric">1</td></tr>
-      <tr><td><code>RuntimeTypeInformation/TypeInfoScanner.swift</code> · <code>TypeInfoScanner</code>、<code>TypeInfoRecord</code>（internal）</td><td><span class="tag tag-added">新增</span></td><td>认三个 <code>__cxxabiv1</code> vtable、扫描找 typeinfo、并入 <code>__ZTI</code> 符号、解析基类、读名字串并清 bit 63</td><td>方案第 3、4 条</td><td class="numeric">2</td></tr>
-      <tr><td><code>CPlusPlusClass.swift</code> · <code>CPlusPlusClass</code>、<code>Base</code>、<code>Location</code>、<code>InheritanceShape</code></td><td><span class="tag tag-added">新增</span></td><td>公开的类值类型</td><td>查询结果</td><td class="numeric">2</td></tr>
-      <tr><td><code>CPlusPlusClassIndexStore.swift</code> · <code>CPlusPlusClassIndexStore</code>、<code>Storage</code></td><td><span class="tag tag-added">新增</span></td><td><code>.shared</code>；类的查询、<code>prepare</code> / <code>contains</code> / <code>remove</code>；第 3 步加 <code>virtualTables(of:in:)</code>，第 4 步加带 <code>dependencySearchPaths:</code> 的重载</td><td>方案第 1 条</td><td class="numeric">2、3、4</td></tr>
-      <tr><td><code>SharedCacheEvictionGroup+CPlusPlusSymbols.swift</code></td><td><span class="tag tag-changed">修改</span></td><td>加 <code>.cPlusPlusClassStore</code></td><td>与作用域树分开驱逐</td><td class="numeric">2</td></tr>
-      <tr><td><code>RuntimeTypeInformation/VirtualTableScanner.swift</code>（internal）</td><td><span class="tag tag-added">新增</span></td><td>认 RTTI 格、读 offset-to-top 与槽位、分组、取 <code>__ZTV</code> 所在组、读虚基类偏移、给副表认主人</td><td>方案第 5～7 条</td><td class="numeric">3</td></tr>
-      <tr><td><code>CPlusPlusVirtualTable.swift</code> · <code>CPlusPlusVirtualTable</code>、<code>CPlusPlusVirtualFunction</code>、<code>Implementation</code>、<code>BaseFunction</code></td><td><span class="tag tag-added">新增</span></td><td>公开的表与槽位值类型</td><td>查询结果</td><td class="numeric">3</td></tr>
-      <tr><td><code>RuntimeTypeInformation/VirtualFunctionNaming.swift</code>（internal）</td><td><span class="tag tag-added">新增</span></td><td>槽位自己的名字、沿主基类链取基类函数、判断覆盖或继承；取名函数可注入</td><td>方案第 8 条</td><td class="numeric">3、4</td></tr>
-      <tr><td><code>RuntimeTypeInformation/BaseClassLocator.swift</code>（internal）</td><td><span class="tag tag-added">新增</span></td><td>进程内按地址找镜像；cache 用 <code>CacheImageLocator</code>；文件用 <code>FileDependencyLocator</code> 并跟随 re-export；按「根镜像 + 搜索路径」缓存</td><td>方案第 9、10 条</td><td class="numeric">4</td></tr>
-      <tr><td><code>Tests/CPlusPlusSymbolsFixture/</code></td><td><span class="tag tag-changed">修改</span></td><td>加多重继承、纯虚、<code>= delete</code> 的虚函数、hidden 类、匿名命名空间类、<code>std::exception</code> 子类</td><td>进程内与文件两种读法的确定输入</td><td class="numeric">1、2、3</td></tr>
-      <tr><td><code>Tests/CPlusPlusSymbolsTests/Resources/ClassHierarchyFixture/</code></td><td><span class="tag tag-added">新增</span></td><td>预编译 dylib：<code>Derived</code> 经 <code>@rpath</code> 链接 <code>Base</code>、hidden 覆盖被 <code>strip -x</code>；<code>Legacy</code> 按 macOS 10.15 链接走 opcode；源码、<code>build.sh</code>、<code>README.md</code></td><td>测试包给不出这些输入</td><td class="numeric">1、4</td></tr>
-      <tr><td><code>ImagePointerSlotsTests.swift</code></td><td><span class="tag tag-added">新增</span></td><td>文件、cache、进程三种读法逐槽一致</td><td>第 1 步行为</td><td class="numeric">1</td></tr>
-      <tr><td><code>CPlusPlusClassIndexStoreTests.swift</code></td><td><span class="tag tag-added">新增</span></td><td>夹具上的类、基类、表、槽位、各查询；进程内与文件各跑一遍</td><td>第 2、3 步行为</td><td class="numeric">2、3</td></tr>
-      <tr><td><code>CPlusPlusVirtualFunctionNamingTests.swift</code></td><td><span class="tag tag-added">新增</span></td><td>注入取名函数的单元测试，加预编译夹具的跨镜像补名</td><td>第 4 步行为</td><td class="numeric">4</td></tr>
-      <tr><td><code>CPlusPlusClassIndexCensusTests.swift</code></td><td><span class="tag tag-added">新增</span></td><td>JavaScriptCore 与 TSTables（卷不在时跳过）的数量、耗时、常驻字节；扫描表长与符号边界一致</td><td>记录规模、核对表长规则</td><td class="numeric">5</td></tr>
-      <tr><td><code>Documentations/Internal/CPlusPlusClasses.md</code></td><td><span class="tag tag-added">新增</span></td><td>实现说明</td><td>实现说明随代码</td><td class="numeric">6</td></tr>
-      <tr><td><code>Documentations/Internal/CPlusPlusSymbols.md</code>、<code>README.md</code>、两个索引</td><td><span class="tag tag-changed">修改</span></td><td>指路、示例、登记</td><td>对外说明与索引</td><td class="numeric">6</td></tr>
+      <tr><td><code>Package.swift</code></td><td><span class="tag tag-changed">修改</span></td><td><code>CPlusPlusSymbols</code> 加依赖 <code>MachOReading</code>、<code>MachOAddressResolution</code>、<code>MachODependencies</code>；<code>CPlusPlusSymbolsTests</code> 加 <code>MachOReading</code>、<code>MachODependencies</code> 依赖。文件末尾那段 Tuist 适配块（<code>origin/main</code> 的 <code>9d5a945</code>，来自 MachOSwiftSection 提案 0099，只在 <code>TUIST_MAPS_LOCAL_PACKAGE_TESTS=1</code> 时生效）保持在最后：它要在所有 target 与 product 声明完之后才运行</td><td>读指针、跨镜像定位</td><td class="numeric">1</td></tr>
+      <tr><td><code>Sources/CPlusPlusSymbols/RuntimeTypeInformation/IndexedImage.swift</code>、<code>ImagePointerSlots.swift</code> · <code>IndexedImage</code>、<code>ImagePointerSlots</code>（含 <code>Content</code>）（internal）</td><td><span class="tag tag-added">新增</span></td><td>三种读取器：独立文件复用 <code>cached.fixupPointers</code> 或读 opcode 的 rebase 与 bind，cache 文件把数据段的指针一次解码，进程内读内存去签名；小整数不当指针；回答 <code>content(atOffset:)</code>、<code>word(atOffset:)</code>、可执行范围、数据节的槽位遍历</td><td>上层的发现与解析不关心读取器</td><td class="numeric">1</td></tr>
+      <tr><td><code>Sources/CPlusPlusSymbols/RuntimeTypeInformation/RuntimeLibraryMarkers.swift</code> · <code>RuntimeLibraryMarkers</code>（internal）</td><td><span class="tag tag-added">新增</span></td><td>libc++abi 三个类 typeinfo vtable 与 <code>__cxa_pure_virtual</code>、<code>__cxa_deleted_virtual</code> 在本镜像里的样子：bind 名、cache 里的地址（按 cache 镜像清单找到 libc++abi 再查导出表）、进程内 <code>dlsym</code>、镜像自己就是 libc++abi 时的偏移</td><td>方案第 3 条</td><td class="numeric">2</td></tr>
+      <tr><td><code>Sources/CPlusPlusSymbols/RuntimeTypeInformation/TypeInfoScanner.swift</code> · <code>TypeInfoScanner</code>、<code>TypeInfoRecord</code>、<code>TypeInfoReference</code>（internal）</td><td><span class="tag tag-added">新增</span></td><td>扫描槽位找 typeinfo、解析 si / vmi 的基类、读名字串并清 bit 63</td><td>方案第 3、4 条</td><td class="numeric">2</td></tr>
+      <tr><td><code>Sources/CPlusPlusSymbols/CPlusPlusClass.swift</code> · <code>CPlusPlusClass</code>、<code>Base</code>、<code>Base.Location</code>、<code>InheritanceShape</code></td><td><span class="tag tag-added">新增</span></td><td>公开的类值类型</td><td>查询结果</td><td class="numeric">2</td></tr>
+      <tr><td><code>Sources/CPlusPlusSymbols/CPlusPlusClassIndexStore.swift</code> · <code>CPlusPlusClassIndexStore</code>、<code>Storage</code>、<code>ClassHandle</code>、<code>ClassResolver</code>、<code>LocatorCache</code></td><td><span class="tag tag-added">新增</span></td><td><code>.shared</code>；<code>classes(in:)</code>、<code>class(named:in:)</code>、<code>class(atTypeInfoOffset:in:)</code>、<code>derivedClasses(of:in:)</code>、<code>virtualTables(of:in:)</code> 与带 <code>dependencySearchPaths:</code> 的重载、<code>prepare</code>、<code>contains</code>、<code>remove</code>；<code>Storage</code> 建索引，<code>ClassResolver</code> 在查询时跨镜像取基类与槽位，<code>LocatorCache</code> 按「镜像 + 搜索路径」缓存定位器</td><td>方案第 1 条</td><td class="numeric">2、3、4</td></tr>
+      <tr><td><code>Sources/CPlusPlusSymbols/SharedCacheEvictionGroup+CPlusPlusSymbols.swift</code></td><td><span class="tag tag-changed">修改</span></td><td>加 <code>.cPlusPlusClassStore</code></td><td>与作用域树分开驱逐</td><td class="numeric">2</td></tr>
+      <tr><td><code>Sources/CPlusPlusSymbols/RuntimeTypeInformation/VirtualTableScanner.swift</code> · <code>VirtualTableScanner</code>、<code>VirtualTableRecord</code>、<code>VirtualSlotRecord</code>（internal）</td><td><span class="tag tag-added">新增</span></td><td>认 RTTI 格、读 offset-to-top 与槽位、分组、取 <code>__ZTV</code> 所在组</td><td>方案第 5、6 条</td><td class="numeric">3</td></tr>
+      <tr><td><code>Sources/CPlusPlusSymbols/CPlusPlusVirtualTable.swift</code> · <code>CPlusPlusVirtualTable</code>、<code>CPlusPlusVirtualFunction</code>、<code>Implementation</code>、<code>BaseFunction</code></td><td><span class="tag tag-added">新增</span></td><td>公开的表与槽位值类型</td><td>查询结果</td><td class="numeric">3</td></tr>
+      <tr><td><code>Sources/CPlusPlusSymbols/RuntimeTypeInformation/VirtualFunctionNaming.swift</code> · <code>VirtualFunctionNaming</code>（internal）</td><td><span class="tag tag-added">新增</span></td><td>槽位自己的名字、沿主基类链取基类函数、判断覆盖或继承；取名与取基类的两个函数由调用方注入，单元测试可替换</td><td>方案第 8 条</td><td class="numeric">3、4</td></tr>
+      <tr><td><code>Sources/CPlusPlusSymbols/RuntimeTypeInformation/BaseClassLocator.swift</code> · <code>BaseClassLocator</code>（internal）</td><td><span class="tag tag-added">新增</span></td><td>进程内按地址找镜像；cache 用 <code>CacheImageLocator</code>；独立文件用 <code>FileDependencyLocator</code>，跟随导出表的 re-export 与 <code>LC_REEXPORT_DYLIB</code>；按「根镜像 + 搜索路径」缓存定位器</td><td>方案第 9、10 条</td><td class="numeric">4</td></tr>
+      <tr><td><code>Tests/CPlusPlusSymbolsFixture/Fixture.cpp</code></td><td><span class="tag tag-changed">修改</span></td><td>新命名空间 <code>hierarchy</code>：多重继承（<code>Left</code>、<code>Right</code>、<code>Both</code>）、纯虚（<code>Shape</code>、<code>Square</code>）、<code>= delete</code> 的虚函数（<code>Retired</code>）、派生自 <code>std::exception</code> 的 <code>Failure</code>、默认可见性又没有 key function 的 <code>InlineOnly</code>（非唯一 RTTI）、匿名命名空间里的类；经基类指针调用，防止去虚化后丢掉 vtable</td><td>进程内与测试包文件两种读法的确定输入</td><td class="numeric">1、2、3</td></tr>
+      <tr><td><code>Tests/CPlusPlusSymbolsTests/ClassIndexTestImages.swift</code> · <code>ClassIndexTestImages</code>、<code>ClassHierarchyLibraries</code></td><td><span class="tag tag-added">新增</span></td><td>夹具镜像的两种读取器、取宿主架构的切片；测试运行时用 <code>xcrun clang++</code> 现编两个小 dylib：<code>Base</code> 导出类，<code>Derived</code> 经 <code>@rpath</code> 链接它、hidden 的覆盖被 <code>strip -x</code> 剥掉名字，另一份 <code>Derived</code> 用 <code>-Wl,-no_fixup_chains</code> 走旧式 opcode</td><td>覆盖链式 fixup、opcode、剥离后的无名槽位与跨 <code>@rpath</code> 镜像，这些测试包本身给不出</td><td class="numeric">1、4</td></tr>
+      <tr><td><code>Tests/CPlusPlusSymbolsTests/ImagePointerSlotsTests.swift</code></td><td><span class="tag tag-added">新增</span></td><td>夹具镜像的文件与进程逐槽一致；JavaScriptCore 的 cache 文件与进程逐槽一致（只比进程里确是指针的字）；libc++abi 的 <code>std::exception</code> 在 cache 文件与进程里给出同一张表；bind 给出符号名与来源库；offset-to-top 不是指针</td><td>第 1 步行为</td><td class="numeric">1</td></tr>
+      <tr><td><code>Tests/CPlusPlusSymbolsTests/CPlusPlusClassIndexStoreTests.swift</code></td><td><span class="tag tag-added">新增</span></td><td>夹具上的类、基类、表、槽位、各查询；每个测试对进程内镜像与测试包文件各跑一遍</td><td>第 2、3 步行为</td><td class="numeric">2、3</td></tr>
+      <tr><td><code>Tests/CPlusPlusSymbolsTests/CPlusPlusVirtualFunctionNamingTests.swift</code></td><td><span class="tag tag-added">新增</span></td><td>补名规则在编造的类上的单元测试，加上现编 dylib 的跨镜像补名、opcode 与链式两种文件结果一致</td><td>第 3、4 步行为</td><td class="numeric">3、4</td></tr>
+      <tr><td><code>Tests/CPlusPlusSymbolsTests/CPlusPlusClassIndexCensusTests.swift</code></td><td><span class="tag tag-added">新增</span></td><td>Espresso（进程内与 cache 文件）与 TSTables（目录不在时跳过，可用 <code>CPLUSPLUS_CLASS_CENSUS_FRAMEWORKS</code> 指定）的数量与耗时，以及「有 <code>__ZTV</code> 符号的表组，扫描出的末尾不越过下一个符号」</td><td>记录规模、核对表长规则</td><td class="numeric">5</td></tr>
+      <tr><td><code>Documentations/Internal/CPlusPlusClasses.md</code></td><td><span class="tag tag-added">新增</span></td><td>实现说明：三条读指针的路、发现与表长规则、分组与副表归属、补名规则、跨镜像定位、已知局限、普查数字</td><td>实现说明随代码</td><td class="numeric">6</td></tr>
+      <tr><td><code>Documentations/Internal/CPlusPlusSymbols.md</code></td><td><span class="tag tag-changed">修改</span></td><td>「契约与坑」里「以后读 RTTI」一句改成指向新文档；说明作用域树仍只看符号</td><td>两份文档互相指路</td><td class="numeric">6</td></tr>
+      <tr><td><code>README.md</code></td><td><span class="tag tag-changed">修改</span></td><td><code>CPlusPlusSymbols</code> 的说明与示例加上类、vtable 与补名</td><td>对外说明</td><td class="numeric">6</td></tr>
+      <tr><td><code>Documentations/Evolutions/README.md</code>、<code>Documentations/README.md</code></td><td><span class="tag tag-changed">修改</span></td><td>登记本提案（写提案时已登记）与实现说明</td><td>索引</td><td class="numeric">6</td></tr>
     </tbody>
   </table>
   </div>
@@ -496,7 +499,7 @@ extension CPlusPlusVirtualFunction {
     <div class="details-body">
       <ul>
         <li><code>libcxxabi/src/private_typeinfo.h</code>：<code>type_info</code> 是 <code>vptr</code> 加名字指针；si 在 <code>+16</code> 放基类指针；vmi 在 <code>+16</code> 放 <code>__flags</code>（<code>0x1</code> 重复基类、<code>0x2</code> 菱形）、<code>+20</code> 放 <code>__base_count</code>、<code>+24</code> 起是基类条目（指针加 <code>__offset_flags</code>：<code>0x1</code> 虚、<code>0x2</code> public、偏移在 <code>&gt;&gt; 8</code>）。</li>
-        <li><code>libcxx/include/typeinfo:144-181</code>、<code>:233</code>：Apple arm64 上非唯一类型的名字指针 bit 63 置 1，比较时比字符串。</li>
+        <li><code>libcxx/include/typeinfo:144-181</code>、<code>:233</code>：Apple arm64 上非唯一类型的名字指针 bit 63 置 1，比较时比字符串。只有 linkonce_odr / weak_odr 且默认可见性的类型（没有 key function 的类、模板特化）非唯一；hidden 的反而唯一（实现时由夹具测出）。</li>
       </ul>
     </div>
   </details>
@@ -554,31 +557,47 @@ extension CPlusPlusVirtualFunction {
 
 <section id="steps">
   <h2>落地步骤</h2>
+  <p>代码没有按下面的步骤逐步提交：本包在公司那台不编译，每次验证都要先推送功能分支、再到 Ultra 上跑，所以实现一次提交，之后是测试与几次修正。步骤与行为清单按实际做成的样子写。</p>
   <ol>
-    <li><strong>读指针的三条路</strong>：先确认测试包的 fixup 格式。行为：<code>fileSlotsMatchTheProcessForEveryDataPointerOfTheFixtureImage</code>、<code>cacheSlotsMatchTheProcessForEveryDataPointerOfJavaScriptCore</code>、<code>chainedAndLegacyFixupFilesAgreeOnEverySlot</code>、<code>aBindSlotNamesItsSymbolAndLibrary</code>、<code>aWordThatIsNoPointerHasNoContent</code>。</li>
-    <li><strong>类与基类</strong>。行为：<code>everyFixtureClassWithATypeInfoIsFound</code>、<code>aClassWithoutSymbolsIsFoundThroughItsTypeInfo</code>、<code>aHiddenClassHasANonUniqueTypeInfoAndItsNameStillReads</code>、<code>singleInheritanceRecordsTheBaseAtOffsetZero</code>、<code>multipleInheritanceRecordsEveryBaseWithItsOffset</code>、<code>virtualInheritanceRecordsTheVirtualBaseOffsetSlot</code>、<code>aBaseInAnotherImageIsNamedAndLocatedThere</code>、<code>qualifiedNameFindsTheSameScopeInTheScopeTree</code>、<code>derivedClassesListTheDirectSubclassesInTheImage</code>、<code>processImageAndItsFileGiveTheSameClasses</code>。</li>
-    <li><strong>vtable 与本镜像内的补名</strong>。行为：<code>primaryTableListsSlotsInDeclarationOrder</code>、<code>virtualDestructorTakesTwoSlots</code>、<code>secondaryTableBelongsToTheBaseAtItsOffset</code>、<code>secondaryTableSlotsAreThunksNamedAfterTheOverrider</code>、<code>theOwnTableIsPickedOverAConstructionTable</code>、<code>pureAndDeletedVirtualSlotsAreMarked</code>、<code>anOverrideIsNotInheritedAndAnUntouchedSlotIs</code>、<code>aSlotTheClassIntroducesHasNoBaseFunction</code>、<code>anUnnamedSlotTakesItsNameFromTheBase</code>、<code>tableScanStopsAtTheNextObject</code>。</li>
-    <li><strong>跨镜像补名</strong>。行为：<code>strippedOverridesAreNamedFromTheBaseInTheRPathSibling</code>、<code>withoutTheSiblingTheBaseFunctionIsUnknown</code>、<code>aBaseBoundThroughAReexportingLibraryIsFound</code>、<code>aProcessImageReachesBasesInOtherLoadedImages</code>、<code>aCacheImageReachesBasesInTheSameCache</code>、<code>basesOfBasesInOtherImagesAreFollowed</code>。</li>
-    <li><strong>普查</strong>。行为：<code>classIndexCensusOfJavaScriptCore</code>、<code>scannedTableLengthsMatchSymbolBoundsInJavaScriptCore</code>、<code>classIndexCensusOfTSTables</code>（卷不在时跳过；期望 611 / 167 / 606，给 TSPersistence 后补回至少 2,163 个槽位名）。</li>
-    <li><strong>文档</strong>：实现说明必写；不写使用指南；本包没有术语表，术语在实现说明里第一次出现时解释。</li>
+    <li><strong>读指针的三条路</strong>（完成）—— <code>Package.swift</code>、<code>IndexedImage.swift</code>、<code>ImagePointerSlots.swift</code>、<code>ImagePointerSlotsTests.swift</code><ul><li>行为：<code>fileSlotsMatchTheProcessForEveryDataPointerOfTheFixtureImage</code></li><li>行为：<code>cacheSlotsMatchTheProcessForEveryDataPointerOfJavaScriptCore</code></li><li>行为：<code>libraryClassOfTheCacheReadsLikeTheProcess</code></li><li>行为：<code>aBindSlotNamesItsSymbolAndLibrary</code></li><li>行为：<code>aWordThatIsNoPointerHasNoContent</code></li></ul></li>
+    <li><strong>类与基类</strong>（完成）—— <code>RuntimeLibraryMarkers.swift</code>、<code>TypeInfoScanner.swift</code>、<code>CPlusPlusClass.swift</code>、<code>CPlusPlusClassIndexStore.swift</code>（类的查询与 <code>prepare</code> / <code>contains</code> / <code>remove</code>）、驱逐组、夹具的 <code>hierarchy</code> 命名空间、<code>CPlusPlusClassIndexStoreTests.swift</code><ul><li>行为：<code>everyFixtureClassWithATypeInfoIsFound</code></li><li>行为：<code>aClassWithoutSymbolsIsFoundThroughItsTypeInfo</code>（现编 dylib 里剥了 <code>__ZTI</code> 的类）</li><li>行为：<code>aClassWithoutAKeyFunctionHasANonUniqueTypeInfoAndItsNameStillReads</code></li><li>行为：<code>singleInheritanceRecordsTheBaseAtOffsetZero</code></li><li>行为：<code>multipleInheritanceRecordsEveryBaseWithItsOffset</code></li><li>行为：<code>virtualInheritanceRecordsTheVirtualBaseOffsetSlot</code></li><li>行为：<code>aBaseInAnotherImageIsNamedAndLocatedThere</code>（<code>std::exception</code>）</li><li>行为：<code>qualifiedNameFindsTheSameScopeInTheScopeTree</code></li><li>行为：<code>derivedClassesListTheDirectSubclassesInTheImage</code></li><li>行为：<code>processImageAndItsFileGiveTheSameClasses</code></li><li>行为：<code>prepareBuildsAndRemoveDrops</code></li></ul></li>
+    <li><strong>vtable 与补名规则</strong>（完成）—— <code>VirtualTableScanner.swift</code>、<code>CPlusPlusVirtualTable.swift</code>、<code>VirtualFunctionNaming.swift</code>、store 的 <code>virtualTables(of:in:)</code><ul><li>行为：<code>primaryTableListsSlotsInDeclarationOrder</code>（含虚析构函数占两格）</li><li>行为：<code>secondaryTableBelongsToTheBaseAtItsOffset</code></li><li>行为：<code>secondaryTableSlotsAreThunksNamedAfterTheOverrider</code></li><li>行为：<code>theOwnTableIsPickedOverAConstructionTable</code>（同时覆盖几乎为空的虚基类当主基类）</li><li>行为：<code>pureAndDeletedVirtualSlotsAreMarked</code></li><li>行为：<code>anOverrideIsNotInheritedAndAnUntouchedSlotIs</code></li><li>行为：<code>aSlotTheClassIntroducesHasNoBaseFunction</code></li><li>行为：<code>tableScanStopsAtTheNextObject</code></li><li>行为：<code>anUnnamedSlotTakesItsNameFromTheBase</code>、<code>aSlotKeepingTheBaseImplementationIsInherited</code>、<code>aSlotNoBaseNamesKeepsTheNearestBaseWithoutAName</code>、<code>aSlotPastTheBaseTableHasNoBaseFunction</code>、<code>anImportAndTheBaseFunctionWithTheSameNameAreTheSameImplementation</code>（编造的类上的单元测试）</li></ul></li>
+    <li><strong>跨镜像补名</strong>（完成）—— <code>BaseClassLocator.swift</code>、<code>ClassResolver</code>、带 <code>dependencySearchPaths:</code> 的重载、<code>ClassIndexTestImages.swift</code>、<code>CPlusPlusVirtualFunctionNamingTests.swift</code><ul><li>行为：<code>strippedOverridesAreNamedFromTheBaseInTheRPathSibling</code>（现编 dylib）</li><li>行为：<code>withoutTheSiblingTheBaseFunctionIsUnknown</code></li><li>行为：<code>chainedAndLegacyFixupFilesGiveTheSameTables</code></li><li>行为：<code>aStandaloneFileReachesABaseThroughAReexportingLibrary</code>（<code>std::exception</code> 经 libc++ 转出到 libc++abi）</li><li>行为：<code>aBaseInAnotherImageNamesTheSlotsTheClassInherits</code>（进程内经已加载镜像、测试包文件经依赖搜索路径）</li><li>cache 镜像在同一个 cache 里跨镜像补名，由 Espresso 普查覆盖（见第 5 步）；「基类的基类也在别的镜像」没有单独的测试。</li></ul></li>
+    <li><strong>普查</strong>（JavaScriptCore 换成 Espresso；TSTables 未运行）—— <code>CPlusPlusClassIndexCensusTests.swift</code><ul><li>行为：<code>classIndexCensusOfEspresso</code>（进程内与 cache 文件：类数、无符号类数、表数、槽位数、补名数、建索引与补名耗时；两种读法结果一致）</li><li>行为：<code>scannedTableLengthsMatchSymbolBoundsInEspresso</code></li><li>行为：<code>classIndexCensusOfTSTables</code>（目录不在时跳过；期望 611 / 167 / 606，给 TSPersistence 后补回至少 2,163 个槽位名）</li></ul></li>
+    <li><strong>文档</strong>（完成）—— <code>Internal/CPlusPlusClasses.md</code>、<code>Internal/CPlusPlusSymbols.md</code>、<code>README.md</code>、两个索引<ul><li>收尾判断：实现说明必写（读指针的三条路、表长与分组规则、补名规则都是代码看不出的决策）；使用指南不写，API 的文档注释与 README 示例够用；术语表本包没有，<code>RTTI</code>、<code>vtable</code>、<code>address point</code>、<code>offset-to-top</code>、主基类在实现说明里第一次出现时解释。</li></ul></li>
   </ol>
 </section>
 
 <section id="log">
   <h2>决策日志</h2>
   <details>
-    <summary>6 条，最近一条：测试用预编译的小 dylib</summary>
+    <summary>21 条，最近一条：独立文件按导出表条目逐个跟随转出</summary>
     <div class="details-body">
       <div class="table-wrap">
       <table>
         <thead><tr><th>日期</th><th>变更</th><th>说明</th></tr></thead>
         <tbody>
-          <tr><td class="numeric">2026-11-20</td><td>Created as Draft</td><td>用户要求给 C++ 加成员恢复：通过 RTTI 等手段还原类型与成员方法。先在 iWork 的 TSTables 上统计了能恢复多少。</td></tr>
-          <tr><td class="numeric">2026-11-20</td><td>范围：RTTI + vtable + 跨镜像补名</td><td>用户选择。否决只读本镜像。</td></tr>
-          <tr><td class="numeric">2026-11-20</td><td>字段不在本提案</td><td>用户选择。RTTI 与 vtable 不带字段；ObjC 编码只能在下游合并且几乎不重叠。</td></tr>
-          <tr><td class="numeric">2026-11-20</td><td>protobuf 描述符另写提案，排在之后</td><td>用户看了 proto-dump 后选择。TSTables 的 434 个消息与继承 <code>Message</code> 的 434 个类一一对上；proto-dump 原样接不进本包。</td></tr>
-          <tr><td class="numeric">2026-11-20</td><td>放进 <code>CPlusPlusSymbols</code>，与作用域树分开</td><td>两份索引的输入不同，分开后作用域树不变；按限定名关联。</td></tr>
-          <tr><td class="numeric">2026-11-20</td><td>测试用预编译的小 dylib</td><td>测试包给不出剥离后的无名槽位、<code>@rpath</code> 跨镜像基类与旧式 opcode。</td></tr>
+          <tr><td class="numeric">2026-11-20</td><td>Created as Draft</td><td>用户要求给 C++ 加成员恢复：通过 RTTI 等手段还原类型与成员方法。先在 iWork 的 TSTables 上统计了能恢复多少（见前期调研）。</td></tr>
+          <tr><td class="numeric">2026-11-20</td><td>范围：RTTI + vtable + 跨镜像补名</td><td>用户选择。否决：只读本镜像、不跨镜像补名（TSTables 434 个类的基类在 TSPersistence，补名的大头要跨镜像）。</td></tr>
+          <tr><td class="numeric">2026-11-20</td><td>字段不在本提案</td><td>用户选择。RTTI 与 vtable 不带字段；ObjC ivar 编码只能在下游合并，且与 RTTI 类几乎不重叠（611 个里 4 个）。</td></tr>
+          <tr><td class="numeric">2026-11-20</td><td>protobuf 描述符另写提案，排在本提案之后</td><td>用户看了 proto-dump 后选择。实测 TSTables 内嵌 5 个 <code>.proto</code> 文件、434 个消息，与继承 <code>google::protobuf::Message</code> 的 434 个 RTTI 类一一对上。proto-dump 原样不能接进本包：不认 Mach-O，按代码看依赖不在同一输入时整次失败，并依赖 libprotobuf 与 abseil。</td></tr>
+          <tr><td class="numeric">2026-11-20</td><td>放进现有 <code>CPlusPlusSymbols</code> 模块，新 store 与作用域树分开</td><td>两份索引的输入不同（符号表 / 数据段），分开后作用域树的成本与行为不变；按限定名关联。</td></tr>
+          <tr><td class="numeric">2026-11-20</td><td>测试用预编译的小 dylib</td><td>测试包给不出剥离后的无名槽位、<code>@rpath</code> 跨镜像基类与旧式 opcode，源码与重建脚本一起入库。</td></tr>
+          <tr><td class="numeric">2026-11-20</td><td>状态 → Accepted</td><td>用户批准，开始实现。集成分支用 <code>main</code>：本地的 <code>next</code> 只在公司那台、没推送，且落后 <code>main</code>。</td></tr>
+          <tr><td class="numeric">2026-11-20</td><td>状态 → In Progress</td><td>功能分支 <code>feature/cplusplus-class-hierarchy</code> 从 <code>main</code> 切出。本包在公司那台不编译，构建与测试都在 Ultra 上跑。</td></tr>
+          <tr><td class="numeric">2026-11-20</td><td>测试改为运行时现编 dylib，不往仓库放二进制</td><td>照 <code>FixupResolutionMemoTests</code> 的先例，测试第一次需要时用 <code>xcrun clang++</code> 编出 <code>Base</code>、<code>Derived</code> 与走 opcode 的 <code>Derived</code>（<code>-Wl,-no_fixup_chains</code>），再 <code>strip -x</code>。<code>Package.swift</code> 因此不加 <code>resources</code>。否决：提案原定的预编译 dylib 入库（要维护二进制和重建脚本）。</td></tr>
+          <tr><td class="numeric">2026-11-20</td><td>独立文件复用 <code>cached.fixupPointers</code></td><td>本包的 cached 视图已经有整文件的链式指针表（随 <code>MachOFile</code> 常驻、与别的使用方共享），不另建用完即丢的表。</td></tr>
+          <tr><td class="numeric">2026-11-20</td><td><code>__ZTI</code> 符号只用来标 <code>hasTypeInfoSymbol</code></td><td>typeinfo 的虚指针一定是 fixup，扫描不会漏，提案原想的「并入符号防漏」不需要。</td></tr>
+          <tr><td class="numeric">2026-11-20</td><td>cache 里的 libc++abi 按镜像清单的 install name 找</td><td><code>CacheImageLocator.exportedName(atAddress:in:among:)</code> 按第一次问的名字集合缓存整张表，后来换一组名字问会答错，所以不用它，自己查导出表。</td></tr>
+          <tr><td class="numeric">2026-11-20</td><td>更正非唯一 RTTI 的条件</td><td>夹具测出 hidden 的类反而是唯一的。clang 的 <code>classifyRTTIUniqueness</code> 只给 linkonce_odr / weak_odr 且默认可见性的类型置 bit 63（没有 key function 的类、模板特化）。夹具改用默认可见性、只有内联虚函数的 <code>InlineOnly</code>，前期调研与 <code>hasUniqueTypeInfo</code> 的文档注释一并改正。</td></tr>
+          <tr><td class="numeric">2026-11-20</td><td>几乎为空的虚基类当主基类</td><td>夹具的 <code>Intermediate : virtual VirtualBase</code> 只有一张表：<code>VirtualBase</code> 只有虚指针，按 Itanium 规则成了主基类、共用主表。提案原把这种情况列为不处理的局限，实现时补上：没有非虚主基类时，类自己主表里虚基类偏移为 0 的那个虚基类就是主基类。</td></tr>
+          <tr><td class="numeric">2026-11-20</td><td>区分小整数与指针</td><td>cache 的指针格式会把小整数解码成 cache 头部附近的地址，进程内的小整数也会被当成指针。进程内把 <code>[-2^31, 2^31)</code> 当整数；cache 里只把不大于 0 的小整数当整数——页内链末尾、目标在 cache 前 2 GB 的指针原样存成一个小正数，起初被当成整数，Espresso 因此少了 7 个类。</td></tr>
+          <tr><td class="numeric">2026-11-20</td><td>cache 文件的数据段指针一次解码</td><td>每节一次读出、一次定位所在的子 cache，之后的查询读解码结果。Espresso 建索引从 3.5 秒降到 2.5 秒（进程内 0.3 秒），仍有余地，记为后续项。</td></tr>
+          <tr><td class="numeric">2026-11-20</td><td>独立文件定位基类时跳过 re-export 条目</td><td>导出表里标了 re-export 的条目不是定义，跳过后沿 <code>LC_REEXPORT_DYLIB</code> 继续找。</td></tr>
+          <tr><td class="numeric">2026-11-20</td><td>普查改用 Espresso</td><td>WebKit 编译时关了 RTTI，JavaScriptCore 一个类都没有。Espresso 导出近 400 个 typeinfo，是 C++ 重度、带 RTTI 的系统框架。JavaScriptCore 留在逐槽对照测试里。</td></tr>
+          <tr><td class="numeric">2026-11-20</td><td><code>Location.otherImage(installName:)</code> 对 cache 与进程内也给路径</td><td>提案原写这两种情况给 <code>nil</code>；实现时能拿到所在镜像的路径，就给了。</td></tr>
+          <tr><td class="numeric">2026-11-20</td><td>cache 里的数据地址按段范围找所在镜像</td><td><code>CacheImageLocator</code> 按 <code>__TEXT</code> 起点二分，只适合代码地址；cache 把各镜像的数据段集中放在后面，Espresso 普查里 libc++ 的 typeinfo 被归到了 <code>libobjcMsgSend11.dylib</code>，7 个类少补了 14 个槽位名。改为核对候选镜像的段范围，对不上再沿根镜像的依赖找。</td></tr>
+          <tr><td class="numeric">2026-11-20</td><td>独立文件按导出表条目逐个跟随转出</td><td>macOS 27 的 libc++ 没有 <code>LC_REEXPORT_DYLIB</code>，而是在导出表里逐个符号把 libc++abi 的符号标成 re-export，条目里带库序号与原名；按它跟过去。</td></tr>
         </tbody>
       </table>
       </div>

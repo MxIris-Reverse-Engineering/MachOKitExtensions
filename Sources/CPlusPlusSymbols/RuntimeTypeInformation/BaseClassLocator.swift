@@ -25,8 +25,9 @@ final class BaseClassLocator: @unchecked Sendable {
     private var cacheImageLocatorsByCachePath: [String: CacheImageLocator] = [:]
     private var codeRangesByImagePath: [String: Range<UInt64>?] = [:]
     private var textAddressesByInstallNameByCachePath: [String: [String: UInt64]] = [:]
-    /// Cache images by a data address found in them.
-    private var dataImagesByAddress: [UInt64: MachOFile] = [:]
+    /// Cache images by a data address looked for in them; `nil` for an
+    /// address no searched image holds.
+    private var dataImagesByAddress: [UInt64: MachOFile?] = [:]
     /// The segments of the cache images searched so far.
     private var knownSegmentRanges: [(range: Range<UInt64>, image: MachOFile)] = []
     private var imagePathsWithKnownSegments: Set<String> = []
@@ -79,10 +80,14 @@ final class BaseClassLocator: @unchecked Sendable {
             (.file(library), Int(address - sharedRegionStart))
         }
         lock.lock()
-        let known = dataImagesByAddress[address] ?? knownSegmentRanges.first { $0.range.contains(address) }?.image
+        let remembered = dataImagesByAddress[address]
+        let inKnownSegments = knownSegmentRanges.first { $0.range.contains(address) }?.image
         lock.unlock()
-        if let known {
-            return found(known)
+        if let remembered {
+            return remembered.map(found)
+        }
+        if let inKnownSegments {
+            return found(inKnownSegments)
         }
         if let candidate = cacheImageLocator.image(containing: address), Self.segments(of: candidate, contain: address) {
             remember(candidate, containing: address)
@@ -105,6 +110,7 @@ final class BaseClassLocator: @unchecked Sendable {
             }
             pendingInstallNames += IndexedImage.file(library).dependencyInstallNames
         }
+        remember(nil, containing: address)
         return nil
     }
 
@@ -230,9 +236,9 @@ final class BaseClassLocator: @unchecked Sendable {
         return textAddressesByInstallName?[installName].flatMap { cacheImageLocator.image(containing: $0) }
     }
 
-    private func remember(_ library: MachOFile, containing address: UInt64) {
+    private func remember(_ library: MachOFile?, containing address: UInt64) {
         lock.lock()
-        dataImagesByAddress[address] = library
+        dataImagesByAddress.updateValue(library, forKey: address)
         lock.unlock()
     }
 
