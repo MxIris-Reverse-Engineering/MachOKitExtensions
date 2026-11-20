@@ -598,7 +598,7 @@ details[open] > summary { border-bottom: 1px solid var(--separator); }
 <section id="log">
   <h2>决策日志</h2>
   <details>
-    <summary>24 条（网页里部分行合并），最近一条：下游落地</summary>
+    <summary>25 条（网页里部分行合并），最近一条：RuntimeViewer 跟进</summary>
     <div class="details-body">
       <div class="table-wrap">
       <table>
@@ -627,6 +627,7 @@ details[open] > summary { border-bottom: 1px solid var(--separator); }
           <tr><td class="numeric">2026-11-19</td><td>实现完成，待用户看过后收尾</td><td>落地等 C++ 结构化归类的提案；本包的分支在本地合进 <code>next</code>，另两个仓库的分支留到落地那天。</td></tr>
           <tr><td class="numeric">2026-11-19</td><td>状态 → Implemented，取号 0004</td><td>与 0005 同日随本包 3.0.0 落地：本包 <code>main</code> 快进到叠着两份提案的功能分支，打 3.0.0；MachOObjCSection、MachOSwiftSection 与 RuntimeViewer 在随后几步完成，结果补记在原文。</td></tr>
           <tr><td class="numeric">2026-11-20</td><td>下游落地</td><td>MachOObjCSection 0.8.208（推 main 的 CI 三次没领到 macOS 机器，用户同意凭本机 Xcode 26.6 照 CI 步骤的结果打 tag，343 个测试通过）；MachOSwiftSection 0.26.0（只走远端依赖 debug 全量 2,905 个通过、release 只有已知的 5 条失败、渲染 A/B 84 对一致，PR #142 的必需检查通过）；swift-decompiler 带测试编译通过；RuntimeViewer 抬下限交给它自己的会话；本包在 Xcode 26.6 下 213 个测试通过。</td></tr>
+          <tr><td class="numeric">2026-11-20</td><td>RuntimeViewer 跟进</td><td>RuntimeViewer 自己的会话经用户批准完成：<code>next</code> 把本包下限改为 3.0.0，五份锁文件里本包是 3.0.0、两个下游钉在各自当时的 <code>next</code>；Tuist 工程补上四个新 target。Core、Packages、CLI 与 App 编译通过，Tuist check 通过；Core 全量测试满载时两条偶发失败，单独重跑都通过。落地步骤里列的下游至此全部完成。</td></tr>
         </tbody>
       </table>
       </div>
