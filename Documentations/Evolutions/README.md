@@ -12,4 +12,4 @@
 | 0004 | [符号语言的判断归各自的包：本包只认 C 与 C++，Swift 与 Objective-C 在加载时注册](0004-split-symbol-language.md) | Implemented |
 | 0005 | [C++ 符号的结构化归类：按作用域整理一个镜像的 C++ 符号](0005-cplusplus-symbol-classification.md) | Implemented |
 | 0006 | [从 RTTI 与 vtable 恢复 C++ 类：继承关系、虚函数表，以及沿基类给无名虚函数补名](0006-cplusplus-class-hierarchy.md) | Implemented |
-| cross-repository（MachOSwiftSection draft） | [MachO 系列库统一 Swift 6 语言模式并开启三项 upcoming feature](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/draft-swift6-mode-and-upcoming-features.md)：由 MachOSwiftSection 维护唯一提案；本包的部分是每个 Swift target 开启 `ExistentialAny`、`MemberImportVisibility`、`InferIsolatedConformances`，并按 fix-it 补 import 与 `any` | In Progress |
+| cross-repository（MachOSwiftSection 0101） | [MachO 系列库统一 Swift 6 语言模式并开启三项 upcoming feature](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0101-swift6-mode-and-upcoming-features.md)：由 MachOSwiftSection 维护唯一提案；本包的部分是每个 Swift target 开启 `ExistentialAny`、`MemberImportVisibility`、`InferIsolatedConformances`，并按 fix-it 补 import 与 `any` | Implemented |
