@@ -288,6 +288,9 @@ let package = Package(
                 "MachOResolving",
                 "MachOCaches",
                 "MachOSymbols",
+                "MachOReading",
+                "MachOAddressResolution",
+                "MachODependencies",
                 "CPlusPlusDemangling",
             ]
         ),
@@ -305,6 +308,8 @@ let package = Package(
                 "CPlusPlusSymbolsFixture",
                 "MachOSymbols",
                 "MachOResolving",
+                "MachOReading",
+                "MachODependencies",
                 "MachOKitExtensions",
                 "MachOKit",
             ]
