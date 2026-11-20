@@ -207,7 +207,7 @@ details[open] > summary { border-bottom: 1px solid var(--separator); }
       <li>测试改为运行时现编 dylib，不往仓库放二进制。</li>
       <li>非唯一 RTTI 的条件更正为「默认可见性、没有 key function」，hidden 的类反而唯一。</li>
       <li>补上了几乎为空的虚基类当主基类、逐符号转出、cache 里按段范围找数据地址所在镜像。</li>
-      <li>普查改用 Espresso（JavaScriptCore 关了 RTTI）；TSTables 的普查因 Ultra 上没有 iWork 资料而没有运行。</li>
+      <li>普查改用 Espresso（JavaScriptCore 关了 RTTI）；TSTables 普查在 Ultra 上跑通，经基类补名实测 1,520 个，更正了提案估计的 2,163 个。</li>
     </ul>
   </div>
 </section>
@@ -487,7 +487,7 @@ extension CPlusPlusVirtualFunction {
           <tr><td>vtable（全是主表）；没有 vtable 的 typeinfo</td><td class="numeric">606；5</td></tr>
           <tr><td>槽位：指向本镜像 / 绑到别的镜像（纯虚或 deleted）</td><td class="numeric">10,310 / 2,208（6）</td></tr>
           <tr><td>本镜像的不同虚函数：有 C++ 名 / 只有 redacted</td><td class="numeric">4,040 / 2,988</td></tr>
-          <tr><td>缺 C++ 名的槽位 / 沿基类链补回</td><td class="numeric">5,805 / 2,163</td></tr>
+          <tr><td>缺 C++ 名的槽位 / 沿基类链补回（实现后实测；提案时估为 5,805 / 2,163，把纯虚槽位的绑定名也算了进去）</td><td class="numeric">5,842 / 1,520</td></tr>
         </tbody>
       </table>
       </div>
@@ -563,7 +563,7 @@ extension CPlusPlusVirtualFunction {
     <li><strong>类与基类</strong>（完成）—— <code>RuntimeLibraryMarkers.swift</code>、<code>TypeInfoScanner.swift</code>、<code>CPlusPlusClass.swift</code>、<code>CPlusPlusClassIndexStore.swift</code>（类的查询与 <code>prepare</code> / <code>contains</code> / <code>remove</code>）、驱逐组、夹具的 <code>hierarchy</code> 命名空间、<code>CPlusPlusClassIndexStoreTests.swift</code><ul><li>行为：<code>everyFixtureClassWithATypeInfoIsFound</code></li><li>行为：<code>aClassWithoutSymbolsIsFoundThroughItsTypeInfo</code>（现编 dylib 里剥了 <code>__ZTI</code> 的类）</li><li>行为：<code>aClassWithoutAKeyFunctionHasANonUniqueTypeInfoAndItsNameStillReads</code></li><li>行为：<code>singleInheritanceRecordsTheBaseAtOffsetZero</code></li><li>行为：<code>multipleInheritanceRecordsEveryBaseWithItsOffset</code></li><li>行为：<code>virtualInheritanceRecordsTheVirtualBaseOffsetSlot</code></li><li>行为：<code>aBaseInAnotherImageIsNamedAndLocatedThere</code>（<code>std::exception</code>）</li><li>行为：<code>qualifiedNameFindsTheSameScopeInTheScopeTree</code></li><li>行为：<code>derivedClassesListTheDirectSubclassesInTheImage</code></li><li>行为：<code>processImageAndItsFileGiveTheSameClasses</code></li><li>行为：<code>prepareBuildsAndRemoveDrops</code></li></ul></li>
     <li><strong>vtable 与补名规则</strong>（完成）—— <code>VirtualTableScanner.swift</code>、<code>CPlusPlusVirtualTable.swift</code>、<code>VirtualFunctionNaming.swift</code>、store 的 <code>virtualTables(of:in:)</code><ul><li>行为：<code>primaryTableListsSlotsInDeclarationOrder</code>（含虚析构函数占两格）</li><li>行为：<code>secondaryTableBelongsToTheBaseAtItsOffset</code></li><li>行为：<code>secondaryTableSlotsAreThunksNamedAfterTheOverrider</code></li><li>行为：<code>theOwnTableIsPickedOverAConstructionTable</code>（同时覆盖几乎为空的虚基类当主基类）</li><li>行为：<code>pureAndDeletedVirtualSlotsAreMarked</code></li><li>行为：<code>anOverrideIsNotInheritedAndAnUntouchedSlotIs</code></li><li>行为：<code>aSlotTheClassIntroducesHasNoBaseFunction</code></li><li>行为：<code>tableScanStopsAtTheNextObject</code></li><li>行为：<code>anUnnamedSlotTakesItsNameFromTheBase</code>、<code>aSlotKeepingTheBaseImplementationIsInherited</code>、<code>aSlotNoBaseNamesKeepsTheNearestBaseWithoutAName</code>、<code>aSlotPastTheBaseTableHasNoBaseFunction</code>、<code>anImportAndTheBaseFunctionWithTheSameNameAreTheSameImplementation</code>（编造的类上的单元测试）</li></ul></li>
     <li><strong>跨镜像补名</strong>（完成）—— <code>BaseClassLocator.swift</code>、<code>ClassResolver</code>、带 <code>dependencySearchPaths:</code> 的重载、<code>ClassIndexTestImages.swift</code>、<code>CPlusPlusVirtualFunctionNamingTests.swift</code><ul><li>行为：<code>strippedOverridesAreNamedFromTheBaseInTheRPathSibling</code>（现编 dylib）</li><li>行为：<code>withoutTheSiblingTheBaseFunctionIsUnknown</code></li><li>行为：<code>chainedAndLegacyFixupFilesGiveTheSameTables</code></li><li>行为：<code>aStandaloneFileReachesABaseThroughAReexportingLibrary</code>（<code>std::exception</code> 经 libc++ 转出到 libc++abi）</li><li>行为：<code>aBaseInAnotherImageNamesTheSlotsTheClassInherits</code>（进程内经已加载镜像、测试包文件经依赖搜索路径）</li><li>cache 镜像在同一个 cache 里跨镜像补名，由 Espresso 普查覆盖（见第 5 步）；「基类的基类也在别的镜像」没有单独的测试。</li></ul></li>
-    <li><strong>普查</strong>（JavaScriptCore 换成 Espresso；TSTables 未运行）—— <code>CPlusPlusClassIndexCensusTests.swift</code><ul><li>行为：<code>classIndexCensusOfEspresso</code>（进程内与 cache 文件：类数、无符号类数、表数、槽位数、补名数、建索引与补名耗时；两种读法结果一致）</li><li>行为：<code>scannedTableLengthsMatchSymbolBoundsInEspresso</code></li><li>行为：<code>classIndexCensusOfTSTables</code>（目录不在时跳过；期望 611 / 167 / 606，给 TSPersistence 后补回至少 2,163 个槽位名）</li></ul></li>
+    <li><strong>普查</strong>（完成；JavaScriptCore 换成 Espresso）—— <code>CPlusPlusClassIndexCensusTests.swift</code><ul><li>行为：<code>classIndexCensusOfEspresso</code>（进程内与 cache 文件：类数、无符号类数、表数、槽位数、补名数、建索引与补名耗时；两种读法结果一致）</li><li>行为：<code>scannedTableLengthsMatchSymbolBoundsInEspresso</code></li><li>行为：<code>classIndexCensusOfTSTables</code>（目录不在时跳过；期望 611 个类、167 个没有符号、606 张表、12,518 个槽位，6,676 个自己有名、1,520 个经基类补名）</li></ul></li>
     <li><strong>文档</strong>（完成）—— <code>Internal/CPlusPlusClasses.md</code>、<code>Internal/CPlusPlusSymbols.md</code>、<code>README.md</code>、两个索引<ul><li>收尾判断：实现说明必写（读指针的三条路、表长与分组规则、补名规则都是代码看不出的决策）；使用指南不写，API 的文档注释与 README 示例够用；术语表本包没有，<code>RTTI</code>、<code>vtable</code>、<code>address point</code>、<code>offset-to-top</code>、主基类在实现说明里第一次出现时解释。</li></ul></li>
   </ol>
 </section>
@@ -571,7 +571,7 @@ extension CPlusPlusVirtualFunction {
 <section id="log">
   <h2>决策日志</h2>
   <details>
-    <summary>22 条，最近一条：实现完成，待用户看过后收尾</summary>
+    <summary>23 条，最近一条：TSTables 普查在 Ultra 上跑通，更正补名的估计</summary>
     <div class="details-body">
       <div class="table-wrap">
       <table>
@@ -599,6 +599,7 @@ extension CPlusPlusVirtualFunction {
           <tr><td class="numeric">2026-11-20</td><td>cache 里的数据地址按段范围找所在镜像</td><td><code>CacheImageLocator</code> 按 <code>__TEXT</code> 起点二分，只适合代码地址；cache 把各镜像的数据段集中放在后面，Espresso 普查里 libc++ 的 typeinfo 被归到了 <code>libobjcMsgSend11.dylib</code>，7 个类少补了 14 个槽位名。改为核对候选镜像的段范围，对不上再沿根镜像的依赖找。</td></tr>
           <tr><td class="numeric">2026-11-20</td><td>独立文件按导出表条目逐个跟随转出</td><td>macOS 27 的 libc++ 没有 <code>LC_REEXPORT_DYLIB</code>，而是在导出表里逐个符号把 libc++abi 的符号标成 re-export，条目里带库序号与原名；按它跟过去。</td></tr>
           <tr><td class="numeric">2026-11-20</td><td>实现完成，待用户看过后收尾</td><td><code>CPlusPlusSymbolsTests</code> 79 个测试在 Ultra 上全部通过。Espresso 普查：4,379 个类（643 个没有 <code>__ZTI</code> 符号）、3,506 张表、56,204 个槽位，cache 文件与进程两种读法逐槽一致；3,008 组表没有一组越过下一个符号。cache 模式建索引 8.0 秒、取名 9.7 秒，进程内 0.29 秒、2.2 秒。后续项：cache 模式提速（推测瓶颈是逐指针解码，未采样确认）；TSTables 普查没有跑（Ultra 上没有 iWork 资料，公司那台不编译）；基类的基类在别的镜像缺单独测试。文档判断：写了实现说明 <code>Internal/CPlusPlusClasses.md</code>，不写使用指南，不建术语表。</td></tr>
+          <tr><td class="numeric">2026-11-20</td><td>TSTables 普查在 Ultra 上跑通，更正补名的估计</td><td>资料在 Ultra 的 <code>/Volumes/Repositories/Private/Personal/App/OpenNumbers/Dumps/macOS/14.5/Frameworks</code>（arm64 切片的 UUID 与 <code>/Volumes/RE</code> 上的一致），用 <code>CPLUSPLUS_CLASS_CENSUS_FRAMEWORKS</code> 指过去。611 个类、167 个没有符号、606 张表、12,518 个槽位与提案一致；经基类补回 1,520 个，不是提案估的 2,163：当初的 Python 统计把 <code>Message</code> 表里 3 个纯虚槽位的绑定名 <code>___cxa_pure_virtual</code> 也当成了名字。排除之后独立重算得 1,518，加上 <code>std::exception</code> 子类经 libc++abi 补上的 2 个析构槽，正好 1,520。测试改为断言这几个精确值。</td></tr>
         </tbody>
       </table>
       </div>
