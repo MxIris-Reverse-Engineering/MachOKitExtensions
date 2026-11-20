@@ -7,7 +7,7 @@
 - **所属愿景**: 无
 - **关联提案**: 本包 [0005-cplusplus-symbol-classification](0005-cplusplus-symbol-classification.md)（只从符号名归类，非目标里写明「读 RTTI 或 vtable 的内容以后另写提案」）；之后另写的 protobuf 描述符还原提案（slug 预定 `protobuf-descriptor-recovery`，排在本提案之后，按类名挂到本提案的类上）
 - **实现分支 / PR**: `feature/cplusplus-class-hierarchy`，从 `main` 切出；worktree 在 `.worktrees/MachOKitExtensions-CPlusPlusClassHierarchy`
-- **配套文档**: 待定 —— 落地时登记实现说明的链接（预定新增 `Documentations/Internal/CPlusPlusClasses.md`）
+- **配套文档**: 实现说明 [Internal/CPlusPlusClasses.md](../Internal/CPlusPlusClasses.md)
 - **网页版**: 同目录同名的 `.html`
 
 ## 摘要
@@ -505,3 +505,4 @@ README 的 `CPlusPlusSymbols` 一节加上类与 vtable 的示例；新增实现
 | 2026-11-20 | `Location.otherImage(installName:)` 对 cache 与进程内也给路径 | 提案原写这两种情况给 `nil`；实现时能拿到所在镜像的路径，就给了。 |
 | 2026-11-20 | cache 里的数据地址按段范围找所在镜像 | `CacheImageLocator` 按 `__TEXT` 起点二分，只适合代码地址；cache 把各镜像的数据段集中放在后面，Espresso 普查里 libc++ 的 typeinfo 被归到了 `libobjcMsgSend11.dylib`，7 个类少补了 14 个槽位名。改为核对候选镜像的段范围，对不上再沿根镜像的依赖找。 |
 | 2026-11-20 | 独立文件按导出表条目逐个跟随转出 | macOS 27 的 libc++ 没有 `LC_REEXPORT_DYLIB`，而是在导出表里逐个符号把 libc++abi 的符号标成 re-export，条目里带库序号与原名；按它跟过去。 |
+| 2026-11-20 | 实现完成，待用户看过后收尾 | `CPlusPlusSymbolsTests` 79 个测试在 Ultra 上全部通过。Espresso 普查：4,379 个类（643 个没有 `__ZTI` 符号）、3,506 张表、56,204 个槽位，cache 文件与进程两种读法逐槽一致；3,008 组表没有一组越过下一个符号。cache 模式建索引 8.0 秒、取名 9.7 秒，进程内 0.29 秒、2.2 秒。后续项：cache 模式提速（推测瓶颈是逐指针解码，未采样确认）；TSTables 普查没有跑（Ultra 上没有 iWork 资料，公司那台不编译）；基类的基类在别的镜像缺单独测试。文档判断：写了实现说明 `Internal/CPlusPlusClasses.md`，不写使用指南，不建术语表。 |

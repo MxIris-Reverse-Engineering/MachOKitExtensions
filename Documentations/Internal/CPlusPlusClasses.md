@@ -81,9 +81,25 @@
 - `CPlusPlusVirtualFunctionNamingTests`：补名规则用编造的类测；跨镜像补名用测试运行时现编的两个 dylib（`Base` 导出类，`Derived` 经 `@rpath` 链接它、hidden 覆盖被 `strip -x` 剥掉名字；另一份用 `-Wl,-no_fixup_chains` 链接，走旧式 opcode）。照 `FixupResolutionMemoTests` 的先例在运行时编，不往仓库放二进制。
 - `CPlusPlusClassIndexCensusTests`：见下节。
 
-## 普查
+## 普查（2026-11-20，Ultra，macOS 27.2，debug 构建，`CPlusPlusClassIndexCensusTests`）
 
-待填。
+| Espresso 的读法 | 类（其中没有 `__ZTI` 符号） | 有 vtable | 表 | 槽位 | 自己有名 / 经基类补名 / 无名 | 建索引 | 给每个类的每个槽位取名 |
+|---|---|---|---|---|---|---|---|
+| 本机 cache 里的 `MachOFile` | 4,379（643） | 3,338 | 3,506 | 56,204 | 52,788 / 38 / 3,378 | 8.0 秒 | 9.7 秒 |
+| 进程内的 `MachOImage` | 同左 | 同左 | 同左 | 同左 | 同左 | 0.29 秒 | 2.2 秒 |
+
+- 两种读法逐类、逐表、逐槽位一致。耗时包括顺带给基类所在的镜像（MIL、libc++ 等）建索引。
+- **cache 模式比进程内慢约 10 倍**：数据段已经一次读出、一次定位子 cache，剩下的大头推测是逐个指针经 `DyldCache.resolveOptionalRebase(at:)` 解码（没有做过采样）。后续项：采样确认后，按 cache 的 slide info 格式直接解码。
+- **表长**：Espresso 里有 `__ZTV` 符号的 3,008 组表，3,001 组正好在下一个符号处结束，其余 7 组提前结束（后面隔着填充），没有一组越界。
+- **JavaScriptCore 没有类**：WebKit 编译时关了 RTTI（`-fno-rtti`），所以普查用 Espresso；JavaScriptCore 只留在逐槽对照测试里。
+- **TSTables 没有跑**：提案的数字（611 个类、167 个没有符号、606 张表、经基类可补回至少 2,163 个槽位名）来自公司那台上的 `dyld_info` 统计；测试要在能编译的机器上读 `/Volumes/RE/iWork/macOS/14.5/Frameworks`，而 Ultra 上没有这份资料。`CPLUSPLUS_CLASS_CENSUS_FRAMEWORKS` 可以指定别的目录。
+
+## 已知局限
+
+- 有虚基类、又没有 `__ZTV` 符号、找到不止一组表时，取地址最小的一组，可能是别的类的 construction vtable。
+- 只展开类自己的虚基类；基类的基类里的虚基类不展开，它们的副表认不出主人。
+- 「基类的基类也在别的镜像」没有单独的测试，只由 Espresso 普查间接覆盖。
+- 32 位 Mach-O 与 MSVC 的 RTTI 不支持；Linux 上没有编译验证。
 
 ## 契约与坑
 
