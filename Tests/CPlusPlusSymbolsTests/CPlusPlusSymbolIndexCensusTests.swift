@@ -4,6 +4,7 @@ import MachOKit
 import MachOKitExtensions
 @_spi(Internals) import MachOSymbols
 @testable import CPlusPlusSymbols
+import MachOResolving
 
 @Suite
 struct CPlusPlusSymbolIndexCensusTests {

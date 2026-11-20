@@ -1,6 +1,7 @@
 /// Helpers over the dylib load names recorded in `LC_LOAD_DYLIB`-family load
 /// commands (`@rpath/Foo.framework/Versions/A/Foo`,
 /// `/usr/lib/swift/libswiftCore.dylib`, …).
+import Foundation
 public enum DependencyLoadName {
     /// The bare image name a load name identifies: the last path component with
     /// its first extension component stripped (`Foo`, `libswiftCore`).

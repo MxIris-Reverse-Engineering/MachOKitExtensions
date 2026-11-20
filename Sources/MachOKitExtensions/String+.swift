@@ -1,4 +1,5 @@
 import Foundation
+import BinaryParseSupport
 
 extension String {
     public typealias CCharTuple16 = (CChar, CChar, CChar, CChar, CChar, CChar, CChar, CChar, CChar, CChar, CChar, CChar, CChar, CChar, CChar, CChar)

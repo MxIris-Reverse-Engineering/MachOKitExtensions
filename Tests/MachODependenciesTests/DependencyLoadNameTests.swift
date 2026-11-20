@@ -2,6 +2,7 @@ import Foundation
 import MachOKit
 import Testing
 @testable import MachODependencies
+import MachOKitExtensions
 
 /// Pins the load-name → bare-image-name rule. It is a contract with MachOKit,
 /// not a convenience: `MachOImage(name:)` compares the *same* reduction of

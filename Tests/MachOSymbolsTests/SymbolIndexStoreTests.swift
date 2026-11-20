@@ -3,6 +3,7 @@ import Testing
 import MachOKit
 import MachOKitExtensions
 @_spi(Internals) @testable import MachOSymbols
+import MachOResolving
 
 private let objectFilePath = "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib/lazydylib1.o"
 

@@ -77,7 +77,7 @@ enum SelfBindLibrary {
         var description: String { "self-bind library compilation failed:\n\(diagnostics)" }
     }
 
-    private static func compile(format: SelfBindFixupFormat) -> Result<URL, Swift.Error> {
+    private static func compile(format: SelfBindFixupFormat) -> Result<URL, any Swift.Error> {
         Result {
             let workingDirectory = FileManager.default.temporaryDirectory
                 .appendingPathComponent("SelfBindLibrary-\(format.rawValue)-\(UUID().uuidString)")

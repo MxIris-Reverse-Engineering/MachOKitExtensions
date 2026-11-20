@@ -145,7 +145,7 @@ enum FixupSlotsLibrary {
         var description: String { "fixup slots library compilation failed:\n\(diagnostics)" }
     }
 
-    private static let compilation: Result<URL, Swift.Error> = Result {
+    private static let compilation: Result<URL, any Swift.Error> = Result {
         let workingDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("FixupSlotsLibrary-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: workingDirectory, withIntermediateDirectories: true)
