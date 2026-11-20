@@ -1,12 +1,12 @@
-# Draft - 从 RTTI 与 vtable 恢复 C++ 类：继承关系、虚函数表，以及沿基类给无名虚函数补名
+# 0006 - 从 RTTI 与 vtable 恢复 C++ 类：继承关系、虚函数表，以及沿基类给无名虚函数补名
 
-- **状态**: In Progress
+- **状态**: Implemented
 - **作者**: JH
 - **创建日期**: 2026-11-20
 - **最后更新**: 2026-11-20
 - **所属愿景**: 无
 - **关联提案**: 本包 [0005-cplusplus-symbol-classification](0005-cplusplus-symbol-classification.md)（只从符号名归类，非目标里写明「读 RTTI 或 vtable 的内容以后另写提案」）；之后另写的 protobuf 描述符还原提案（slug 预定 `protobuf-descriptor-recovery`，排在本提案之后，按类名挂到本提案的类上）
-- **实现分支 / PR**: `feature/cplusplus-class-hierarchy`，从 `main` 切出；worktree 在 `.worktrees/MachOKitExtensions-CPlusPlusClassHierarchy`
+- **实现分支 / PR**: `feature/cplusplus-class-hierarchy`，从 `main` 切出，快进合入 `main`（已删除）
 - **配套文档**: 实现说明 [Internal/CPlusPlusClasses.md](../Internal/CPlusPlusClasses.md)
 - **网页版**: 同目录同名的 `.html`
 
@@ -507,3 +507,4 @@ README 的 `CPlusPlusSymbols` 一节加上类与 vtable 的示例；新增实现
 | 2026-11-20 | 独立文件按导出表条目逐个跟随转出 | macOS 27 的 libc++ 没有 `LC_REEXPORT_DYLIB`，而是在导出表里逐个符号把 libc++abi 的符号标成 re-export，条目里带库序号与原名；按它跟过去。 |
 | 2026-11-20 | 实现完成，待用户看过后收尾 | `CPlusPlusSymbolsTests` 79 个测试在 Ultra 上全部通过。Espresso 普查：4,379 个类（643 个没有 `__ZTI` 符号）、3,506 张表、56,204 个槽位，cache 文件与进程两种读法逐槽一致；3,008 组表没有一组越过下一个符号。cache 模式建索引 8.0 秒、取名 9.7 秒，进程内 0.29 秒、2.2 秒。后续项：cache 模式提速（推测瓶颈是逐指针解码，未采样确认）；TSTables 普查没有跑（Ultra 上没有 iWork 资料，公司那台不编译）；基类的基类在别的镜像缺单独测试。文档判断：写了实现说明 `Internal/CPlusPlusClasses.md`，不写使用指南，不建术语表。 |
 | 2026-11-20 | TSTables 普查在 Ultra 上跑通，更正补名的估计 | 资料在 Ultra 的 `/Volumes/Repositories/Private/Personal/App/OpenNumbers/Dumps/macOS/14.5/Frameworks`（arm64 切片的 UUID 与 `/Volumes/RE` 上的一致），用 `CPLUSPLUS_CLASS_CENSUS_FRAMEWORKS` 指过去。611 个类、167 个没有符号、606 张表、12,518 个槽位与提案一致；经基类补回 1,520 个，不是提案估的 2,163：当初的 Python 统计把 `Message` 表里 3 个纯虚槽位的绑定名 `___cxa_pure_virtual` 也当成了名字。排除之后独立重算得 1,518，加上 `std::exception` 子类经 libc++abi 补上的 2 个析构槽，正好 1,520。测试改为断言这几个精确值。 |
+| 2026-11-20 | 状态 → Implemented，取号 0006 | 快进合入 `main`，随本包 3.1.0 发布（附注 tag，同以往版本）。合入后补了一个单文件演示 `Tests/ClassIndexDemo/ClassIndexDemo.cpp` 与 `ClassIndexDemoTests`（`swift test --filter ClassIndexDemoTests` 打印恢复出的类与 vtable）。文档判断：实现说明 `Internal/CPlusPlusClasses.md` 已写；不写使用指南，README 示例与文档注释够用；没有新术语要登记（本包没有术语表，术语在实现说明里解释）。后续项：cache 模式提速；基类的基类在别的镜像缺单独测试；没有符号时分不清自己的 vtable 与 construction vtable；只展开类自己的虚基类。下游：没有要求跟进的；本包测试支持的统一由 MachOSwiftSection 的 `draft-shared-macho-testing-support` 接着做（3.2.0）。 |

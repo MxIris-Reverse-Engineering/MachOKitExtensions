@@ -174,6 +174,12 @@ image loads. Code that compared a language with `.swift` or `.objectiveC` import
 Without either package in the process, Swift and Objective-C names count as C. It also adds the
 `CPlusPlusSymbols` product.
 
+3.1.0 adds `CPlusPlusClassIndexStore` to `CPlusPlusSymbols`: an image's C++ classes read from
+their run-time type information and vtables, named across images. `CPlusPlusSymbols` now depends on
+`MachOReading`, `MachOAddressResolution` and `MachODependencies` of this package. Run
+`swift test --filter ClassIndexDemoTests` to see what it recovers from the one-file demo in
+`Tests/ClassIndexDemo/ClassIndexDemo.cpp`.
+
 A type of your own that holds a reader and forwards every read to it declares what it wraps,
 so that whatever is worked out per reader kind — absolute pointers for an image mapped into
 this process, a file's own offset accounting — is worked out for the reader beneath it:

@@ -1,7 +1,7 @@
 # CPlusPlusClasses：从 RTTI 与 vtable 恢复 C++ 类
 
 > 实现说明，随代码维护。读者：维护者。
-> 2026-11 随提案 [draft-cplusplus-class-hierarchy](../Evolutions/draft-cplusplus-class-hierarchy.md) 新增，代码在 `CPlusPlusSymbols` 模块里。作用域树（只看符号名）见 [CPlusPlusSymbols.md](CPlusPlusSymbols.md)。
+> 2026-11 随提案 [0006-cplusplus-class-hierarchy](../Evolutions/0006-cplusplus-class-hierarchy.md) 新增，随 3.1.0 落地，代码在 `CPlusPlusSymbols` 模块里。作用域树（只看符号名）见 [CPlusPlusSymbols.md](CPlusPlusSymbols.md)。
 
 ## 模块定位
 

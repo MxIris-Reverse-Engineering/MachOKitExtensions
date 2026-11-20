@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title>Draft - 从 RTTI 与 vtable 恢复 C++ 类</title>
+<title>0006 - 从 RTTI 与 vtable 恢复 C++ 类</title>
 <style>
 /* Evolution proposal page, shared style (style A, "Apple documentation").
    Copy this whole <style> block verbatim. Page-specific rules, if any, go only
@@ -160,13 +160,13 @@ details[open] > summary { border-bottom: 1px solid var(--separator); }
 <div class="page">
 
 <header class="doc-header">
-  <p class="eyebrow"><span class="crumb">MachOKitExtensions</span><span class="crumb">Evolutions</span><span class="crumb">Draft</span></p>
-  <h1><span class="proposal-number">Draft</span> 从 RTTI 与 vtable 恢复 C++ 类：继承关系、虚函数表，以及沿基类给无名虚函数补名</h1>
+  <p class="eyebrow"><span class="crumb">MachOKitExtensions</span><span class="crumb">Evolutions</span><span class="crumb">0006</span></p>
+  <h1><span class="proposal-number">0006</span> 从 RTTI 与 vtable 恢复 C++ 类：继承关系、虚函数表，以及沿基类给无名虚函数补名</h1>
   <dl class="meta">
-    <div><dt>状态</dt><dd><span class="status status-in-progress">In Progress</span></dd></div>
+    <div><dt>状态</dt><dd><span class="status status-implemented">Implemented</span></dd></div>
     <div><dt>最后更新</dt><dd>2026-11-20</dd></div>
     <div><dt>项目类型</dt><dd>库</dd></div>
-    <div><dt>原文</dt><dd><code>draft-cplusplus-class-hierarchy.md</code></dd></div>
+    <div><dt>原文</dt><dd><code>0006-cplusplus-class-hierarchy.md</code></dd></div>
   </dl>
 </header>
 
@@ -201,15 +201,7 @@ details[open] > summary { border-bottom: 1px solid var(--separator); }
 
 <section id="decide">
   <h2>要你定</h2>
-  <div class="callout callout-note">
-    <p class="callout-title">实现已完成、待你看过后收尾。实现中自己定下的、偏离提案的地方都在决策日志里，主要几条：</p>
-    <ul>
-      <li>测试改为运行时现编 dylib，不往仓库放二进制。</li>
-      <li>非唯一 RTTI 的条件更正为「默认可见性、没有 key function」，hidden 的类反而唯一。</li>
-      <li>补上了几乎为空的虚基类当主基类、逐符号转出、cache 里按段范围找数据地址所在镜像。</li>
-      <li>普查改用 Espresso（JavaScriptCore 关了 RTTI）；TSTables 普查在 Ultra 上跑通，经基类补名实测 1,520 个，更正了提案估计的 2,163 个。</li>
-    </ul>
-  </div>
+  <div class="callout callout-note"><p class="callout-title">已落地：快进合入 <code>main</code>，随 3.1.0 发布。实现中偏离提案的地方都在决策日志里。</p></div>
 </section>
 
 <section id="architecture">
@@ -571,7 +563,7 @@ extension CPlusPlusVirtualFunction {
 <section id="log">
   <h2>决策日志</h2>
   <details>
-    <summary>23 条，最近一条：TSTables 普查在 Ultra 上跑通，更正补名的估计</summary>
+    <summary>24 条，最近一条：状态 → Implemented，取号 0006</summary>
     <div class="details-body">
       <div class="table-wrap">
       <table>
@@ -600,6 +592,7 @@ extension CPlusPlusVirtualFunction {
           <tr><td class="numeric">2026-11-20</td><td>独立文件按导出表条目逐个跟随转出</td><td>macOS 27 的 libc++ 没有 <code>LC_REEXPORT_DYLIB</code>，而是在导出表里逐个符号把 libc++abi 的符号标成 re-export，条目里带库序号与原名；按它跟过去。</td></tr>
           <tr><td class="numeric">2026-11-20</td><td>实现完成，待用户看过后收尾</td><td><code>CPlusPlusSymbolsTests</code> 79 个测试在 Ultra 上全部通过。Espresso 普查：4,379 个类（643 个没有 <code>__ZTI</code> 符号）、3,506 张表、56,204 个槽位，cache 文件与进程两种读法逐槽一致；3,008 组表没有一组越过下一个符号。cache 模式建索引 8.0 秒、取名 9.7 秒，进程内 0.29 秒、2.2 秒。后续项：cache 模式提速（推测瓶颈是逐指针解码，未采样确认）；TSTables 普查没有跑（Ultra 上没有 iWork 资料，公司那台不编译）；基类的基类在别的镜像缺单独测试。文档判断：写了实现说明 <code>Internal/CPlusPlusClasses.md</code>，不写使用指南，不建术语表。</td></tr>
           <tr><td class="numeric">2026-11-20</td><td>TSTables 普查在 Ultra 上跑通，更正补名的估计</td><td>资料在 Ultra 的 <code>/Volumes/Repositories/Private/Personal/App/OpenNumbers/Dumps/macOS/14.5/Frameworks</code>（arm64 切片的 UUID 与 <code>/Volumes/RE</code> 上的一致），用 <code>CPLUSPLUS_CLASS_CENSUS_FRAMEWORKS</code> 指过去。611 个类、167 个没有符号、606 张表、12,518 个槽位与提案一致；经基类补回 1,520 个，不是提案估的 2,163：当初的 Python 统计把 <code>Message</code> 表里 3 个纯虚槽位的绑定名 <code>___cxa_pure_virtual</code> 也当成了名字。排除之后独立重算得 1,518，加上 <code>std::exception</code> 子类经 libc++abi 补上的 2 个析构槽，正好 1,520。测试改为断言这几个精确值。</td></tr>
+          <tr><td class="numeric">2026-11-20</td><td>状态 → Implemented，取号 0006</td><td>快进合入 <code>main</code>，随本包 3.1.0 发布。合入后补了单文件演示 <code>Tests/ClassIndexDemo/ClassIndexDemo.cpp</code> 与 <code>ClassIndexDemoTests</code>。文档：实现说明已写，不写使用指南，没有新术语。后续项：cache 模式提速；基类的基类在别的镜像缺单独测试；没有符号时分不清自己的 vtable 与 construction vtable；只展开类自己的虚基类。</td></tr>
         </tbody>
       </table>
       </div>
