@@ -1,5 +1,6 @@
 #include "CPlusPlusSymbolsFixture.h"
 
+#include <exception>
 #include <vector>
 
 // Everything is `used` and out of line, so that release builds and the
@@ -117,6 +118,98 @@ FIXTURE_KEEP int callHidden() { return hidden(); }
 
 } // namespace fixture
 
+// Class hierarchies for the class index: their typeinfos and vtables.
+namespace hierarchy {
+
+// Multiple inheritance: a secondary vtable for `Right`, reached through a
+// non-virtual thunk.
+struct Left {
+    virtual ~Left();
+    virtual int left();
+    long leftValue = 1;
+};
+struct Right {
+    virtual ~Right();
+    virtual int right();
+    long rightValue = 2;
+};
+struct Both : Left, Right {
+    int right() override;
+    virtual int both();
+};
+FIXTURE_KEEP Left::~Left() {}
+FIXTURE_KEEP int Left::left() { return 1; }
+FIXTURE_KEEP Right::~Right() {}
+FIXTURE_KEEP int Right::right() { return 2; }
+FIXTURE_KEEP int Both::right() { return 3; }
+FIXTURE_KEEP int Both::both() { return 4; }
+
+// A pure virtual function, and a class implementing it.
+struct Shape {
+    virtual ~Shape();
+    virtual int area() = 0;
+};
+struct Square : Shape {
+    int area() override;
+};
+FIXTURE_KEEP Shape::~Shape() {}
+FIXTURE_KEEP int Square::area() { return 5; }
+
+// A deleted virtual function.
+struct Retired {
+    virtual ~Retired();
+    virtual int kept();
+    virtual void gone() = delete;
+};
+FIXTURE_KEEP Retired::~Retired() {}
+FIXTURE_KEEP int Retired::kept() { return 6; }
+
+// A base in another image: libc++abi's `std::exception`.
+struct Failure : std::exception {
+    const char *what() const noexcept override;
+};
+FIXTURE_KEEP const char *Failure::what() const noexcept { return "failure"; }
+
+// No key function and hidden: on Apple arm64 its typeinfo is not unique.
+struct __attribute__((visibility("hidden"))) HiddenInline {
+    virtual ~HiddenInline() {}
+    virtual int value() { return 7; }
+};
+
+namespace {
+struct Anonymous : Left {
+    int left() override { return 8; }
+};
+} // namespace
+
+// Calls through base pointers, so that no build devirtualizes the calls
+// and drops a vtable.
+FIXTURE_KEEP int callLeft(Left *object) { return object->left(); }
+FIXTURE_KEEP int callRight(Right *object) { return object->right(); }
+FIXTURE_KEEP int callArea(Shape *object) { return object->area(); }
+FIXTURE_KEEP int callKept(Retired *object) { return object->kept(); }
+FIXTURE_KEEP int callWhat(std::exception *object) { return object->what()[0]; }
+FIXTURE_KEEP int callValue(HiddenInline *object) { return object->value(); }
+
+FIXTURE_KEEP int touchHierarchies() {
+    Both *both = new Both();
+    Square *square = new Square();
+    Retired *retired = new Retired();
+    Failure *failure = new Failure();
+    HiddenInline *hiddenInline = new HiddenInline();
+    Left *anonymous = new Anonymous();
+    int total = callLeft(both) + callRight(both) + both->both() + callArea(square) + callKept(retired) + callWhat(failure) + callValue(hiddenInline) + callLeft(anonymous);
+    delete both;
+    delete square;
+    delete retired;
+    delete failure;
+    delete hiddenInline;
+    delete anonymous;
+    return total;
+}
+
+} // namespace hierarchy
+
 // A name with the C++ prefix that is no Itanium name.
 extern "C" FIXTURE_KEEP int fixtureUnparsable(void) __asm__("__Z_fixture_unparsable");
 extern "C" int fixtureUnparsable(void) { return 12; }
@@ -141,5 +234,6 @@ extern "C" int CPlusPlusSymbolsFixtureTouchEverything(void) {
     total += sumOfVector();
     total += callHidden();
     total += fixtureUnparsable();
+    total += hierarchy::touchHierarchies();
     return total;
 }
