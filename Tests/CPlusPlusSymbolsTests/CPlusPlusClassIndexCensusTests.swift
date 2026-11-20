@@ -169,7 +169,13 @@ struct CPlusPlusClassIndexCensusTests {
         #expect(census.classCount == 611)
         #expect(census.classesWithoutTypeInfoSymbol == 167)
         #expect(census.classesWithVirtualTable == 606)
-        #expect(census.slotsNamedThroughBase >= 2163)
+        #expect(census.slotCount == 12518)
+        #expect(census.slotsWithOwnName == 6676)
+        // Recounted independently from `nm` and `dyld_info`: 1,518 through
+        // TSTables' own bases and TSPersistence's `google::protobuf::Message`,
+        // and the two destructor slots of the one class deriving from
+        // `std::exception`, through libc++abi.
+        #expect(census.slotsNamedThroughBase == 1520)
         #endif
     }
 }

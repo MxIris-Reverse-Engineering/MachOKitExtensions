@@ -21,7 +21,7 @@
   - 有 611 个类带 typeinfo，其中 167 个没有任何符号，只能从 RTTI 的名字串里得知类名（例如 `GSUNSWrapper<TSTCellDiff>`、`RTree<unsigned int, 2, double, 16, 8>`、`TSTUidOrderNode`）；
   - 继承关系、虚函数槽位，现在完全无从得知；
   - 7,028 个本镜像里的虚函数，2,988 个只剩 Apple 剥离后留下的 `<redacted function N>`。
-- **继承链能补回相当一部分名字。** 派生类主表的第 i 个槽位，就是主基类主表第 i 个槽位所声明的那个虚函数（覆盖或继承）。在 TSTables 上沿基类链（含 TSPersistence 里的 `google::protobuf::Message`）补名，5,805 个缺 C++ 名的槽位里能补回 2,163 个（见前期调研）。
+- **继承链能补回相当一部分名字。** 派生类主表的第 i 个槽位，就是主基类主表第 i 个槽位所声明的那个虚函数（覆盖或继承）。在 TSTables 上沿基类链（含 TSPersistence 里的 `google::protobuf::Message`）补名，缺 C++ 名的槽位里能补回 1,520 个（见前期调研；写提案时估的 2,163 个把纯虚函数的绑定名也算了进去，见决策日志）。
 - **别的来源补不了这一块。** ObjC ivar 的类型编码带 C++ 结构体的字段，但只覆盖按值嵌进 ivar 的类型，而那些多是没有虚函数的值类型：TSTables 的 611 个 RTTI 类里只有 4 个出现在 ObjC 头文件的结构体定义里。字段另有 protobuf 描述符这条路，排在本提案之后另写。
 
 ## 前期调研
@@ -55,7 +55,7 @@
 | vtable（主表；没有副表，因为没有多重继承） | 606；另有 5 个 typeinfo 没有 vtable |
 | 槽位：指向本镜像 / 绑到别的镜像（其中纯虚或 deleted） | 10,310 / 2,208（6） |
 | 本镜像里的不同虚函数：有 C++ 名 / 只有 `<redacted function N>` | 4,040 / 2,988 |
-| 缺 C++ 名的槽位 / 沿基类链（含 TSPersistence 的 `Message`）补回的 | 5,805 / 2,163 |
+| 缺 C++ 名的槽位 / 沿基类链（含 TSPersistence 的 `Message`）补回的 | 5,842 / 1,520（实现后实测；写提案时估为 5,805 / 2,163，见决策日志） |
 
 - `Message` 在 TSPersistence 里有 `__ZTVN6google8protobuf7MessageE` 与 `__ZTIN6google8protobuf7MessageE` 两个导出符号，主表 20 个槽位、16 个有名字。
 - 补不回的槽位主要是类自己新引入的虚函数（槽位号超出主基类的表长），基类里没有对应的名字。
@@ -473,10 +473,10 @@ README 的 `CPlusPlusSymbols` 一节加上类与 vtable 的示例；新增实现
    - 行为：`aStandaloneFileReachesABaseThroughAReexportingLibrary`（`std::exception` 经 libc++ 转出到 libc++abi）
    - 行为：`aBaseInAnotherImageNamesTheSlotsTheClassInherits`（进程内经已加载镜像、测试包文件经依赖搜索路径）
    - cache 镜像在同一个 cache 里跨镜像补名，由 Espresso 普查覆盖（见第 5 步）；「基类的基类也在别的镜像」没有单独的测试。
-5. **普查**（JavaScriptCore 换成 Espresso；TSTables 未运行）—— `CPlusPlusClassIndexCensusTests.swift`
+5. **普查**（完成；JavaScriptCore 换成 Espresso）—— `CPlusPlusClassIndexCensusTests.swift`
    - 行为：`classIndexCensusOfEspresso`（进程内与 cache 文件：类数、无符号类数、表数、槽位数、补名数、建索引与补名耗时；两种读法结果一致）
    - 行为：`scannedTableLengthsMatchSymbolBoundsInEspresso`
-   - 行为：`classIndexCensusOfTSTables`（目录不在时跳过；期望 611 / 167 / 606，给 TSPersistence 后补回至少 2,163 个槽位名）
+   - 行为：`classIndexCensusOfTSTables`（目录不在时跳过；期望 611 个类、167 个没有符号、606 张表、12,518 个槽位，6,676 个自己有名、1,520 个经基类补名）
 6. **文档**（完成）—— `Internal/CPlusPlusClasses.md`、`Internal/CPlusPlusSymbols.md`、`README.md`、两个索引
    - 收尾判断：实现说明必写（读指针的三条路、表长与分组规则、补名规则都是代码看不出的决策）；使用指南不写，API 的文档注释与 README 示例够用；术语表本包没有，`RTTI`、`vtable`、`address point`、`offset-to-top`、主基类在实现说明里第一次出现时解释。
 
@@ -506,3 +506,4 @@ README 的 `CPlusPlusSymbols` 一节加上类与 vtable 的示例；新增实现
 | 2026-11-20 | cache 里的数据地址按段范围找所在镜像 | `CacheImageLocator` 按 `__TEXT` 起点二分，只适合代码地址；cache 把各镜像的数据段集中放在后面，Espresso 普查里 libc++ 的 typeinfo 被归到了 `libobjcMsgSend11.dylib`，7 个类少补了 14 个槽位名。改为核对候选镜像的段范围，对不上再沿根镜像的依赖找。 |
 | 2026-11-20 | 独立文件按导出表条目逐个跟随转出 | macOS 27 的 libc++ 没有 `LC_REEXPORT_DYLIB`，而是在导出表里逐个符号把 libc++abi 的符号标成 re-export，条目里带库序号与原名；按它跟过去。 |
 | 2026-11-20 | 实现完成，待用户看过后收尾 | `CPlusPlusSymbolsTests` 79 个测试在 Ultra 上全部通过。Espresso 普查：4,379 个类（643 个没有 `__ZTI` 符号）、3,506 张表、56,204 个槽位，cache 文件与进程两种读法逐槽一致；3,008 组表没有一组越过下一个符号。cache 模式建索引 8.0 秒、取名 9.7 秒，进程内 0.29 秒、2.2 秒。后续项：cache 模式提速（推测瓶颈是逐指针解码，未采样确认）；TSTables 普查没有跑（Ultra 上没有 iWork 资料，公司那台不编译）；基类的基类在别的镜像缺单独测试。文档判断：写了实现说明 `Internal/CPlusPlusClasses.md`，不写使用指南，不建术语表。 |
+| 2026-11-20 | TSTables 普查在 Ultra 上跑通，更正补名的估计 | 资料在 Ultra 的 `/Volumes/Repositories/Private/Personal/App/OpenNumbers/Dumps/macOS/14.5/Frameworks`（arm64 切片的 UUID 与 `/Volumes/RE` 上的一致），用 `CPLUSPLUS_CLASS_CENSUS_FRAMEWORKS` 指过去。611 个类、167 个没有符号、606 张表、12,518 个槽位与提案一致；经基类补回 1,520 个，不是提案估的 2,163：当初的 Python 统计把 `Message` 表里 3 个纯虚槽位的绑定名 `___cxa_pure_virtual` 也当成了名字。排除之后独立重算得 1,518，加上 `std::exception` 子类经 libc++abi 补上的 2 个析构槽，正好 1,520。测试改为断言这几个精确值。 |

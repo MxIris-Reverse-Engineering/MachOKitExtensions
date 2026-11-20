@@ -92,7 +92,8 @@
 - **cache 模式比进程内慢约 10 倍**：数据段已经一次读出、一次定位子 cache，剩下的大头推测是逐个指针经 `DyldCache.resolveOptionalRebase(at:)` 解码（没有做过采样）。后续项：采样确认后，按 cache 的 slide info 格式直接解码。
 - **表长**：Espresso 里有 `__ZTV` 符号的 3,008 组表，3,001 组正好在下一个符号处结束，其余 7 组提前结束（后面隔着填充），没有一组越界。
 - **JavaScriptCore 没有类**：WebKit 编译时关了 RTTI（`-fno-rtti`），所以普查用 Espresso；JavaScriptCore 只留在逐槽对照测试里。
-- **TSTables 没有跑**：提案的数字（611 个类、167 个没有符号、606 张表、经基类可补回至少 2,163 个槽位名）来自公司那台上的 `dyld_info` 统计；测试要在能编译的机器上读 `/Volumes/RE/iWork/macOS/14.5/Frameworks`，而 Ultra 上没有这份资料。`CPLUSPLUS_CLASS_CENSUS_FRAMEWORKS` 可以指定别的目录。
+- **TSTables（iWork 14.5，arm64 切片）**：611 个类（167 个没有 `__ZTI` 符号）、606 张表、12,518 个槽位；6,676 个自己有名，1,520 个经基类补名（TSTables 自己的基类与 TSPersistence 的 `google::protobuf::Message`，另有 `std::exception` 子类的 2 个析构槽经 libc++abi），4,322 个无名。建索引 2.2 秒，补名 1.1 秒。资料在 Ultra 的 `/Volumes/Repositories/Private/Personal/App/OpenNumbers/Dumps/macOS/14.5/Frameworks`，公司那台在 `/Volumes/RE/iWork/macOS/14.5/Frameworks`（两边 UUID 相同），用 `CPLUSPLUS_CLASS_CENSUS_FRAMEWORKS` 指定。
+- **补名补不上的主要原因**：类自己引入的虚函数没有基类可借；基类那一格本身也没名字（`Message` 的析构函数在 TSPersistence 里同样只剩 `<redacted function N>`）；纯虚槽位不算名字。
 
 ## 已知局限
 
