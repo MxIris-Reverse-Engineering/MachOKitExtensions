@@ -121,7 +121,7 @@ enum ClassHierarchyLibraries {
         var description: String { "class hierarchy library build failed:\n\(diagnostics)" }
     }
 
-    private static let compilation: Result<Built, Swift.Error> = Result {
+    private static let compilation: Result<Built, any Swift.Error> = Result {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ClassHierarchyLibraries-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let baseSourceURL = directory.appendingPathComponent("Base.cpp")

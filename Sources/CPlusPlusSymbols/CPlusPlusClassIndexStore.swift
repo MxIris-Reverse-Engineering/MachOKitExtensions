@@ -2,6 +2,8 @@ import Foundation
 import MachOKit
 import MachOKitExtensions
 import MachODependencies
+import MachOReading
+import MachOResolving
 @_spi(Internals) import MachOCaches
 @_spi(Internals) import MachOAddressResolution
 
