@@ -16,10 +16,15 @@ final class BaseClassLocator: @unchecked Sendable {
     /// Re-exports are followed at most this deep.
     static let maximumReexportDepth = 4
 
+    /// A cache image's data address is looked for in at most this many of
+    /// its libraries.
+    static let maximumSearchedLibraryCount = 512
+
     private let fileLocator: FileDependencyLocator?
     private let lock = NSLock()
     private var cacheImageLocatorsByCachePath: [String: CacheImageLocator] = [:]
     private var codeRangesByImagePath: [String: Range<UInt64>?] = [:]
+    private var textAddressesByInstallNameByCachePath: [String: [String: UInt64]] = [:]
 
     /// A locator for references out of `root`. For a standalone file,
     /// `dependencySearchPaths` locates its libraries — by default the paths
@@ -51,8 +56,39 @@ final class BaseClassLocator: @unchecked Sendable {
             }
             return nil
         case .address(let address):
+            return self.image(containingData: address, from: image)
+        }
+    }
+
+    /// The image another image's data `address` lies in. In a dyld shared
+    /// cache the images' data lies apart from their text, so the image whose
+    /// text precedes the address is checked against its segments, and
+    /// failing that the libraries `image` links are searched.
+    func image(containingData address: UInt64, from image: IndexedImage) -> (image: IndexedImage, offset: Int)? {
+        guard case .file(let file) = image, let cache = file.cache, let cacheImageLocator = cacheImageLocator(for: file) else {
             return self.image(containing: address, from: image)
         }
+        let sharedRegionStart = UInt64(cache.mainCacheHeader.sharedRegionStart)
+        guard address >= sharedRegionStart else { return nil }
+        if let candidate = cacheImageLocator.image(containing: address), Self.segments(of: candidate, contain: address) {
+            return (.file(candidate), Int(address - sharedRegionStart))
+        }
+        var visitedInstallNames: Set<String> = [file.imagePath]
+        var pendingInstallNames = image.dependencyInstallNames
+        var nextIndex = 0
+        while nextIndex < pendingInstallNames.count, nextIndex < Self.maximumSearchedLibraryCount {
+            let installName = pendingInstallNames[nextIndex]
+            nextIndex += 1
+            guard visitedInstallNames.insert(installName).inserted,
+                  let library = cacheImage(atInstallName: installName, of: file, using: cacheImageLocator) else {
+                continue
+            }
+            if Self.segments(of: library, contain: address) {
+                return (.file(library), Int(address - sharedRegionStart))
+            }
+            pendingInstallNames += IndexedImage.file(library).dependencyInstallNames
+        }
+        return nil
     }
 
     /// The image another image's `address` lies in, and the address as an
@@ -150,6 +186,41 @@ final class BaseClassLocator: @unchecked Sendable {
         }
         cacheImageLocatorsByCachePath[cachePath] = created
         return created
+    }
+
+    /// The image of `file`'s cache installed at `installName`.
+    private func cacheImage(atInstallName installName: String, of file: MachOFile, using cacheImageLocator: CacheImageLocator) -> MachOFile? {
+        guard let cache = file.cache else { return nil }
+        let mainCache = cache.mainCache ?? cache
+        let cachePath = mainCache.url.path
+        lock.lock()
+        var textAddressesByInstallName = textAddressesByInstallNameByCachePath[cachePath]
+        lock.unlock()
+        if textAddressesByInstallName == nil {
+            var built: [String: UInt64] = [:]
+            if let imageInformations = mainCache.imageInfos {
+                for imageInformation in imageInformations {
+                    if let path = imageInformation.path(in: mainCache) {
+                        built[path] = UInt64(imageInformation.layout.address)
+                    }
+                }
+            }
+            lock.lock()
+            textAddressesByInstallNameByCachePath[cachePath] = built
+            lock.unlock()
+            textAddressesByInstallName = built
+        }
+        return textAddressesByInstallName?[installName].flatMap { cacheImageLocator.image(containing: $0) }
+    }
+
+    /// Whether one of the image's segments, other than `__LINKEDIT`, holds
+    /// the unslid `address`.
+    private static func segments(of file: MachOFile, contain address: UInt64) -> Bool {
+        file.segments.contains { segment in
+            segment.segmentName != "__LINKEDIT"
+                && address >= UInt64(segment.virtualMemoryAddress)
+                && address - UInt64(segment.virtualMemoryAddress) < UInt64(segment.virtualMemorySize)
+        }
     }
 
     private func codeRange(forImagePath path: String, compute: () -> Range<UInt64>?) -> Range<UInt64>? {

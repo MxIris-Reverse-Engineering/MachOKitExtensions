@@ -68,7 +68,7 @@
 |---|---|
 | 进程内 | `dladdr` 找到地址所在的已加载镜像 |
 | cache 里的文件 | `CacheImageLocator`（每个 cache 一个，按 cache 路径缓存）在同一个 cache 里找 |
-| 独立文件 | `FileDependencyLocator` 按 bind 来源库的 install name 找；找到的库里没有这个符号，就跟着它的 `LC_REEXPORT_DYLIB` 往下找（最多 4 层，`std::exception` 经 libc++ 转出到 libc++abi 就是这样）。flat 或 weak 查找的 bind 没有来源库，按根镜像的依赖顺序逐个找 |
+| 独立文件 | `FileDependencyLocator` 按 bind 来源库的 install name 找。库的导出表里这个符号若标着 re-export，就按条目里的库序号与原名到那个库里找（macOS 27 的 libc++ 就这样逐个符号转出 libc++abi 的 `std::exception`，它没有 `LC_REEXPORT_DYLIB`）；不是 re-export 又没有定义，再跟着 `LC_REEXPORT_DYLIB` 整库转出往下找。最多 4 层。flat 或 weak 查找的 bind 没有来源库，按根镜像的依赖顺序逐个找 |
 
 - 独立文件的默认搜索路径是 `DependencySearchPath.inferred(forRoot:)` 加本机 cache；`@rpath` 兄弟框架要用带 `dependencySearchPaths:` 的重载显式给出（`MachODependencies` 不展开 `@rpath`）。
 - store 按「镜像身份 + 搜索路径」缓存定位器（`LocatorCache`），基类镜像的索引经同一个 store 在 `SharedCache` 里缓存。
