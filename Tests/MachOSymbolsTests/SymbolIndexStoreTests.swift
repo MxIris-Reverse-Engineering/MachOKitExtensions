@@ -4,6 +4,7 @@ import MachOKit
 import MachOKitExtensions
 @_spi(Internals) @testable import MachOSymbols
 import MachOResolving
+import MachOFixtureSupport
 
 private let objectFilePath = "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib/lazydylib1.o"
 
@@ -15,15 +16,9 @@ struct SymbolIndexStoreTests {
         try #require(MachOImage(name: name), "\(name) is not loaded")
     }
 
-    /// The arm64e slice of a system binary.
+    /// The slice of a system binary this process runs.
     private static func machOFile(atPath path: String) throws -> MachOFile {
-        switch try MachOKit.loadFromFile(url: URL(fileURLWithPath: path)) {
-        case .machO(let machOFile):
-            return machOFile
-        case .fat(let fatFile):
-            let machOFiles = try fatFile.machOFiles()
-            return try #require(machOFiles.first { $0.header.cpuType == .arm64 } ?? machOFiles.first)
-        }
+        try HostSlice.machOFile(at: URL(fileURLWithPath: path))
     }
 
     /// Defined, non-debug C symbols of `image`, with the offsets the store

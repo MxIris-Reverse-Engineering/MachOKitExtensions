@@ -3,6 +3,7 @@ import Testing
 import MachOKit
 import MachOKitExtensions
 import MachODependencies
+import MachOFixtureSupport
 @testable import CPlusPlusSymbols
 
 /// Naming a vtable slot after the base class function it overrides or
@@ -91,7 +92,7 @@ struct CPlusPlusVirtualFunctionNamingTests {
 
     @Test func aClassWithoutSymbolsIsFoundThroughItsTypeInfo() throws {
         let built = try ClassHierarchyLibraries.built()
-        let derived = try ClassIndexTestImages.hostSlice(of: built.derivedURL)
+        let derived = try HostSlice.machOFile(at: built.derivedURL)
         let derivedClass = try #require(CPlusPlusClassIndexStore.shared.class(named: "application::Derived", in: derived))
         #expect(!derivedClass.hasTypeInfoSymbol)
         #expect(derivedClass.hasVirtualTable)
@@ -101,7 +102,7 @@ struct CPlusPlusVirtualFunctionNamingTests {
 
     @Test func strippedOverridesAreNamedFromTheBaseInTheRPathSibling() throws {
         let built = try ClassHierarchyLibraries.built()
-        let derived = try ClassIndexTestImages.hostSlice(of: built.derivedURL)
+        let derived = try HostSlice.machOFile(at: built.derivedURL)
         let tables = try Self.derivedTables(in: derived, dependencySearchPaths: [.machOFile(path: built.baseURL.path)])
         let primary = try #require(tables.first)
         #expect(tables.count == 1)
@@ -120,7 +121,7 @@ struct CPlusPlusVirtualFunctionNamingTests {
 
     @Test func withoutTheSiblingTheBaseFunctionIsUnknown() throws {
         let built = try ClassHierarchyLibraries.built()
-        let derived = try ClassIndexTestImages.hostSlice(of: built.derivedURL)
+        let derived = try HostSlice.machOFile(at: built.derivedURL)
         let primary = try #require(try Self.derivedTables(in: derived, dependencySearchPaths: []).first)
         #expect(primary.functions[2].name == nil)
         #expect(primary.functions[2].baseFunction == nil)
@@ -130,8 +131,8 @@ struct CPlusPlusVirtualFunctionNamingTests {
 
     @Test func chainedAndLegacyFixupFilesGiveTheSameTables() throws {
         let built = try ClassHierarchyLibraries.built()
-        let chained = try ClassIndexTestImages.hostSlice(of: built.derivedURL)
-        let legacy = try ClassIndexTestImages.hostSlice(of: built.legacyDerivedURL)
+        let chained = try HostSlice.machOFile(at: built.derivedURL)
+        let legacy = try HostSlice.machOFile(at: built.legacyDerivedURL)
         #expect(chained.cached.dyldChainedFixups != nil)
         #expect(legacy.cached.dyldChainedFixups == nil)
         let searchPaths: [DependencySearchPath] = [.machOFile(path: built.baseURL.path)]

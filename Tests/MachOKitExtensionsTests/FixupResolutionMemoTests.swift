@@ -2,6 +2,7 @@ import Foundation
 import Testing
 import MachOKit
 import MachOKitExtensions
+import MachOFixtureSupport
 
 /// `resolveRebase(fileOffset:)` and `resolveBind(fileOffset:)` remember every
 /// slot they resolve. The memo used to be a dictionary held in an associated
@@ -140,40 +141,10 @@ enum FixupSlotsLibrary {
     __attribute__((visibility("default"))) void *bindSlots[50000] = { REPEAT_50000((void *)malloc) };
     """
 
-    private struct CompilationError: Swift.Error, CustomStringConvertible {
-        let diagnostics: String
-        var description: String { "fixup slots library compilation failed:\n\(diagnostics)" }
-    }
-
-    private static let compilation: Result<URL, any Swift.Error> = Result {
-        let workingDirectory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("FixupSlotsLibrary-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: workingDirectory, withIntermediateDirectories: true)
-        let sourceURL = workingDirectory.appendingPathComponent("Library.c")
-        let libraryURL = workingDirectory.appendingPathComponent("libFixupSlots.dylib")
-        try source.write(to: sourceURL, atomically: true, encoding: .utf8)
-
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
-        process.arguments = ["clang", "-dynamiclib", sourceURL.path, "-o", libraryURL.path]
-        let standardErrorPipe = Pipe()
-        process.standardError = standardErrorPipe
-        try process.run()
-        // Drain BEFORE waitUntilExit, or a long diagnostic deadlocks both sides.
-        let diagnosticsData = standardErrorPipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else {
-            throw CompilationError(diagnostics: String(decoding: diagnosticsData, as: UTF8.self))
-        }
-        return libraryURL
-    }
-
     /// A fresh `MachOFile` per call, so every run starts with empty memos.
     static func machOFile() throws -> MachOFile {
-        guard case .machO(let machOFile) = try MachOKit.loadFromFile(url: try compilation.get()) else {
-            throw CompilationError(diagnostics: "expected a thin dylib")
-        }
-        return machOFile
+        let libraryURL = try FixtureCompiler.shared.dynamicLibrary(named: "FixupSlots", language: .c, source: source)
+        return try HostSlice.machOFile(at: libraryURL)
     }
 
     /// The symbol's `n_value`: its offset from the load address, in a dylib

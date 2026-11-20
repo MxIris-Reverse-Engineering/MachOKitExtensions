@@ -3,12 +3,14 @@ import Testing
 import MachOKit
 import MachOKitExtensions
 import MachOReading
+import MachOFixtureSupport
+import MachOTestingSupport
 @testable import CPlusPlusSymbols
 
 /// Reading the pointers of an image's data three ways, checked against the
 /// pointers dyld wrote into this process.
 @Suite
-struct ImagePointerSlotsTests {
+final class ImagePointerSlotsTests: ClassIndexFixtureTests {
     /// The sections dyld writes only while loading — `__DATA_CONST` and
     /// `__AUTH_CONST` — as offsets the indexes use. The other data sections
     /// may change after loading, so the process need not hold what the file
@@ -25,8 +27,8 @@ struct ImagePointerSlotsTests {
     /// pointer this process holds at the same place: a rebase points to the
     /// same offset, a bind to the symbol dyld bound.
     @Test func fileSlotsMatchTheProcessForEveryDataPointerOfTheFixtureImage() throws {
-        let image = try ClassIndexTestImages.fixtureImage()
-        let file = try ClassIndexTestImages.fixtureFile()
+        let image = machOImage
+        let file = machOFile
         let processSlots = ImagePointerSlots(image: .process(image))
         let fileSlots = ImagePointerSlots(image: .file(file))
         #expect(processSlots.dataSectionRanges == fileSlots.dataSectionRanges)
@@ -120,9 +122,7 @@ struct ImagePointerSlotsTests {
     /// `std::exception` of libc++abi, read out of this Mac's dyld shared
     /// cache and from this process, gives the same table.
     @Test func libraryClassOfTheCacheReadsLikeTheProcess() throws {
-        let hostCache = try #require(FullDyldCache.cachedHost)
-        let file = try #require(hostCache.machOFile(by: .path("/usr/lib/libc++abi.dylib")))
-        let image = try #require(MachOImage(name: "libc++abi"))
+        let (file, image) = try ProcessImages.cacheFileAndLoadedImage(path: "/usr/lib/libc++abi.dylib")
         let store = CPlusPlusClassIndexStore(symbolStore: .shared)
         for machO in [file as any MachORepresentableWithCache, image] {
             let classes = store.classes(in: machO)
@@ -136,7 +136,7 @@ struct ImagePointerSlotsTests {
     @Test func aBindSlotNamesItsSymbolAndLibrary() throws {
         let built = try ClassHierarchyLibraries.built()
         for url in [built.derivedURL, built.legacyDerivedURL] {
-            let slots = ImagePointerSlots(image: .file(try ClassIndexTestImages.hostSlice(of: url)))
+            let slots = ImagePointerSlots(image: .file(try HostSlice.machOFile(at: url)))
             var boundNames: [String: String?] = [:]
             slots.forEachDataSlot { _, content in
                 if case .boundSymbol(let name, _, let installName) = content {
@@ -149,8 +149,8 @@ struct ImagePointerSlotsTests {
     }
 
     @Test func aWordThatIsNoPointerHasNoContent() throws {
-        let file = try ClassIndexTestImages.fixtureFile()
-        let image = try ClassIndexTestImages.fixtureImage()
+        let file = machOFile
+        let image = machOImage
         let left = try #require(CPlusPlusClassIndexStore.shared.class(named: "hierarchy::Left", in: file))
         let table = try #require(CPlusPlusClassIndexStore.shared.virtualTables(of: left, in: file).first)
         // The offset-to-top before the RTTI slot.

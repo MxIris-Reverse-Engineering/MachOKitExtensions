@@ -5,6 +5,7 @@ import MachOKitExtensions
 import MachOReading
 @_spi(Internals) import ARM64InstructionDecoding
 @_spi(Internals) import MachOAddressResolution
+import MachOFixtureSupport
 
 /// The offline resolution of stubs and pointer slots, read from the running
 /// system's dyld shared cache file, against what the process itself holds
@@ -15,10 +16,8 @@ struct MachOAddressResolutionTests {
     private static let appKitInstallName = "/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit"
 
     /// The running system's dyld shared cache, read from its file.
-    private static let runningCachePath = "/System/Volumes/Preboot/Cryptexes/OS/System/Library/dyld/dyld_shared_cache_arm64e"
-
     private func runningCache() throws -> DyldCache {
-        try DyldCache(url: URL(fileURLWithPath: Self.runningCachePath))
+        try DyldCache(path: .current)
     }
 
     private func appKitFile() throws -> MachOFile {
@@ -78,14 +77,14 @@ struct MachOAddressResolutionTests {
     /// iOS 26.3.1, arm64e: a device cache, too large for a `bl` to reach
     /// across its subcaches, so a cross-image call goes through stub islands
     /// the cache builder places between the images.
-    private static let archivedIOSCachePath = "/Volumes/DyldSharedCaches/iOS/26.3.1/dyld_shared_cache_arm64e"
+    private static let archivedIOSCache = DyldSharedCachePath.iOS("26.3.1")
 
     /// Each hop of a chain through stub islands starts where the one before
     /// it ended, and the chain ends at an address that is no trampoline,
     /// inside an image of the cache.
-    @Test(.enabled(if: FileManager.default.fileExists(atPath: archivedIOSCachePath), "needs the archived iOS 26.3.1 device cache"))
+    @Test(.enabled(if: FileManager.default.fileExists(atPath: archivedIOSCache.path), "needs the archived iOS 26.3.1 device cache"))
     func stubChainRecordsEveryStubIslandHop() throws {
-        let cache = try DyldCache(url: URL(fileURLWithPath: Self.archivedIOSCachePath))
+        let cache = try DyldCache(path: Self.archivedIOSCache)
         let swiftUI = try #require(cache.machOFile(by: .name("SwiftUI")), "the archived cache has no SwiftUI")
         let addressSpace = ImageAddressSpace(of: swiftUI)
         let stubs = StubChainResolver(machO: swiftUI, addressSpace: addressSpace)

@@ -3,6 +3,7 @@ import Foundation
 import Testing
 import MachOKit
 import MachOKitExtensions
+import MachOFixtureSupport
 
 /// A host's type that holds a `MachOFile` or `MachOImage` and forwards every
 /// read to it is asked what it reads through — `asMachOFile`, `asMachOImage`,

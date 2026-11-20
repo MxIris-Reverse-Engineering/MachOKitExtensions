@@ -4,6 +4,7 @@ import Testing
 @_spi(Support) import MachOKit
 import MachOKitExtensions
 import MachOReading
+import MachOFixtureSupport
 
 /// A `MachOFile` is read through the mapping MachOKit made when it opened the
 /// file (`fileBytes`), which every value assembled from that opening shares
@@ -67,7 +68,7 @@ struct FileMappingTests {
         let copyURL = temporaryDirectory.appendingPathComponent("dyld")
         try FileManager.default.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
         try FileManager.default.copyItem(at: URL(fileURLWithPath: "/usr/lib/dyld"), to: copyURL)
-        let machOFile = try #require(try Self.firstMachOFile(at: copyURL))
+        let machOFile = try HostSlice.machOFile(at: copyURL)
         try FileManager.default.removeItem(at: copyURL)
 
         let magic: UInt32 = try machOFile.readElement(offset: 0)
@@ -76,7 +77,7 @@ struct FileMappingTests {
 
     /// A read outside the file throws rather than reading past the mapping.
     @Test func aReadPastTheEndOfTheFileThrows() throws {
-        let machOFile = try #require(try Self.firstMachOFile(at: URL(fileURLWithPath: "/usr/lib/dyld")))
+        let machOFile = try HostSlice.machOFile(at: URL(fileURLWithPath: "/usr/lib/dyld"))
         let pastTheEnd = machOFile.fileBytes.count - machOFile.headerStartOffset
         #expect(throws: (any Error).self) {
             let _: UInt64 = try machOFile.readElement(offset: pastTheEnd - 4)
@@ -89,13 +90,5 @@ struct FileMappingTests {
         }
     }
 
-    private static func firstMachOFile(at url: URL) throws -> MachOFile? {
-        switch try MachOKit.loadFromFile(url: url) {
-        case .machO(let machOFile):
-            return machOFile
-        case .fat(let fatFile):
-            return try fatFile.machOFiles().first
-        }
-    }
 }
 #endif

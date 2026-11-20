@@ -3,6 +3,7 @@ import Testing
 import MachOKit
 import MachOKitExtensions
 import MachODependencies
+import MachOFixtureSupport
 @testable import CPlusPlusSymbols
 
 /// How many classes, tables and names the class index finds in large
@@ -153,7 +154,7 @@ struct CPlusPlusClassIndexCensusTests {
 
     @Test(.enabled(if: FileManager.default.fileExists(atPath: tablesPath)))
     func classIndexCensusOfTSTables() throws {
-        let tables = try ClassIndexTestImages.hostSlice(of: URL(fileURLWithPath: Self.tablesPath))
+        let tables = try HostSlice.machOFile(at: URL(fileURLWithPath: Self.tablesPath))
         let searchPaths: [DependencySearchPath] = [.machOFile(path: Self.persistencePath), .systemDyldSharedCache]
         let (census, _) = Self.census(of: tables, label: "TSTables (iWork 14.5)") { $0.virtualTables(of: $1, in: tables, dependencySearchPaths: searchPaths) }
         print("C++ class index census —\n\(census)")

@@ -344,6 +344,8 @@ let package = Package(
         .testTarget(
             name: "CPlusPlusSymbolsTests",
             dependencies: [
+                "MachOTestingSupport",
+                "MachOFixtureSupport",
                 "CPlusPlusSymbols",
                 "CPlusPlusDemangling",
                 "CPlusPlusSymbolsFixture",
@@ -358,6 +360,7 @@ let package = Package(
         .testTarget(
             name: "MachOAddressResolutionTests",
             dependencies: [
+                "MachOFixtureSupport",
                 "MachOAddressResolution",
                 "MachOReading",
                 "ARM64InstructionDecoding",
@@ -378,6 +381,7 @@ let package = Package(
         .testTarget(
             name: "MachOKitExtensionsTests",
             dependencies: [
+                "MachOFixtureSupport",
                 "MachOKitExtensions",
                 "MachOKit",
                 "MachOSymbols",
@@ -402,6 +406,7 @@ let package = Package(
         .testTarget(
             name: "MachODependenciesTests",
             dependencies: [
+                "MachOFixtureSupport",
                 "MachODependencies",
                 "MachOCaches",
                 "MachOKitExtensions",
@@ -411,6 +416,7 @@ let package = Package(
         .testTarget(
             name: "MachOSymbolsTests",
             dependencies: [
+                "MachOFixtureSupport",
                 "MachOSymbols",
                 "MachOResolving",
                 "MachOKitExtensions",
@@ -420,6 +426,7 @@ let package = Package(
         .testTarget(
             name: "MachOReadingTests",
             dependencies: [
+                "MachOFixtureSupport",
                 "MachOReading",
                 "MachOKitExtensions",
                 "MachOKit",

@@ -3,6 +3,7 @@ import Foundation
 import MachOKitExtensions
 import Testing
 @testable import MachODependencies
+import MachOFixtureSupport
 
 /// Every `FileDependencyLocator` that searches one dyld shared cache file by
 /// path reads one opening of it, for as long as anything still holds that
@@ -27,11 +28,11 @@ struct SharedDyldCacheOpeningTests {
     private static let serviceDescriptorLimit: rlim_t = 256
 
     private static var hostCachePath: String {
-        "/System/Volumes/Preboot/Cryptexes/OS/System/Library/dyld/dyld_shared_cache_arm64e"
+        DyldSharedCachePath.current.path
     }
 
     private static var isHostDyldCacheAvailable: Bool {
-        FileManager.default.fileExists(atPath: hostCachePath)
+        !hostCachePath.isEmpty && FileManager.default.fileExists(atPath: hostCachePath)
     }
 
     @Test(.enabled(if: isHostDyldCacheAvailable))

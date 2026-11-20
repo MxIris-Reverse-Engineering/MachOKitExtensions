@@ -3,6 +3,7 @@ import Testing
 import MachOKit
 import MachOKitExtensions
 import MachODependencies
+import MachOFixtureSupport
 @testable import CPlusPlusSymbols
 
 /// Shows what the class index recovers from `Tests/ClassIndexDemo/ClassIndexDemo.cpp`:
@@ -21,45 +22,24 @@ struct ClassIndexDemoTests {
         let imageURL: URL
     }
 
-    private struct CompilationError: Swift.Error, CustomStringConvertible {
-        let diagnostics: String
-        var description: String { "the class index demo does not compile:\n\(diagnostics)" }
-    }
-
     private static let sourceURL = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent()
         .deletingLastPathComponent()
         .appendingPathComponent("ClassIndexDemo/ClassIndexDemo.cpp")
 
+    /// `libZoo.dylib` and `libFarm.dylib`, the second linked without its
+    /// local symbols (`-Wl,-x`, as `strip -x` would leave it).
     private static func build() throws -> Built {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ClassIndexDemo-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let libraryURL = directory.appendingPathComponent("libZoo.dylib")
-        let imageURL = directory.appendingPathComponent("libFarm.dylib")
-        try run(["clang++", "-dynamiclib", "-DCLASS_INDEX_DEMO_LIBRARY", sourceURL.path, "-o", libraryURL.path, "-install_name", "@rpath/libZoo.dylib"])
-        try run(["clang++", "-dynamiclib", sourceURL.path, "-o", imageURL.path, "-install_name", "@rpath/libFarm.dylib", "-L", directory.path, "-lZoo"])
-        try run(["strip", "-x", imageURL.path])
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let compiler = FixtureCompiler.shared
+        let libraryURL = try compiler.dynamicLibrary(named: "Zoo", language: .cPlusPlus, source: source, arguments: ["-DCLASS_INDEX_DEMO_LIBRARY"])
+        let imageURL = try compiler.dynamicLibrary(named: "Farm", language: .cPlusPlus, source: source, arguments: ["-L", libraryURL.deletingLastPathComponent().path, "-lZoo", "-Wl,-x"])
         return Built(libraryURL: libraryURL, imageURL: imageURL)
-    }
-
-    private static func run(_ arguments: [String]) throws {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
-        process.arguments = arguments
-        let standardErrorPipe = Pipe()
-        process.standardError = standardErrorPipe
-        try process.run()
-        // Drain before waiting, or a long diagnostic deadlocks both sides.
-        let diagnostics = standardErrorPipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else {
-            throw CompilationError(diagnostics: arguments.joined(separator: " ") + "\n" + String(decoding: diagnostics, as: UTF8.self))
-        }
     }
 
     @Test func printWhatTheClassIndexRecoversFromTheDemo() throws {
         let built = try Self.build()
-        let image = try ClassIndexTestImages.hostSlice(of: built.imageURL)
+        let image = try HostSlice.machOFile(at: built.imageURL)
         let searchPaths: [DependencySearchPath] = [.machOFile(path: built.libraryURL.path), .systemDyldSharedCache]
         let store = CPlusPlusClassIndexStore.shared
         let classes = store.classes(in: image)

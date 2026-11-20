@@ -2,6 +2,7 @@ import MachOKitExtensions
 import Testing
 import Foundation
 import MachOKit
+import MachOFixtureSupport
 
 /// Regression coverage for dyld-shared-cache image selection.
 ///
@@ -158,19 +159,19 @@ struct DyldCacheImageSearchTests {
 /// never reach `bestMatchRank` (only a native canonical framework can) and
 /// therefore always pays the full multi-cache scan before answering.
 /// PR #103 review, finding L3.
-private let currentSystemDyldSharedCachePath = "/System/Volumes/Preboot/Cryptexes/OS/System/Library/dyld/dyld_shared_cache_arm64e"
+private let currentSystemDyldSharedCachePath = DyldSharedCachePath.current.path
 
-@Suite(.enabled(if: FileManager.default.fileExists(atPath: currentSystemDyldSharedCachePath)))
+@Suite(.enabled(if: !currentSystemDyldSharedCachePath.isEmpty && FileManager.default.fileExists(atPath: currentSystemDyldSharedCachePath)))
 struct DyldCacheEndToEndLookupTests {
 
     @Test func plainDylibNameResolvesToTheRealDylib() throws {
-        let cache = try DyldCache(url: URL(fileURLWithPath: currentSystemDyldSharedCachePath))
+        let cache = try DyldCache(path: .current)
         let machOFile = try #require(cache.machOFile(by: .name("libswiftCore")))
         #expect(machOFile.imagePath == "/usr/lib/swift/libswiftCore.dylib")
     }
 
     @Test func frameworkNameStillResolvesToTheCanonicalBinary() throws {
-        let cache = try DyldCache(url: URL(fileURLWithPath: currentSystemDyldSharedCachePath))
+        let cache = try DyldCache(path: .current)
         let machOFile = try #require(cache.machOFile(by: .name("SwiftUI")))
         #expect(machOFile.imagePath.hasSuffix("SwiftUI.framework/Versions/A/SwiftUI"))
         #expect(!machOFile.imagePath.contains("iOSSupport"))

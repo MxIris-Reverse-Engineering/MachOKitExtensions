@@ -3,12 +3,13 @@ import Foundation
 import MachOKitExtensions
 import Testing
 @testable import MachODependencies
+import MachOFixtureSupport
 
 /// Where the archived-cache-gated suite below finds its cache. A separate
 /// type on purpose: a `@Suite(.enabled(if:))` condition that reads a static
 /// of the suite it decorates is a circular macro reference.
 enum ArchivedMacOS15CacheFixtures {
-    static let cachePath = "/Volumes/DyldSharedCaches/macOS/15.5/dyld_shared_cache_arm64e"
+    static let cachePath = DyldSharedCachePath.macOS("15.5").path
     static let swiftUICoreInstallPath = "/System/Library/Frameworks/SwiftUICore.framework/Versions/A/SwiftUICore"
     static let foundationInstallPath = "/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation"
     static var hasCache: Bool { FileManager.default.fileExists(atPath: cachePath) }

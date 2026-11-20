@@ -3,6 +3,7 @@ import Testing
 import MachOKit
 import MachOKitExtensions
 @_spi(Internals) import MachOSymbols
+import MachOFixtureSupport
 
 /// A host's wrapper — MachOKitUI's `MachOFileSource` — around a file read
 /// out of the system dyld shared cache.
