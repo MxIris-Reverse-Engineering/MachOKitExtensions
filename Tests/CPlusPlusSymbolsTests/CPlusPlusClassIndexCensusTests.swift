@@ -44,6 +44,9 @@ struct CPlusPlusClassIndexCensusTests {
         }
     }
 
+    /// The slots named through a base, by class and slot.
+    nonisolated(unsafe) private static var baseNamedSlotsByLabel: [String: Set<String>] = [:]
+
     private static func census(of machO: some MachORepresentableWithCache, label: String, tables: (CPlusPlusClassIndexStore, CPlusPlusClass) -> [CPlusPlusVirtualTable]) -> (Census, [String: [Int]]) {
         let store = CPlusPlusClassIndexStore(symbolStore: .shared)
         var census = Census(label: label)
@@ -54,6 +57,8 @@ struct CPlusPlusClassIndexCensusTests {
         census.classesWithoutTypeInfoSymbol = classes.count(where: { !$0.hasTypeInfoSymbol })
         census.classesWithVirtualTable = classes.count(where: \.hasVirtualTable)
         var slotCountsByClass: [String: [Int]] = [:]
+        var baseNamedSlots: Set<String> = []
+        defer { baseNamedSlotsByLabel[label] = baseNamedSlots }
         census.namingDuration = clock.measure {
             for polymorphicClass in classes {
                 let classTables = tables(store, polymorphicClass)
@@ -63,8 +68,9 @@ struct CPlusPlusClassIndexCensusTests {
                     census.slotCount += 1
                     if function.symbolName != nil {
                         census.slotsWithOwnName += 1
-                    } else if function.baseFunction?.name != nil {
+                    } else if let baseName = function.baseFunction?.name {
                         census.slotsNamedThroughBase += 1
+                        baseNamedSlots.insert("\(polymorphicClass.qualifiedName)[\(function.slotIndex)] \(baseName.demangledName)")
                     } else {
                         census.unnamedSlots += 1
                     }
@@ -90,7 +96,9 @@ struct CPlusPlusClassIndexCensusTests {
         let onlyInImage = imageSlotCounts.filter { fileSlotCounts[$0.key] != $0.value }
         #expect(onlyInFile.isEmpty && onlyInImage.isEmpty, "only from the file: \(onlyInFile.prefix(8)); only from the process: \(onlyInImage.prefix(8))")
         #expect(fileCensus.slotsWithOwnName == imageCensus.slotsWithOwnName)
-        #expect(fileCensus.slotsNamedThroughBase == imageCensus.slotsNamedThroughBase)
+        let fileBaseNamed = Self.baseNamedSlotsByLabel[fileCensus.label] ?? []
+        let imageBaseNamed = Self.baseNamedSlotsByLabel[imageCensus.label] ?? []
+        #expect(fileCensus.slotsNamedThroughBase == imageCensus.slotsNamedThroughBase, "named through a base only in the process: \(imageBaseNamed.subtracting(fileBaseNamed).sorted().prefix(8)); only from the file: \(fileBaseNamed.subtracting(imageBaseNamed).sorted().prefix(8))")
     }
 
     /// No group of tables the scan finds runs past the next symbol after

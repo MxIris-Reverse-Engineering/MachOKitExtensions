@@ -2,6 +2,7 @@ import Foundation
 import Testing
 import MachOKit
 import MachOKitExtensions
+import MachODependencies
 @testable import CPlusPlusSymbols
 
 /// The class index, read from the image the C++ fixture is linked into —
@@ -154,7 +155,16 @@ struct CPlusPlusClassIndexStoreTests {
         let reference = try #require(record.bases.first?.reference)
         let locator = BaseClassLocator(root: .file(file), dependencySearchPaths: nil)
         let located = locator.locate(reference, from: .file(file))
-        let (image, offset) = try #require(located, "\(reference) not located")
+        // How far a locator of the same search paths gets, for the failure
+        // message.
+        let searchPaths = DependencySearchPath.inferred(forRoot: file) + [.systemDyldSharedCache]
+        let fileLocator = FileDependencyLocator(searchPaths: searchPaths, preferredCPU: file.header.cpu, platforms: DependencyPlatforms.platforms(of: file))
+        let libraryCPlusPlus = fileLocator.locate(loadName: "/usr/lib/libc++.1.dylib")
+        let reexported = libraryCPlusPlus.map { IndexedImage.file($0).reexportedInstallNames } ?? []
+        let libraryCPlusPlusABI = reexported.first.flatMap { fileLocator.locate(loadName: $0) }
+        let definition = libraryCPlusPlusABI.flatMap { CPlusPlusSymbolIndexStore.shared.symbol(named: "__ZTISt9exception", in: $0) }
+        let trail = "search paths \(searchPaths); libc++ \(libraryCPlusPlus?.imagePath ?? "not located"), re-exports \(reexported), libc++abi \(libraryCPlusPlusABI?.imagePath ?? "not located"), definition \(definition.map { "\($0.offset)" } ?? "none")"
+        let (image, offset) = try #require(located, "\(reference) not located: \(trail)")
         #expect(image.imagePath == "/usr/lib/libc++abi.dylib")
         let exception = Self.store.class(atTypeInfoOffset: offset, in: image.representable)
         #expect(exception?.qualifiedName == "std::exception", "\(reference) located at \(offset) in \(image.imagePath), \(Self.store.classes(in: image.representable).count) classes there")

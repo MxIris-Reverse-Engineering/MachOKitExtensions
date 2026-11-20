@@ -436,17 +436,18 @@ README 的 `CPlusPlusSymbols` 一节加上类与 vtable 的示例；新增实现
 
 ## 落地步骤
 
-1. **读指针的三条路** —— 改动地图：`Package.swift`、`ImagePointerSlots.swift`、夹具的多重继承与 `std::exception` 子类、预编译夹具、`ImagePointerSlotsTests.swift`
-   - 先确认测试包二进制用链式 fixup 还是旧式 opcode，写进实现说明。
+代码没有按下面的步骤逐步提交：本包在公司那台不编译，每次验证都要先推送功能分支、再到 Ultra 上跑，所以实现一次提交，之后是测试与几次修正。步骤与行为清单按实际做成的样子写。
+
+1. **读指针的三条路**（完成）—— `Package.swift`、`IndexedImage.swift`、`ImagePointerSlots.swift`、`ImagePointerSlotsTests.swift`
    - 行为：`fileSlotsMatchTheProcessForEveryDataPointerOfTheFixtureImage`
    - 行为：`cacheSlotsMatchTheProcessForEveryDataPointerOfJavaScriptCore`
-   - 行为：`chainedAndLegacyFixupFilesAgreeOnEverySlot`
+   - 行为：`libraryClassOfTheCacheReadsLikeTheProcess`
    - 行为：`aBindSlotNamesItsSymbolAndLibrary`
    - 行为：`aWordThatIsNoPointerHasNoContent`
-2. **类与基类** —— `TypeInfoScanner.swift`、`CPlusPlusClass.swift`、`CPlusPlusClassIndexStore.swift`（类的查询与 `prepare` / `contains` / `remove`）、驱逐组、夹具的 hidden 类与匿名命名空间类、`CPlusPlusClassIndexStoreTests.swift`
+2. **类与基类**（完成）—— `RuntimeLibraryMarkers.swift`、`TypeInfoScanner.swift`、`CPlusPlusClass.swift`、`CPlusPlusClassIndexStore.swift`（类的查询与 `prepare` / `contains` / `remove`）、驱逐组、夹具的 `hierarchy` 命名空间、`CPlusPlusClassIndexStoreTests.swift`
    - 行为：`everyFixtureClassWithATypeInfoIsFound`
-   - 行为：`aClassWithoutSymbolsIsFoundThroughItsTypeInfo`（预编译夹具里剥了 `__ZTI` 的类）
-   - 行为：`aHiddenClassHasANonUniqueTypeInfoAndItsNameStillReads`
+   - 行为：`aClassWithoutSymbolsIsFoundThroughItsTypeInfo`（现编 dylib 里剥了 `__ZTI` 的类）
+   - 行为：`aClassWithoutAKeyFunctionHasANonUniqueTypeInfoAndItsNameStillReads`
    - 行为：`singleInheritanceRecordsTheBaseAtOffsetZero`
    - 行为：`multipleInheritanceRecordsEveryBaseWithItsOffset`
    - 行为：`virtualInheritanceRecordsTheVirtualBaseOffsetSlot`
@@ -454,30 +455,30 @@ README 的 `CPlusPlusSymbols` 一节加上类与 vtable 的示例；新增实现
    - 行为：`qualifiedNameFindsTheSameScopeInTheScopeTree`
    - 行为：`derivedClassesListTheDirectSubclassesInTheImage`
    - 行为：`processImageAndItsFileGiveTheSameClasses`
-3. **vtable 与本镜像内的补名** —— `VirtualTableScanner.swift`、`CPlusPlusVirtualTable.swift`、`VirtualFunctionNaming.swift`（本镜像内）、store 的 `virtualTables(of:in:)`、夹具的纯虚与 `= delete`
-   - 行为：`primaryTableListsSlotsInDeclarationOrder`
-   - 行为：`virtualDestructorTakesTwoSlots`
+   - 行为：`prepareBuildsAndRemoveDrops`
+3. **vtable 与补名规则**（完成）—— `VirtualTableScanner.swift`、`CPlusPlusVirtualTable.swift`、`VirtualFunctionNaming.swift`、store 的 `virtualTables(of:in:)`
+   - 行为：`primaryTableListsSlotsInDeclarationOrder`（含虚析构函数占两格）
    - 行为：`secondaryTableBelongsToTheBaseAtItsOffset`
    - 行为：`secondaryTableSlotsAreThunksNamedAfterTheOverrider`
-   - 行为：`theOwnTableIsPickedOverAConstructionTable`
+   - 行为：`theOwnTableIsPickedOverAConstructionTable`（同时覆盖几乎为空的虚基类当主基类）
    - 行为：`pureAndDeletedVirtualSlotsAreMarked`
    - 行为：`anOverrideIsNotInheritedAndAnUntouchedSlotIs`
    - 行为：`aSlotTheClassIntroducesHasNoBaseFunction`
-   - 行为：`anUnnamedSlotTakesItsNameFromTheBase`（注入取名函数的单元测试）
    - 行为：`tableScanStopsAtTheNextObject`
-4. **跨镜像补名** —— `BaseClassLocator.swift`、`VirtualFunctionNaming.swift`（跨镜像）、带 `dependencySearchPaths:` 的重载、`CPlusPlusVirtualFunctionNamingTests.swift`
-   - 行为：`strippedOverridesAreNamedFromTheBaseInTheRPathSibling`（预编译夹具）
+   - 行为：`anUnnamedSlotTakesItsNameFromTheBase`、`aSlotKeepingTheBaseImplementationIsInherited`、`aSlotNoBaseNamesKeepsTheNearestBaseWithoutAName`、`aSlotPastTheBaseTableHasNoBaseFunction`、`anImportAndTheBaseFunctionWithTheSameNameAreTheSameImplementation`（编造的类上的单元测试）
+4. **跨镜像补名**（完成）—— `BaseClassLocator.swift`、`ClassResolver`、带 `dependencySearchPaths:` 的重载、`ClassIndexTestImages.swift`、`CPlusPlusVirtualFunctionNamingTests.swift`
+   - 行为：`strippedOverridesAreNamedFromTheBaseInTheRPathSibling`（现编 dylib）
    - 行为：`withoutTheSiblingTheBaseFunctionIsUnknown`
-   - 行为：`aBaseBoundThroughAReexportingLibraryIsFound`（`std::exception` 经 libc++ 到 libc++abi）
-   - 行为：`aProcessImageReachesBasesInOtherLoadedImages`
-   - 行为：`aCacheImageReachesBasesInTheSameCache`
-   - 行为：`basesOfBasesInOtherImagesAreFollowed`
-5. **普查** —— `CPlusPlusClassIndexCensusTests.swift`
-   - 行为：`classIndexCensusOfJavaScriptCore`（进程内与 cache 文件：类数、无符号类数、表数、槽位数、补名数、建索引耗时、常驻字节；两种读法结果一致）
-   - 行为：`scannedTableLengthsMatchSymbolBoundsInJavaScriptCore`
-   - 行为：`classIndexCensusOfTSTables`（卷不在时跳过；期望 611 / 167 / 606，给 TSPersistence 后补回至少 2,163 个槽位名）
-6. **文档** —— `Internal/CPlusPlusClasses.md`、`Internal/CPlusPlusSymbols.md`、`README.md`、两个索引
-   - 收尾判断：实现说明必写（读指针的三条路、表长与分组规则、补名规则都是代码看不出的决策）；使用指南不写，API 的文档注释与 README 示例够用；术语表本包没有，`RTTI`、`vtable`、`address point`、`offset-to-top`、`主基类` 在实现说明里第一次出现时解释。
+   - 行为：`chainedAndLegacyFixupFilesGiveTheSameTables`
+   - 行为：`aStandaloneFileReachesABaseThroughAReexportingLibrary`（`std::exception` 经 libc++ 转出到 libc++abi）
+   - 行为：`aBaseInAnotherImageNamesTheSlotsTheClassInherits`（进程内经已加载镜像、测试包文件经依赖搜索路径）
+   - cache 镜像在同一个 cache 里跨镜像补名，由 Espresso 普查覆盖（见第 5 步）；「基类的基类也在别的镜像」没有单独的测试。
+5. **普查**（JavaScriptCore 换成 Espresso；TSTables 未运行）—— `CPlusPlusClassIndexCensusTests.swift`
+   - 行为：`classIndexCensusOfEspresso`（进程内与 cache 文件：类数、无符号类数、表数、槽位数、补名数、建索引与补名耗时；两种读法结果一致）
+   - 行为：`scannedTableLengthsMatchSymbolBoundsInEspresso`
+   - 行为：`classIndexCensusOfTSTables`（目录不在时跳过；期望 611 / 167 / 606，给 TSPersistence 后补回至少 2,163 个槽位名）
+6. **文档**（完成）—— `Internal/CPlusPlusClasses.md`、`Internal/CPlusPlusSymbols.md`、`README.md`、两个索引
+   - 收尾判断：实现说明必写（读指针的三条路、表长与分组规则、补名规则都是代码看不出的决策）；使用指南不写，API 的文档注释与 README 示例够用；术语表本包没有，`RTTI`、`vtable`、`address point`、`offset-to-top`、主基类在实现说明里第一次出现时解释。
 
 ## 决策日志
 
