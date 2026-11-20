@@ -20,13 +20,15 @@ public enum ProcessMemory {
         }
     }
 
-    private nonisolated(unsafe) static let byteFormatter: ByteCountFormatter = {
+    /// A new formatter per use: `ByteCountFormatter` is not `Sendable`, and
+    /// reports are rare.
+    private static func makeByteFormatter() -> ByteCountFormatter {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .memory
         formatter.allowsNonnumericFormatting = false
         formatter.includesUnit = true
         return formatter
-    }()
+    }
 
     public static func value(of metric: Metric) -> UInt64 {
         guard let info = getTaskVMInfo() else { return 0 }
@@ -41,7 +43,7 @@ public enum ProcessMemory {
 
     public static func formatted(of metric: Metric) -> String {
         let bytes = value(of: metric)
-        return byteFormatter.string(fromByteCount: Int64(bytes))
+        return makeByteFormatter().string(fromByteCount: Int64(bytes))
     }
 
     public static func report() {
@@ -60,7 +62,7 @@ public enum ProcessMemory {
     // MARK: - Private Helpers
 
     private static func printItem(name: String, bytes: UInt64) {
-        let str = byteFormatter.string(fromByteCount: Int64(bytes))
+        let str = makeByteFormatter().string(fromByteCount: Int64(bytes))
         print(String(format: "%-20@ : %@", name, str))
     }
 

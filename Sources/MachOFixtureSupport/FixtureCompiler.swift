@@ -1,5 +1,6 @@
 #if os(macOS)
 import Foundation
+import OSToolbox
 
 /// Compiles a small library while the tests run, through `xcrun`.
 ///
@@ -26,13 +27,9 @@ public struct FixtureCompiler: Sendable {
 
     /// The compiler every test shares, so that two tests asking for the same
     /// library get the same file.
-    public static let shared = FixtureCompiler(builds: FixtureBuilds())
+    public static let shared = FixtureCompiler()
 
-    private let builds: FixtureBuilds
-
-    private init(builds: FixtureBuilds) {
-        self.builds = builds
-    }
+    private init() {}
 
     /// Compiles `source` into `lib<name>.dylib` and returns its URL.
     ///
@@ -42,13 +39,13 @@ public struct FixtureCompiler: Sendable {
     /// the linker for more (`-Wl,-x` drops the local symbols, as `strip -x`
     /// does).
     public func dynamicLibrary(named name: String, language: Language, source: String, arguments: [String] = []) throws -> URL {
-        let request = FixtureBuilds.Request(name: name, language: language, source: source, arguments: arguments)
-        return try builds.product(for: request)
+        let request = FixtureBuildRequest(name: name, language: language, source: source, arguments: arguments)
+        return try FixtureBuilds.product(for: request)
     }
 
     /// The directory the libraries of this process are written to.
     public var productsDirectory: URL {
-        builds.rootDirectory
+        fixtureProductsDirectory
     }
 }
 
@@ -64,50 +61,47 @@ public struct FixtureCompilationError: Error, CustomStringConvertible {
     }
 }
 
-/// The products of one process, and the lock that keeps each built once.
-private final class FixtureBuilds: @unchecked Sendable {
-    struct Request: Hashable {
-        let name: String
-        let language: FixtureCompiler.Language
-        let source: String
-        let arguments: [String]
+/// What one build compiles: a request the compiler answers once per process.
+private struct FixtureBuildRequest: Hashable, Sendable {
+    let name: String
+    let language: FixtureCompiler.Language
+    let source: String
+    let arguments: [String]
+}
+
+/// Where this process writes its libraries.
+private let fixtureProductsDirectory = FileManager.default.temporaryDirectory
+    .appendingPathComponent("MachOFixtureSupport-\(ProcessInfo.processInfo.processIdentifier)-\(UUID().uuidString)")
+
+/// Removes ``fixtureProductsDirectory`` when the process exits; evaluated
+/// before the first build.
+private let removesProductsAtExit: Void = {
+    atexit {
+        try? FileManager.default.removeItem(at: fixtureProductsDirectory)
     }
+}()
 
-    let rootDirectory: URL
+/// The products of this process, each built once.
+private enum FixtureBuilds {
+    // One lock for every build: the compiles are few, and a request that
+    // waits behind the same request's build then finds it done. A failure is
+    // kept as well, and thrown again.
+    private static let products = Mutex<[FixtureBuildRequest: Result<URL, any Error>]>([:])
 
-    private let lock = NSLock()
-    private var products: [Request: Result<URL, any Error>] = [:]
-
-    init() {
-        let rootDirectory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("MachOFixtureSupport-\(ProcessInfo.processInfo.processIdentifier)-\(UUID().uuidString)")
-        self.rootDirectory = rootDirectory
-        FixtureBuilds.directoryToRemoveAtExit = rootDirectory.path
-        atexit {
-            if let path = FixtureBuilds.directoryToRemoveAtExit {
-                try? FileManager.default.removeItem(atPath: path)
+    static func product(for request: FixtureBuildRequest) throws -> URL {
+        _ = removesProductsAtExit
+        return try products.withLock { products in
+            if let product = products[request] {
+                return try product.get()
             }
-        }
-    }
-
-    // Read once, by the exit handler, after every test has finished.
-    nonisolated(unsafe) static var directoryToRemoveAtExit: String?
-
-    func product(for request: Request) throws -> URL {
-        // One lock for every build: the compiles are few, and a request that
-        // waits behind the same request's build then finds it done.
-        lock.lock()
-        defer { lock.unlock() }
-        if let product = products[request] {
+            let product = Result { try build(request, index: products.count) }
+            products[request] = product
             return try product.get()
         }
-        let product = Result { try build(request, index: products.count) }
-        products[request] = product
-        return try product.get()
     }
 
-    private func build(_ request: Request, index: Int) throws -> URL {
-        let directory = rootDirectory.appendingPathComponent("\(index)-\(request.name)")
+    private static func build(_ request: FixtureBuildRequest, index: Int) throws -> URL {
+        let directory = fixtureProductsDirectory.appendingPathComponent("\(index)-\(request.name)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let sourceURL = directory.appendingPathComponent("\(request.name).\(request.language.sourceFileExtension)")
         try request.source.write(to: sourceURL, atomically: true, encoding: .utf8)
@@ -122,7 +116,7 @@ private final class FixtureBuilds: @unchecked Sendable {
         case .swift:
             ["swiftc", "-emit-library", "-module-name", request.name, sourceURL.path, "-o", productURL.path, "-Xlinker", "-install_name", "-Xlinker", installName]
         }
-        try Self.run(command + request.arguments)
+        try run(command + request.arguments)
         return productURL
     }
 

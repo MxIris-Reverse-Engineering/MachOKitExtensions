@@ -29,7 +29,7 @@ private func magic(in context: some ReadingContext) throws -> UInt32 {
 
 /// A fixture given as a file on disk, loaded on demand.
 @Suite
-final class FileFixtureTests: MachOFixtureTests, @unchecked Sendable {
+final class FileFixtureTests: MachOFixtureTests {
     override class var fixture: MachOFixture {
         MachOFixture(fileURL: FixtureLibrary.url, imageName: "lib\(FixtureLibrary.name)", loadsIntoProcess: true)
     }
@@ -109,7 +109,7 @@ final class FileFixtureTests: MachOFixtureTests, @unchecked Sendable {
 /// A fixture given as an address inside an image this process already holds:
 /// this test bundle, through its `#dsohandle`.
 @Suite
-final class AnchoredFixtureTests: MachOFixtureTests, @unchecked Sendable {
+final class AnchoredFixtureTests: MachOFixtureTests {
     override class var fixture: MachOFixture {
         MachOFixture(imageContaining: #dsohandle)
     }
@@ -129,7 +129,7 @@ final class AnchoredFixtureTests: MachOFixtureTests, @unchecked Sendable {
 struct MachOFixtureErrorTests {
     @Test("A missing file and an address in no image are reported as such")
     func unreadableFixturesThrowTheirReason() async throws {
-        final class MissingFileTests: MachOFixtureTests, @unchecked Sendable {
+        final class MissingFileTests: MachOFixtureTests {
             override class var fixture: MachOFixture {
                 MachOFixture(fileURL: URL(fileURLWithPath: "/nonexistent/libMissing.dylib"), imageName: "libMissing", loadsIntoProcess: true)
             }

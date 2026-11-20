@@ -180,6 +180,13 @@ let package = Package(
             url: "https://github.com/p-x9/swift-fileio.git",
             from: "0.13.0"
         ),
+        // `Mutex` from OSToolbox, for the test support: the standard library's
+        // needs macOS 15, OSAllocatedUnfairLock macOS 13, and this package
+        // reaches back to macOS 10.15. MachOSwiftSection depends on it as well.
+        .package(
+            url: "https://github.com/Mx-Iris/FrameworkToolbox",
+            from: "0.17.0"
+        ),
     ],
     targets: [
         .target(
@@ -314,6 +321,7 @@ let package = Package(
             dependencies: [
                 "MachOKit",
                 "MachOKitExtensions",
+                .product(name: "OSToolbox", package: "FrameworkToolbox"),
             ]
         ),
         .target(

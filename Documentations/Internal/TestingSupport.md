@@ -7,7 +7,7 @@
 
 两个 product，按「要不要依赖 Testing」拆开：
 
-- `MachOFixtureSupport`：不 import Testing。给测试要读的镜像起名字、打开 cache 与文件、挑本进程的 slice、找进程里的镜像、测试运行时现编小库，以及几样零碎的东西（只转发的包装读取器、`TestActor`、`ProcessMemory`、`.print()`）。只依赖 `MachOKit` 与 `MachOKitExtensions`。
+- `MachOFixtureSupport`：不 import Testing。给测试要读的镜像起名字、打开 cache 与文件、挑本进程的 slice、找进程里的镜像、测试运行时现编小库，以及几样零碎的东西（只转发的包装读取器、`TestActor`、`ProcessMemory`、`.print()`）。依赖 `MachOKit`、`MachOKitExtensions` 与 FrameworkToolbox 的 `OSToolbox`（只为 `Mutex`）。
 - `MachOTestingSupport`：import Testing，依赖前者与 `MachOReading`。测试基类（`MachOFileTests`、`MachOImageTests`、`DyldCacheTests`、`XcodeMachOFileTests`、`MachOFixtureTests`）、跨读取器断言、按镜像互斥的 trait `ExclusiveImageAccess`。
 
 两个包里与 Swift 有关的测试支持（夹具内容、baseline、覆盖率、快照）留在 MachOSwiftSection。
@@ -66,7 +66,7 @@
 
 `FixtureCompiler.shared.dynamicLibrary(named:language:source:arguments:)` 把源码编成 `lib<名字>.dylib`，install name 是 `@rpath/lib<名字>.dylib`，返回它的 URL。
 
-- **每份请求只编一次**：名字、语言、源码、参数四样都相同就返回同一个文件；失败的结果也留着，下次原样抛出同一个 `FixtureCompilationError`（带命令、退出码和编译器写到 stderr 的全部内容）。所有构建共用一把锁，编译次数少，串行无妨。
+- **每份请求只编一次**：名字、语言、源码、参数四样都相同就返回同一个文件；失败的结果也留着，下次原样抛出同一个 `FixtureCompilationError`（带命令、退出码和编译器写到 stderr 的全部内容）。所有构建共用一把锁（OSToolbox 的 `Mutex`：用法与标准库的一样，但没有系统版本限制——标准库的要 macOS 15，`OSAllocatedUnfairLock` 要 macOS 13，本包下限是 macOS 10.15），编译次数少，串行无妨。产物目录与退出时清理用两个全局 `let`，模块里没有 `@unchecked Sendable` 与 `nonisolated(unsafe)`。
 - **产物位置**：进程的临时目录下 `MachOFixtureSupport-<pid>-<UUID>/<序号>-<名字>/`，每份一个目录；进程退出时由 `atexit` 删掉。`productsDirectory` 给出根目录。
 - **库之间互相链接**：在参数里写 `-L <另一个库的目录> -l<它的名字>`。要找到被链接的库，测试显式给搜索路径（`DependencySearchPath.machOFile(path:)`），不依赖两者放在同一目录。
 - **去掉本地符号**：用链接参数 `-Wl,-x`，效果与原来的 `strip -x` 相同，隐藏可见性的符号不进符号表。
