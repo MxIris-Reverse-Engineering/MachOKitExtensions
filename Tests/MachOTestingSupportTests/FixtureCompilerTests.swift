@@ -63,4 +63,43 @@ struct FixtureCompilerTests {
         }
         #expect(installNames == ["@rpath/libCompiledSwift.dylib"])
     }
+
+    /// Runs `executable` and returns its exit status.
+    private static func exitStatus(of executable: URL) throws -> Int32 {
+        let process = Process()
+        process.executableURL = executable
+        try process.run()
+        process.waitUntilExit()
+        return process.terminationStatus
+    }
+
+    @Test("An executable is linked as one, named as asked, and runs")
+    func compilerBuildsAnExecutable() throws {
+        let executable = try Self.compiler.executable(named: "FixtureTool", language: .c, source: "int main(void) { return 3; }")
+        #expect(executable.lastPathComponent == "FixtureTool")
+        #expect(try HostSlice.machOFile(at: executable).header.fileType == .execute)
+        #expect(try Self.exitStatus(of: executable) == 3)
+
+        let swiftExecutable = try Self.compiler.executable(named: "SwiftFixtureTool", language: .swift, source: "import Darwin\nexit(4)")
+        #expect(try HostSlice.machOFile(at: swiftExecutable).header.fileType == .execute)
+        #expect(try Self.exitStatus(of: swiftExecutable) == 4)
+    }
+
+    @Test("Several source files build one product, each under the name it was given")
+    func compilerBuildsSeveralSourceFiles() throws {
+        let library = try Self.compiler.dynamicLibrary(named: "SeveralFiles", language: .c, sourceFiles: [
+            FixtureSourceFile(name: "Helper.c", contents: "int severalFilesHelper(void) { return 2; }"),
+            FixtureSourceFile(name: "Entry.c", contents: "int severalFilesHelper(void);\nint severalFilesEntry(void) { return severalFilesHelper() + 1; }"),
+        ])
+        let exports = try HostSlice.machOFile(at: library).exportedSymbols.map(\.name)
+        #expect(exports.contains("_severalFilesHelper") && exports.contains("_severalFilesEntry"), "\(exports)")
+        #expect(FileManager.default.fileExists(atPath: library.deletingLastPathComponent().appendingPathComponent("Helper.c").path))
+
+        // `main` in one file, what it calls in the other.
+        let executable = try Self.compiler.executable(named: "SeveralFilesTool", language: .c, sourceFiles: [
+            FixtureSourceFile(name: "Value.c", contents: "int severalFilesValue(void) { return 5; }"),
+            FixtureSourceFile(name: "Main.c", contents: "int severalFilesValue(void);\nint main(void) { return severalFilesValue(); }"),
+        ])
+        #expect(try Self.exitStatus(of: executable) == 5)
+    }
 }

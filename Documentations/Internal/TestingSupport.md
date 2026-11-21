@@ -28,7 +28,7 @@
 | | `Opening` | `loadFromFile(named:)`、`MachOImage(named:)`、`DyldCache` / `FullDyldCache` 的 `init(path:)` 与 `machOFile(named:)` |
 | | `HostSlice` | 挑本进程 CPU 的 slice |
 | | `ProcessImages` | 按地址或路径找进程里的镜像；cache 里的文件与进程里同一镜像成对返回 |
-| | `FixtureCompiler` | 测试运行时经 `xcrun` 编 C、C++、Swift 动态库（只在 macOS） |
+| | `FixtureCompiler` | 测试运行时经 `xcrun` 把 C、C++、Swift 源码编成动态库或可执行文件，可以一次编多个源文件（只在 macOS） |
 | | `ForwardingReader` | 只转发、不加逻辑的包装读取器，`DeclaredWrapper` 时遵循 `MachOReaderWrapper` |
 | | `TestActor`、`ProcessMemory`、`Printing` | 测试用的全局 actor、进程内存读数、`.print()` |
 | `MachOTestingSupport` | `ExclusiveImageAccess` | 跨 suite、跨测试 target 按镜像互斥的 trait |
@@ -64,13 +64,15 @@
 
 ## 现编小库（`FixtureCompiler`）
 
-`FixtureCompiler.shared.dynamicLibrary(named:language:source:arguments:)` 把源码编成 `lib<名字>.dylib`，install name 是 `@rpath/lib<名字>.dylib`，返回它的 URL。
+`FixtureCompiler.shared.dynamicLibrary(named:language:source:arguments:)` 把源码编成 `lib<名字>.dylib`，install name 是 `@rpath/lib<名字>.dylib`，返回它的 URL；`executable(named:language:source:arguments:)` 编成名为 `<名字>` 的主可执行文件。两者都有收 `sourceFiles: [FixtureSourceFile]` 的版本，把几个文件一起编：每个文件按给定的名字写出，驱动按扩展名读它，所以 C 库里可以带一个汇编文件（`.s`）。只给一段源码时，文件名是 `<名字>.<语言的扩展名>`。
 
-- **每份请求只编一次**：名字、语言、源码、参数四样都相同就返回同一个文件；失败的结果也留着，下次原样抛出同一个 `FixtureCompilationError`（带命令、退出码和编译器写到 stderr 的全部内容）。所有构建共用一把锁（OSToolbox 的 `Mutex`：用法与标准库的一样，但没有系统版本限制——标准库的要 macOS 15，`OSAllocatedUnfairLock` 要 macOS 13，本包下限是 macOS 10.15），编译次数少，串行无妨。产物目录与退出时清理用两个全局 `let`，模块里没有 `@unchecked Sendable` 与 `nonisolated(unsafe)`。
+- **每份请求只编一次**：名字、语言、产物种类、源文件、参数都相同就返回同一个文件；失败的结果也留着，下次原样抛出同一个 `FixtureCompilationError`（带命令、退出码和编译器写到 stderr 的全部内容）。所有构建共用一把锁（OSToolbox 的 `Mutex`：用法与标准库的一样，但没有系统版本限制——标准库的要 macOS 15，`OSAllocatedUnfairLock` 要 macOS 13，本包下限是 macOS 10.15），编译次数少，串行无妨。产物目录与退出时清理用两个全局 `let`，模块里没有 `@unchecked Sendable` 与 `nonisolated(unsafe)`。
 - **产物位置**：进程的临时目录下 `MachOFixtureSupport-<pid>-<UUID>/<序号>-<名字>/`，每份一个目录；进程退出时由 `atexit` 删掉。`productsDirectory` 给出根目录。
 - **库之间互相链接**：在参数里写 `-L <另一个库的目录> -l<它的名字>`。要找到被链接的库，测试显式给搜索路径（`DependencySearchPath.machOFile(path:)`），不依赖两者放在同一目录。
 - **去掉本地符号**：用链接参数 `-Wl,-x`，效果与原来的 `strip -x` 相同，隐藏可见性的符号不进符号表。
-- Swift 源码用 `swiftc -emit-library -module-name <名字>`；只有一个文件、没有 `main` 时加 `-parse-as-library`。
+- Swift 库用 `swiftc -emit-library -module-name <名字>`，只有一个文件、没有 `main` 时加 `-parse-as-library`；Swift 可执行文件用 `swiftc -emit-executable`，顶层代码就是入口。
+- 架构、优化级别、部署目标都由参数给（`-arch x86_64`、`-O`、`-target arm64-apple-macos14`），编译器不另加。
+- 链接后还要改写字节、重新签名再加载的用法（MachOSwiftSection 交叉引用测试的 `CompiledFixture.load` 的 `rewrite`）不在这里：产物是共用的缓存，改写要先复制一份。
 - 只在 macOS 上编译（依赖 `Process` 与 `xcrun`）。
 
 ## 按镜像互斥（`ExclusiveImageAccess`）
