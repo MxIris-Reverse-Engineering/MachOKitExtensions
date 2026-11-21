@@ -9,7 +9,7 @@
 | [Evolutions/0004-split-symbol-language.md](Evolutions/0004-split-symbol-language.md) | `SymbolLanguage` 只认 C 与 C++，Swift 与 Objective-C 由各自的包在加载时注册；C/C++ 索引排除已注册语言并留边界，随 3.0.0 落地 |
 | [Evolutions/0005-cplusplus-symbol-classification.md](Evolutions/0005-cplusplus-symbol-classification.md) | 新模块 `CPlusPlusSymbols` 引入 LLVM `ItaniumDemangle`，把 C++ 名字拆成归类字段，并按证据把一个镜像的 C++ 符号整理成作用域树；与拆分同日随 3.0.0 落地 |
 | [Evolutions/0006-cplusplus-class-hierarchy.md](Evolutions/0006-cplusplus-class-hierarchy.md) | `CPlusPlusSymbols` 新增 `CPlusPlusClassIndexStore`：从 RTTI 与 vtable 恢复 C++ 类（含符号被剥离的类）、继承关系与虚函数表，沿主基类链（可跨镜像）给无名虚函数补名；随 3.1.0 落地 |
-| [Evolutions/draft-group-sources-by-layer.md](Evolutions/draft-group-sources-by-layer.md) | 提案（In Progress）：`Sources/` 按层分组，照 MachOSwiftSection 0055；每个 target 在清单里写明 `path`，product 与模块名不变 |
+| [Evolutions/0007-group-sources-by-layer.md](Evolutions/0007-group-sources-by-layer.md) | `Sources/` 按层分组（随 3.2.0）：`Sources/` 按层分组，照 MachOSwiftSection 0055；每个 target 在清单里写明 `path`，product 与模块名不变 |
 | [Internal/ReadingContextAbstraction.md](Internal/ReadingContextAbstraction.md) | 实现说明：读取层（`ReadingContext`、`Resolvable`）两个模块各管什么、读文件为何直接用 MachOKit 的映射、本进程地址掩码、缓存范围、怎样看穿包装类型读取器 |
 | [Internal/SymbolIndex.md](Internal/SymbolIndex.md) | 实现说明：符号表、按 routing 分表的采集、`SymbolLanguage` 与别的包在加载时注册语言、C/C++ 符号索引与已注册语言的边界；零拷贝名字何时可用、同名多处定义怎么登记 |
 | [Internal/CPlusPlusSymbols.md](Internal/CPlusPlusSymbols.md) | 实现说明：引入的 LLVM `ItaniumDemangle` 与更新方法、C 接口与 AST 遍历、特殊名字归位、按证据定作用域种类、查询时重新解析；JavaScriptCore 上的规模与耗时 |

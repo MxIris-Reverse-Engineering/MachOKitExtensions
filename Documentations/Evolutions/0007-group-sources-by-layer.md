@@ -1,12 +1,12 @@
-# Draft - `Sources/` 按层分组
+# 0007 - `Sources/` 按层分组
 
-- **状态**: In Progress
+- **状态**: Implemented
 - **作者**: JH
 - **创建日期**: 2026-11-20
-- **最后更新**: 2026-11-20
+- **最后更新**: 2026-11-21
 - **所属愿景**: 无
 - **关联提案**: MachOSwiftSection [0055-group-sources-by-layer](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0055-group-sources-by-layer.md)（同样的做法，本包照着对齐）；MachOSwiftSection `draft-shared-macho-testing-support`（同一条分支、同一次发版）
-- **实现分支 / PR**: `feature/shared-macho-testing-support`，与测试支持统一同批，随 3.2.0 发布
+- **实现分支 / PR**: `feature/shared-macho-testing-support`，与测试支持统一同批快进合入 `main`，随 3.2.0 发布
 - **配套文档**: README 的 Layout 一节（分组表与新 target 的放法）
 - **网页版**: 同目录同名的 `.html`
 
@@ -121,3 +121,4 @@ README 新增 Layout 一节；实现说明里的源码路径同步更新。
 | 2026-11-20 | 与测试支持统一同一条分支、随 3.2.0 发布 | 用户选择。否决：单独分支、另行发版。 |
 | 2026-11-20 | 状态 → Accepted → In Progress | 用户批准，开始实现。 |
 | 2026-11-20 | 实现完成，待用户看过后收尾 | 移动后两个源码扫描测试按旧路径扫空、断言失败，改成分组后的路径后通过。Ultra 上（Xcode 27.2）全量 `swift test` 通过，原始退出码 0。文档：README 加 Layout 一节，三份实现说明的路径已改；不另写实现说明；没有新术语。 |
+| 2026-11-21 | 状态 → Implemented，编号 0007 | 与测试支持统一的 MKE 部分一起合进 `main` 并推送，随 3.2.0 发布。最终代码上全量 `swift test` 通过，原始退出码 0。收尾判断：规则写在 README 的 Layout 一节，不另写实现说明；没有新术语。没有后续项。 |

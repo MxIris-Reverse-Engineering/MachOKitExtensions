@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title>Draft - Sources/ 按层分组</title>
+<title>0007 - Sources/ 按层分组</title>
 <style>
 /* Evolution proposal page, shared style (style A, "Apple documentation").
    Copy this whole <style> block verbatim. Page-specific rules, if any, go only
@@ -159,13 +159,13 @@ details[open] > summary { border-bottom: 1px solid var(--separator); }
 </svg>
 <div class="page">
 <header class="doc-header">
-  <p class="eyebrow"><span class="crumb">MachOKitExtensions</span><span class="crumb">Evolutions</span><span class="crumb">Draft</span></p>
-  <h1><span class="proposal-number">Draft</span> <code>Sources/</code> 按层分组</h1>
+  <p class="eyebrow"><span class="crumb">MachOKitExtensions</span><span class="crumb">Evolutions</span><span class="crumb">0007</span></p>
+  <h1><span class="proposal-number">0007</span> <code>Sources/</code> 按层分组</h1>
   <dl class="meta">
-    <div><dt>状态</dt><dd><span class="status status-in-progress">In Progress</span></dd></div>
-    <div><dt>最后更新</dt><dd>2026-11-20</dd></div>
+    <div><dt>状态</dt><dd><span class="status status-implemented">Implemented</span></dd></div>
+    <div><dt>最后更新</dt><dd>2026-11-21</dd></div>
     <div><dt>项目类型</dt><dd>库</dd></div>
-    <div><dt>原文</dt><dd><code>draft-group-sources-by-layer.md</code></dd></div>
+    <div><dt>原文</dt><dd><code>0007-group-sources-by-layer.md</code></dd></div>
   </dl>
 </header>
 <nav class="toc" aria-label="目录"><ol>
@@ -178,7 +178,7 @@ details[open] > summary { border-bottom: 1px solid var(--separator); }
 </section>
 <section id="decide">
   <h2>要你定</h2>
-  <div class="callout callout-note"><p class="callout-title">已实现，在功能分支上等用户看过后随 3.2.0 收尾；没有要定的事。</p></div>
+  <div class="callout callout-note"><p class="callout-title">已实现并合入 <code>main</code>，随 3.2.0 发布；没有要定的事。</p></div>
 </section>
 <section id="architecture">
   <h2>架构图</h2>
@@ -231,7 +231,7 @@ details[open] > summary { border-bottom: 1px solid var(--separator); }
 </section>
 <section id="log">
   <h2>决策日志</h2>
-  <details><summary>5 条，最近一条：实现完成，待用户看过后收尾</summary><div class="details-body"><div class="table-wrap"><table><thead><tr><th>日期</th><th>变更</th><th>说明</th></tr></thead><tbody><tr><td class="numeric">2026-11-20</td><td>Created as Draft</td><td>用户要求把 target 按层分组、不再平铺在 <code>Sources/</code> 根目录，照 MachOSwiftSection 0055 的做法。</td></tr><tr><td class="numeric">2026-11-20</td><td>分组用 <code>Images</code> 收下 <code>MachOCaches</code> 与 <code>MachODependencies</code></td><td>用户选择。否决：<code>MachOCaches</code> 放进 <code>Core</code>、依赖闭包单独一组。</td></tr><tr><td class="numeric">2026-11-20</td><td>与测试支持统一同一条分支、随 3.2.0 发布</td><td>用户选择。否决：单独分支、另行发版。</td></tr><tr><td class="numeric">2026-11-20</td><td>状态 → Accepted → In Progress</td><td>用户批准，开始实现。</td></tr><tr><td class="numeric">2026-11-20</td><td>实现完成，待用户看过后收尾</td><td>移动后两个源码扫描测试按旧路径扫空、断言失败，改成分组后的路径后通过。Ultra 上（Xcode 27.2）全量 <code>swift test</code> 通过，原始退出码 0。文档：README 加 Layout 一节，三份实现说明的路径已改；不另写实现说明；没有新术语。</td></tr></tbody></table></div></div></details>
+  <details><summary>6 条，最近一条：状态 → Implemented，编号 0007</summary><div class="details-body"><div class="table-wrap"><table><thead><tr><th>日期</th><th>变更</th><th>说明</th></tr></thead><tbody><tr><td class="numeric">2026-11-20</td><td>Created as Draft</td><td>用户要求把 target 按层分组、不再平铺在 <code>Sources/</code> 根目录，照 MachOSwiftSection 0055 的做法。</td></tr><tr><td class="numeric">2026-11-20</td><td>分组用 <code>Images</code> 收下 <code>MachOCaches</code> 与 <code>MachODependencies</code></td><td>用户选择。否决：<code>MachOCaches</code> 放进 <code>Core</code>、依赖闭包单独一组。</td></tr><tr><td class="numeric">2026-11-20</td><td>与测试支持统一同一条分支、随 3.2.0 发布</td><td>用户选择。否决：单独分支、另行发版。</td></tr><tr><td class="numeric">2026-11-20</td><td>状态 → Accepted → In Progress</td><td>用户批准，开始实现。</td></tr><tr><td class="numeric">2026-11-20</td><td>实现完成，待用户看过后收尾</td><td>移动后两个源码扫描测试按旧路径扫空、断言失败，改成分组后的路径后通过。Ultra 上（Xcode 27.2）全量 <code>swift test</code> 通过，原始退出码 0。文档：README 加 Layout 一节，三份实现说明的路径已改；不另写实现说明；没有新术语。</td></tr><tr><td class="numeric">2026-11-21</td><td>状态 → Implemented，编号 0007</td><td>与测试支持统一的 MKE 部分一起合进 <code>main</code> 并推送，随 3.2.0 发布。最终代码上全量 <code>swift test</code> 通过，原始退出码 0。收尾判断：规则写在 README 的 Layout 一节，不另写实现说明；没有新术语。没有后续项。</td></tr></tbody></table></div></div></details>
 </section>
 </main>
 </div>
