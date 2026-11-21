@@ -124,6 +124,35 @@ extension CPlusPlusDemangler {
             }
         }
 
+        /// The named types `parameters`, which `text` must be, spells.
+        func parameterTypeReferences(in text: String?) -> [CPlusPlusSymbolName.TypeReference] {
+            typeReferences(of: .parameters, in: text)
+        }
+
+        /// The named types `returnType`, which `text` must be, spells.
+        func returnTypeReferences(in text: String?) -> [CPlusPlusSymbolName.TypeReference] {
+            typeReferences(of: .returnType, in: text)
+        }
+
+        private func typeReferences(of part: CPlusPlusDemanglerSignaturePart, in text: String?) -> [CPlusPlusSymbolName.TypeReference] {
+            guard let text else { return [] }
+            let utf8 = text.utf8
+            return (0 ..< CPlusPlusDemanglerGetSignatureTypeCount(pointer, part)).compactMap { typeIndex in
+                let byteRange = CPlusPlusDemanglerGetSignatureTypeRange(pointer, part, typeIndex)
+                // The text came from these bytes, so their offsets are its
+                // UTF-8 offsets; one that is no character boundary would
+                // mean the text was decoded with replacements.
+                guard byteRange.start <= byteRange.end, byteRange.end <= utf8.count,
+                      let lowerBound = String.Index(utf8.index(utf8.startIndex, offsetBy: byteRange.start), within: text),
+                      let upperBound = String.Index(utf8.index(utf8.startIndex, offsetBy: byteRange.end), within: text)
+                else { return nil }
+                let path = (0 ..< CPlusPlusDemanglerGetSignatureTypeComponentCount(pointer, part, typeIndex)).map { componentIndex in
+                    Self.string(CPlusPlusDemanglerGetSignatureTypeComponentName(pointer, part, typeIndex, componentIndex)) ?? ""
+                }
+                return CPlusPlusSymbolName.TypeReference(path: path, range: lowerBound ..< upperBound)
+            }
+        }
+
         private static func string(_ text: CPlusPlusDemanglerText) -> String? {
             guard let bytes = text.bytes else { return nil }
             return String(decoding: UnsafeRawBufferPointer(start: bytes, count: text.length), as: UTF8.self)

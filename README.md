@@ -135,6 +135,11 @@ name.scopePath      // ["llvm", "Value"]
 name.baseName       // "dump"
 name.kind           // .function
 
+// Where the signature spells each named type, to show the types apart.
+let callback = CPlusPlusSymbolName(mangledName: "__Z8callbackPFvN2CA3FooEE")!
+let parameters = callback.parameters!   // "(void (*)(CA::Foo))"
+callback.parameterTypeReferences.map { parameters[$0.range] }   // ["CA::Foo"]
+
 let store = CPlusPlusSymbolIndexStore.shared
 for scope in store.childScopes(of: .global, in: machOImage) where scope.kind == .type {
     let constructors = store.members(of: scope, in: machOImage).filter { $0.name.kind == .constructor }

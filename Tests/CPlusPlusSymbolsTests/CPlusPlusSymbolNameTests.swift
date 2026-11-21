@@ -30,6 +30,64 @@ struct CPlusPlusSymbolNameTests {
         #expect(name.parameters == "(int&&)")
     }
 
+    /// The text each reference's range covers, in order.
+    private static func spelledTypes(_ references: [CPlusPlusSymbolName.TypeReference], in text: String?) throws -> [String] {
+        let text = try #require(text)
+        return references.map { String(text[$0.range]) }
+    }
+
+    @Test func parameterTypeReferencesLocateEachNamedTypeTheParametersSpell() throws {
+        let name = try Self.name("__ZN2CA14CAHDRProcessor29should_invalidate_tonemappingERKNS_6Render17DisplayAttributesES4_ff")
+        #expect(name.parameters == "(CA::Render::DisplayAttributes const&, CA::Render::DisplayAttributes const&, float, float)")
+        #expect(try Self.spelledTypes(name.parameterTypeReferences, in: name.parameters) == ["CA::Render::DisplayAttributes", "CA::Render::DisplayAttributes"])
+        #expect(name.parameterTypeReferences.map(\.path) == [["CA", "Render", "DisplayAttributes"], ["CA", "Render", "DisplayAttributes"]])
+        #expect(name.returnTypeReferences.isEmpty)
+    }
+
+    /// `S0_` reuses the node of `CA::Foo` as the qualifier of `CA::Foo::Bar`:
+    /// the qualifier is part of a name there, not a type of its own.
+    @Test func aQualifierIsNoTypeReferenceOfItsOwn() throws {
+        let name = try Self.name("__Z4bothN2CA3FooENS0_3BarE")
+        #expect(name.parameters == "(CA::Foo, CA::Foo::Bar)")
+        #expect(try Self.spelledTypes(name.parameterTypeReferences, in: name.parameters) == ["CA::Foo", "CA::Foo::Bar"])
+        #expect(name.parameterTypeReferences.map(\.path) == [["CA", "Foo"], ["CA", "Foo", "Bar"]])
+    }
+
+    /// A template's reference comes first and spans its arguments, whose
+    /// named types follow it.
+    @Test func typesInATemplateArgumentListFollowTheirTemplate() throws {
+        let name = try Self.name("__Z4takeRKNSt3__16vectorIN2CA3FooENS_9allocatorIS2_EEEE")
+        #expect(name.parameters == "(std::__1::vector<CA::Foo, std::__1::allocator<CA::Foo>> const&)")
+        #expect(try Self.spelledTypes(name.parameterTypeReferences, in: name.parameters) == [
+            "std::__1::vector<CA::Foo, std::__1::allocator<CA::Foo>>",
+            "CA::Foo",
+            "std::__1::allocator<CA::Foo>",
+            "CA::Foo",
+        ])
+        #expect(name.parameterTypeReferences.first?.path == ["std", "__1", "vector<CA::Foo, std::__1::allocator<CA::Foo>>"])
+    }
+
+    @Test func typesInsideAFunctionPointerParameterAreFound() throws {
+        let name = try Self.name("__Z8callbackPFvN2CA3FooEE")
+        #expect(name.parameters == "(void (*)(CA::Foo))")
+        #expect(try Self.spelledTypes(name.parameterTypeReferences, in: name.parameters) == ["CA::Foo"])
+    }
+
+    @Test func returnTypeReferencesLocateTheReturnTypesNamedTypes() throws {
+        let name = try Self.name("__Z4makeIN2CA3FooEET_PKS1_")
+        #expect(name.returnType == "CA::Foo")
+        #expect(try Self.spelledTypes(name.returnTypeReferences, in: name.returnType) == ["CA::Foo"])
+        #expect(name.parameters == "(CA::Foo const*)")
+        #expect(try Self.spelledTypes(name.parameterTypeReferences, in: name.parameters) == ["CA::Foo"])
+    }
+
+    @Test func builtInTypesAndNamesWithoutASignatureHaveNoTypeReferences() throws {
+        #expect(try Self.name("__ZN2CA14CAHDRProcessor19can_display_tonemapEif").parameterTypeReferences.isEmpty)
+        let variable = try Self.name("__ZN7fixture5Token5countE")
+        #expect(variable.parameterTypeReferences.isEmpty)
+        #expect(variable.returnTypeReferences.isEmpty)
+    }
+
     @Test func constQualifiedMemberFunctionReportsItsQualifiers() throws {
         #expect(try Self.name("__ZNK4llvm5Value4dumpEv").functionQualifiers == [.const])
         #expect(try Self.name("__ZN4Base1fEv").functionQualifiers == [])

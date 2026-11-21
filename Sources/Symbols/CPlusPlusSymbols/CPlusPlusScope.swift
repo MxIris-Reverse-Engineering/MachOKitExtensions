@@ -79,7 +79,9 @@ extension CPlusPlusScope {
         public static let namespace = Kind(.namespace)
         /// A class, struct, union or enum.
         public static let type = Kind(.type)
-        /// The function a local entity sits in.
+        /// The function a local entity sits in, an Objective-C method
+        /// included (`-[CAMetalDrawable texture]`, whose mangling carries no
+        /// parameters).
         public static let function = Kind(.function)
         /// A namespace or a type; no symbol name shows which.
         public static let undetermined = Kind(.undetermined)

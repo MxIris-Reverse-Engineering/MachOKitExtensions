@@ -9,6 +9,7 @@
 
 #include "CPlusPlusDemangling.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cstdlib>
 #include <cstring>
@@ -16,6 +17,7 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -259,6 +261,99 @@ struct ScopeComponent {
 
 using ScopePath = std::vector<ScopeComponent>;
 
+/// A named type a part of a signature spells: where, in bytes of the part's
+/// text, and the type's scope path.
+struct SignatureType {
+    size_t start = 0;
+    size_t end = 0;
+    ScopePath path;
+};
+
+/// The text of a part of a signature — the parameters, the return type —
+/// and the named types it spells, printed together on first request so the
+/// ranges always fit the text.
+struct PrintedSignaturePart {
+    bool isComputed = false;
+    bool isPresent = false;
+    std::string text;
+    std::vector<SignatureType> types;
+
+    void clear() {
+        isComputed = false;
+        isPresent = false;
+        text.clear();
+        types.clear();
+    }
+
+    CPlusPlusDemanglerText textValue() const {
+        if (!isPresent) {
+            return CPlusPlusDemanglerText{nullptr, 0};
+        }
+        return CPlusPlusDemanglerText{text.data(), text.size()};
+    }
+};
+
+/// Prints through the demangler's printing hooks and records where the
+/// output spells each node of `typeNodes`.
+///
+/// A node met while one of them prints its name is part of that name — a
+/// qualifier that is a type elsewhere in the signature (`S0_` reuses the
+/// node of `CA::Foo` in `CA::Foo::Bar`) — unless a template argument list
+/// sits in between: an argument's types are types of their own.
+class TypeRecordingOutputBuffer final : public OutputBuffer {
+public:
+    struct Record {
+        size_t start;
+        size_t end;
+        const Node *node;
+    };
+
+    explicit TypeRecordingOutputBuffer(const std::unordered_set<const Node *> &typeNodes) : typeNodes(typeNodes) {}
+
+    std::vector<Record> records;
+
+    void printLeft(const Node &node) override {
+        const bool wasInsideName = isInsideName;
+        const bool isRecorded = !isInsideName && typeNodes.count(&node) != 0;
+        if (isRecorded) {
+            isInsideName = true;
+        } else if (node.getKind() == Node::KTemplateArgs) {
+            isInsideName = false;
+        }
+        const size_t start = getCurrentPosition();
+        // `Node::printLeft` is private to `OutputBuffer` itself.
+        OutputBuffer::printLeft(node);
+        isInsideName = wasInsideName;
+        if (isRecorded) {
+            records.push_back(Record{start, getCurrentPosition(), &node});
+        }
+    }
+
+    /// Text went in at `position`, before the end: whatever starts there or
+    /// later moves, and a range around it grows.
+    void notifyInsertion(size_t position, size_t count) override {
+        for (Record &record : records) {
+            if (record.start >= position) {
+                record.start += count;
+            }
+            if (record.end > position) {
+                record.end += count;
+            }
+        }
+    }
+
+    /// The output was cut back to `newPosition`: a range past it is gone.
+    void notifyDeletion(size_t, size_t newPosition) override {
+        records.erase(std::remove_if(records.begin(), records.end(), [newPosition](const Record &record) {
+            return record.end > newPosition;
+        }), records.end());
+    }
+
+private:
+    const std::unordered_set<const Node *> &typeNodes;
+    bool isInsideName = false;
+};
+
 } // namespace
 
 struct CPlusPlusDemangler {
@@ -285,8 +380,8 @@ struct CPlusPlusDemangler {
     CachedText demangledName;
     CachedText baseName;
     CachedText templateArguments;
-    CachedText parameters;
-    CachedText returnType;
+    PrintedSignaturePart parameters;
+    PrintedSignaturePart returnType;
 
     void clear() {
         root = nullptr;
@@ -388,7 +483,14 @@ struct CPlusPlusDemangler {
     /// function's own name, then the function as one component.
     void appendEnclosingFunction(const Node *encoding, ScopePath &path) {
         if (encoding->getKind() != Node::KFunctionEncoding) {
+            // A bare name with no parameters: how clang spells an
+            // Objective-C method (`Z 26-[CAMetalDrawable texture] E`). What
+            // a local name encloses is a function all the same.
+            const size_t componentCountBefore = path.size();
             appendPath(encoding, nullptr, path);
+            if (path.size() > componentCountBefore) {
+                path.back().hint = CPlusPlusDemanglerScopeHintFunction;
+            }
             return;
         }
         const auto *enclosingFunction = static_cast<const FunctionEncoding *>(encoding);
@@ -511,19 +613,27 @@ struct CPlusPlusDemangler {
         return children;
     }
 
-    /// Records every named type `node` uses as a type.
-    void collectTypes(const Node *node, int depth) {
+    /// Calls `body` with every named type `node` uses as a type and the
+    /// type's scope path (never empty): a template before the types its
+    /// argument lists use.
+    template <typename Body>
+    void forEachNamedType(const Node *node, int depth, Body &body) {
         if (node == nullptr || depth > maximumTypeDepth) {
             return;
         }
         if (isNamedType(node)) {
             ScopePath path;
             appendPath(node, nullptr, path);
-            for (const ScopeComponent &component : path) {
-                collectTypes(component.templateArguments, depth + 1);
+            if (path.empty()) {
+                return;
             }
-            if (!path.empty()) {
-                referencedTypes.push_back(std::move(path));
+            std::vector<const Node *> argumentLists;
+            for (const ScopeComponent &component : path) {
+                argumentLists.push_back(component.templateArguments);
+            }
+            body(node, std::move(path));
+            for (const Node *argumentList : argumentLists) {
+                forEachNamedType(argumentList, depth + 1, body);
             }
             return;
         }
@@ -531,8 +641,90 @@ struct CPlusPlusDemangler {
             return;
         }
         for (const Node *child : childrenOf(node)) {
-            collectTypes(child, depth + 1);
+            forEachNamedType(child, depth + 1, body);
         }
+    }
+
+    /// Records every named type `node` uses as a type.
+    void collectTypes(const Node *node, int depth) {
+        auto record = [this](const Node *, ScopePath path) {
+            referencedTypes.push_back(std::move(path));
+        };
+        forEachNamedType(node, depth, record);
+    }
+
+    /// Prints a part of the signature into `part` with `print`, and records
+    /// where it spells the named types `typeRoots` use as types.
+    template <typename Print>
+    void printSignaturePart(PrintedSignaturePart &part, const std::vector<const Node *> &typeRoots, Print print) {
+        std::unordered_set<const Node *> typeNodes;
+        auto insert = [&typeNodes](const Node *node, ScopePath) {
+            typeNodes.insert(node);
+        };
+        for (const Node *typeRoot : typeRoots) {
+            forEachNamedType(typeRoot, 0, insert);
+        }
+        TypeRecordingOutputBuffer buffer(typeNodes);
+        print(buffer);
+        part.text.assign(buffer.getBuffer() == nullptr ? "" : buffer.getBuffer(), buffer.getCurrentPosition());
+        std::free(buffer.getBuffer());
+        std::vector<TypeRecordingOutputBuffer::Record> records = std::move(buffer.records);
+        std::sort(records.begin(), records.end(), [](const auto &left, const auto &right) {
+            return left.start != right.start ? left.start < right.start : left.end > right.end;
+        });
+        for (const TypeRecordingOutputBuffer::Record &record : records) {
+            ScopePath path;
+            appendPath(record.node, nullptr, path);
+            part.types.push_back(SignatureType{record.start, record.end, std::move(path)});
+        }
+    }
+
+    PrintedSignaturePart &parametersPart() {
+        if (!parameters.isComputed) {
+            parameters.isComputed = true;
+            if (function != nullptr) {
+                parameters.isPresent = true;
+                const std::vector<const Node *> typeRoots(function->getParams().begin(), function->getParams().end());
+                printSignaturePart(parameters, typeRoots, [this](OutputBuffer &buffer) {
+                    buffer += "(";
+                    function->getParams().printWithComma(buffer);
+                    buffer += ")";
+                });
+            }
+        }
+        return parameters;
+    }
+
+    PrintedSignaturePart &returnTypePart() {
+        if (!returnType.isComputed) {
+            returnType.isComputed = true;
+            if (function != nullptr && function->getReturnType() != nullptr) {
+                returnType.isPresent = true;
+                const Node *type = function->getReturnType();
+                printSignaturePart(returnType, {type}, [type](OutputBuffer &buffer) {
+                    type->print(buffer);
+                });
+            }
+        }
+        return returnType;
+    }
+
+    PrintedSignaturePart *signaturePart(CPlusPlusDemanglerSignaturePart part) {
+        switch (part) {
+        case CPlusPlusDemanglerSignaturePartParameters:
+            return &parametersPart();
+        case CPlusPlusDemanglerSignaturePartReturnType:
+            return &returnTypePart();
+        }
+        return nullptr;
+    }
+
+    const SignatureType *signatureType(CPlusPlusDemanglerSignaturePart part, size_t typeIndex) {
+        PrintedSignaturePart *printedPart = signaturePart(part);
+        if (printedPart == nullptr || typeIndex >= printedPart->types.size()) {
+            return nullptr;
+        }
+        return &printedPart->types[typeIndex];
     }
 
     void collectTemplateArgumentTypes(const ScopePath &path) {
@@ -839,28 +1031,11 @@ CPlusPlusDemanglerText CPlusPlusDemanglerGetTemplateArguments(CPlusPlusDemangler
 }
 
 CPlusPlusDemanglerText CPlusPlusDemanglerGetParameters(CPlusPlusDemangler *demangler) {
-    return demangler->parameters.get([demangler](std::string &text) {
-        if (demangler->function == nullptr) {
-            return false;
-        }
-        OutputBuffer buffer;
-        buffer += "(";
-        demangler->function->getParams().printWithComma(buffer);
-        buffer += ")";
-        text.assign(buffer.getBuffer() == nullptr ? "" : buffer.getBuffer(), buffer.getCurrentPosition());
-        std::free(buffer.getBuffer());
-        return true;
-    });
+    return demangler->parametersPart().textValue();
 }
 
 CPlusPlusDemanglerText CPlusPlusDemanglerGetReturnType(CPlusPlusDemangler *demangler) {
-    return demangler->returnType.get([demangler](std::string &text) {
-        if (demangler->function == nullptr || demangler->function->getReturnType() == nullptr) {
-            return false;
-        }
-        text = printedText(demangler->function->getReturnType());
-        return true;
-    });
+    return demangler->returnTypePart().textValue();
 }
 
 CPlusPlusDemanglerText CPlusPlusDemanglerGetSuffix(CPlusPlusDemangler *demangler) {
@@ -894,6 +1069,32 @@ CPlusPlusDemanglerText CPlusPlusDemanglerGetReferencedTypeComponentName(CPlusPlu
         return CPlusPlusDemanglerText{nullptr, 0};
     }
     return demangler->referencedTypes[typeIndex][componentIndex].nameText();
+}
+
+size_t CPlusPlusDemanglerGetSignatureTypeCount(CPlusPlusDemangler *demangler, CPlusPlusDemanglerSignaturePart part) {
+    const PrintedSignaturePart *printedPart = demangler->signaturePart(part);
+    return printedPart == nullptr ? 0 : printedPart->types.size();
+}
+
+CPlusPlusDemanglerByteRange CPlusPlusDemanglerGetSignatureTypeRange(CPlusPlusDemangler *demangler, CPlusPlusDemanglerSignaturePart part, size_t typeIndex) {
+    const SignatureType *type = demangler->signatureType(part, typeIndex);
+    if (type == nullptr) {
+        return CPlusPlusDemanglerByteRange{0, 0};
+    }
+    return CPlusPlusDemanglerByteRange{type->start, type->end};
+}
+
+size_t CPlusPlusDemanglerGetSignatureTypeComponentCount(CPlusPlusDemangler *demangler, CPlusPlusDemanglerSignaturePart part, size_t typeIndex) {
+    const SignatureType *type = demangler->signatureType(part, typeIndex);
+    return type == nullptr ? 0 : type->path.size();
+}
+
+CPlusPlusDemanglerText CPlusPlusDemanglerGetSignatureTypeComponentName(CPlusPlusDemangler *demangler, CPlusPlusDemanglerSignaturePart part, size_t typeIndex, size_t componentIndex) {
+    const SignatureType *type = demangler->signatureType(part, typeIndex);
+    if (type == nullptr || componentIndex >= type->path.size()) {
+        return CPlusPlusDemanglerText{nullptr, 0};
+    }
+    return type->path[componentIndex].nameText();
 }
 
 } // extern "C"

@@ -26,7 +26,13 @@
 ///
 /// A local entity's path runs through the function it sits in, printed with
 /// its parameters: `localThing()::Bar::baz()` is `baz` in
-/// `["localThing()", "Bar"]`.
+/// `["localThing()", "Bar"]`. An Objective-C method, which the mangling
+/// spells without parameters, is its bare name: a static local of
+/// `-[CAMetalDrawable texture]` is in `["-[CAMetalDrawable texture]"]`.
+///
+/// ``parameterTypeReferences`` and ``returnTypeReferences`` say where the
+/// signature's text spells each named type, for a caller that shows the
+/// types apart from the punctuation and the built-in types around them.
 public struct CPlusPlusSymbolName: Hashable, Sendable, CustomStringConvertible {
     public let mangledName: String
 
@@ -56,6 +62,15 @@ public struct CPlusPlusSymbolName: Hashable, Sendable, CustomStringConvertible {
     /// template specialization; `nil` otherwise.
     public let returnType: String?
 
+    /// The named types ``parameters`` spells, each with its range in
+    /// ``parameters``: `CA::Render::Surface` in `(CA::Render::Surface*)`.
+    /// Empty when there are no parameters, or only built-in types.
+    public let parameterTypeReferences: [TypeReference]
+
+    /// The named types ``returnType`` spells, each with its range in
+    /// ``returnType``.
+    public let returnTypeReferences: [TypeReference]
+
     public let functionQualifiers: FunctionQualifiers
 
     /// The Itanium variant of a constructor (`C1` → 1, `C2` → 2, …) or a
@@ -82,8 +97,12 @@ public struct CPlusPlusSymbolName: Hashable, Sendable, CustomStringConvertible {
         self.scopePath = parsedName.scopePath
         self.baseName = parsedName.baseName
         self.templateArguments = parsedName.templateArguments
-        self.parameters = parsedName.parameters
-        self.returnType = parsedName.returnType
+        let parameters = parsedName.parameters
+        let returnType = parsedName.returnType
+        self.parameters = parameters
+        self.returnType = returnType
+        self.parameterTypeReferences = parsedName.parameterTypeReferences(in: parameters)
+        self.returnTypeReferences = parsedName.returnTypeReferences(in: returnType)
         self.functionQualifiers = parsedName.functionQualifiers
         self.constructorOrDestructorVariant = parsedName.constructorOrDestructorVariant
         self.suffix = parsedName.suffix
@@ -91,6 +110,41 @@ public struct CPlusPlusSymbolName: Hashable, Sendable, CustomStringConvertible {
 
     public var description: String {
         demangledName
+    }
+}
+
+extension CPlusPlusSymbolName {
+    /// A named type a function's signature spells, and where its text
+    /// spells it.
+    ///
+    /// ```swift
+    /// let name = CPlusPlusSymbolName(mangledName: "__Z4takeRKNSt3__16vectorIN2CA3FooENS_9allocatorIS2_EEEE")!
+    /// let parameters = name.parameters!   // "(std::__1::vector<CA::Foo, std::__1::allocator<CA::Foo>> const&)"
+    /// name.parameterTypeReferences.map { parameters[$0.range] }
+    /// // ["std::__1::vector<CA::Foo, std::__1::allocator<CA::Foo>>", "CA::Foo",
+    /// //  "std::__1::allocator<CA::Foo>", "CA::Foo"]
+    /// ```
+    ///
+    /// The references are ordered by where they start. A template comes
+    /// before the types its argument list spells, and its range covers them:
+    /// ranges nest, they never overlap otherwise. A qualifier is part of the
+    /// name it qualifies, never a reference of its own. Built-in types,
+    /// pointers, references and cv-qualifiers are no references; the range of
+    /// `CA::Foo const*` covers `CA::Foo`.
+    public struct TypeReference: Hashable, Sendable {
+        /// The type's scopes and the type itself, outermost first, each as
+        /// C++ prints it — a ``CPlusPlusScope`` path:
+        /// `["std", "__1", "vector<CA::Foo, std::__1::allocator<CA::Foo>>"]`.
+        public let path: [String]
+
+        /// Where the text the reference comes from — ``parameters`` or
+        /// ``returnType`` — spells the type, template arguments included.
+        public let range: Range<String.Index>
+
+        init(path: [String], range: Range<String.Index>) {
+            self.path = path
+            self.range = range
+        }
     }
 }
 

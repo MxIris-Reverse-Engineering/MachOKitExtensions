@@ -216,6 +216,13 @@ FIXTURE_KEEP int touchHierarchies() {
 extern "C" FIXTURE_KEEP int fixtureUnparsable(void) __asm__("__Z_fixture_unparsable");
 extern "C" int fixtureUnparsable(void) { return 12; }
 
+// The name clang gives a static local of an Objective-C method in an
+// Objective-C++ file: `Z <method> E <local>`, the method's name with no
+// parameters. The fixture is C++, so the name is spelled by hand.
+extern "C" {
+__attribute__((used)) int fixtureObjectiveCMethodLocal __asm__("__ZZ30-[FixtureObject fixtureMethod]E9onceToken") = 14;
+}
+
 extern "C" const void *CPlusPlusSymbolsFixtureAnchor(void) {
     return reinterpret_cast<const void *>(&CPlusPlusSymbolsFixtureAnchor);
 }
@@ -236,6 +243,7 @@ extern "C" int CPlusPlusSymbolsFixtureTouchEverything(void) {
     total += sumOfVector();
     total += callHidden();
     total += fixtureUnparsable();
+    total += fixtureObjectiveCMethodLocal;
     total += hierarchy::touchHierarchies();
     return total;
 }

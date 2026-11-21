@@ -33,6 +33,21 @@ typedef struct {
     size_t length;
 } CPlusPlusDemanglerText;
 
+/// A range of bytes of a text the demangler returned: `start` up to, not
+/// including, `end`.
+typedef struct {
+    size_t start;
+    size_t end;
+} CPlusPlusDemanglerByteRange;
+
+/// A part of a function's signature, as its own text.
+typedef enum CPLUSPLUS_DEMANGLING_CLOSED_ENUM : int32_t {
+    /// The text `CPlusPlusDemanglerGetParameters` returns.
+    CPlusPlusDemanglerSignaturePartParameters,
+    /// The text `CPlusPlusDemanglerGetReturnType` returns.
+    CPlusPlusDemanglerSignaturePartReturnType,
+} CPlusPlusDemanglerSignaturePart;
+
 /// What a C++ symbol names.
 typedef enum CPLUSPLUS_DEMANGLING_CLOSED_ENUM : int32_t {
     CPlusPlusDemanglerSymbolKindFunction,
@@ -65,7 +80,8 @@ typedef enum CPLUSPLUS_DEMANGLING_CLOSED_ENUM : int32_t {
     /// A closure or unnamed type, or `std::allocator` and the other standard
     /// substitutions.
     CPlusPlusDemanglerScopeHintType,
-    /// The function a local entity sits in.
+    /// The function a local entity sits in — an Objective-C method too,
+    /// which the mangling spells as a bare name.
     CPlusPlusDemanglerScopeHintFunction,
 } CPlusPlusDemanglerScopeHint;
 
@@ -125,6 +141,18 @@ int32_t CPlusPlusDemanglerGetConstructorOrDestructorVariant(const CPlusPlusDeman
 size_t CPlusPlusDemanglerGetReferencedTypeCount(const CPlusPlusDemangler *demangler);
 size_t CPlusPlusDemanglerGetReferencedTypeComponentCount(const CPlusPlusDemangler *demangler, size_t typeIndex);
 CPlusPlusDemanglerText CPlusPlusDemanglerGetReferencedTypeComponentName(CPlusPlusDemangler *demangler, size_t typeIndex, size_t componentIndex);
+
+/// Named types a part of the signature spells, ordered by where they start:
+/// a template before the types its argument list spells, whose ranges sit
+/// inside the template's. A qualifier is part of the name it qualifies,
+/// never a type of its own; built-in types are left out. Zero when the name
+/// has no such part.
+size_t CPlusPlusDemanglerGetSignatureTypeCount(CPlusPlusDemangler *demangler, CPlusPlusDemanglerSignaturePart part);
+/// Where the part's text spells the type, template arguments included.
+CPlusPlusDemanglerByteRange CPlusPlusDemanglerGetSignatureTypeRange(CPlusPlusDemangler *demangler, CPlusPlusDemanglerSignaturePart part, size_t typeIndex);
+/// The type's scope path, read component by component.
+size_t CPlusPlusDemanglerGetSignatureTypeComponentCount(CPlusPlusDemangler *demangler, CPlusPlusDemanglerSignaturePart part, size_t typeIndex);
+CPlusPlusDemanglerText CPlusPlusDemanglerGetSignatureTypeComponentName(CPlusPlusDemangler *demangler, CPlusPlusDemanglerSignaturePart part, size_t typeIndex, size_t componentIndex);
 
 #ifdef __cplusplus
 }

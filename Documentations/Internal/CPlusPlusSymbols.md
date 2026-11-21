@@ -37,7 +37,8 @@
 - **为什么是 C 接口**：Swift 只 import 一个纯 C 头文件，不开 C++ 互操作，下游也不用改任何编译设置。代价是一层取值函数。
 - **解析器对象可以复用**：分配器自带 4 KB 的内联缓冲，新建很便宜；建树时整棵树共用一个。它不是线程安全的。输入会先拷进解析器自己的 `std::string`——AST 里的 `string_view` 都指向输入，调用方的缓冲在调用返回后就失效了。
 - **文本按需打印**：完整名字、参数、各段作用域名都在第一次取时才打印并缓存，到下一次解析为止有效。建树只取作用域各段与「当作类型用到」的路径，不打印完整名字。
-- **作用域路径**：从实体的名字一路往外拆。`NestedName` 拆成多段；`NameWithTemplateArgs` 把实参挂在最后一段上（`vector<int, …>` 是一段）；`LocalName` 先放外层函数的作用域，再放函数本身——打印成不带返回类型、带参数与限定的 `emplace_back<int>(int&&)`——再接着拆局部实体；`AbiTagAttr`、`ModuleEntity`、`GlobalQualifiedName` 透过去；`St` 打印成 `std`；`Sa`、`Ss` 这类替换展开成 `std` 加类型名。每段带一个提示：`std` 与匿名命名空间是命名空间，lambda（`ClosureTypeName`）、无名类型与 `std::allocator` 这类替换是类型，`LocalName` 的外层是函数。
+- **作用域路径**：从实体的名字一路往外拆。`NestedName` 拆成多段；`NameWithTemplateArgs` 把实参挂在最后一段上（`vector<int, …>` 是一段）；`LocalName` 先放外层函数的作用域，再放函数本身——打印成不带返回类型、带参数与限定的 `emplace_back<int>(int&&)`——再接着拆局部实体；`AbiTagAttr`、`ModuleEntity`、`GlobalQualifiedName` 透过去；`St` 打印成 `std`；`Sa`、`Ss` 这类替换展开成 `std` 加类型名。每段带一个提示：`std` 与匿名命名空间是命名空间，lambda（`ClosureTypeName`）、无名类型与 `std::allocator` 这类替换是类型，`LocalName` 的外层是函数——外层不带参数时也是：clang 把 ObjC++ 里 ObjC 方法的局部静态变量写成 `Z 26-[CAMetalDrawable texture] E 9onceToken`，外层只是一段名字，3.3.0 以前它因此落成「未定」，下游把方法名当成了命名空间。
+- **签名里的类型位置**（3.3.0）：参数与返回类型的文本和其中每个命名类型的位置在同一次打印里得出（`PrintedSignaturePart`），位置因此总与文本相符。先用与「当作类型用到」相同的遍历（`forEachNamedType`：命名类型记下并进入它的模板实参，指针、引用、函数类型这类构造继续往里走，遇到表达式就停）收集这一部分的类型节点；再用 `TypeRecordingOutputBuffer` 打印——它重写 `OutputBuffer` 的 `printLeft` 钩子（`Node::printLeft` 只对 `OutputBuffer` 自己开放，所以调基类的实现），遇到收集到的节点就记下打印前后的位置。打印一个类型的名字时碰到的节点算名字的一部分（`S0_` 会让 `CA::Foo::Bar` 的限定词复用 `CA::Foo` 的节点），只有进了模板实参表才重新开始记；解析器回头插入或回退时（`notifyInsertion`、`notifyDeletion`）同步挪动或丢弃已记的范围。按起点排序，起点相同的长的在前，所以模板排在它实参里的类型之前。
 - **特殊名字归位**（`analyzeSpecialName`）：
 
   | 名字 | 归到 |
@@ -89,6 +90,6 @@
 ## 测试
 
 - `Tests/CPlusPlusSymbolsTests/CPlusPlusDemanglingTests`：C 接口解析符号表写法、拒绝非 Itanium 名字、失败后读不到旧结果；进程内 libc++ 的每个 C++ 名字，完整可读名字与系统 `__cxa_demangle` 逐字一致。
-- `CPlusPlusSymbolNameTests`：clang 21（Xcode 27.2）给小段 C++ 生成的真实名字，覆盖函数、模板实参、限定、构造与析构变体、各种特殊名字的归位、局部实体与 lambda、block、函数模板的返回类型、点后缀、变量、解析失败。
-- `CPlusPlusSymbolIndexStoreTests`：读夹具所在的测试镜像，覆盖每种证据与「未定」、命名空间、函数作用域、两种 lambda、模板特化、只出现在签名里的类型不进树、各个查询、`unparsedSymbols`、建与删、注册不触发重建（用独立的注册表与 store 的内部初始化方法）。
+- `CPlusPlusSymbolNameTests`：clang 21（Xcode 27.2）给小段 C++ 生成的真实名字，覆盖函数、模板实参、限定、构造与析构变体、各种特殊名字的归位、局部实体与 lambda、block、函数模板的返回类型、点后缀、变量、解析失败；签名里的类型位置（替换复用的类型、模板实参里的类型、函数指针参数、返回类型、限定词不单列、只有内置类型）。
+- `CPlusPlusSymbolIndexStoreTests`：读夹具所在的测试镜像，覆盖每种证据与「未定」、命名空间、函数作用域（含不带参数的 ObjC 方法：夹具用汇编标签手写了一个这样的名字，因为夹具编译器只编 C、C++、Swift）、两种 lambda、模板特化、只出现在签名里的类型不进树、各个查询、`unparsedSymbols`、建与删、注册不触发重建（用独立的注册表与 store 的内部初始化方法）。
 - `CPlusPlusSymbolIndexCensusTests`：上面的普查。

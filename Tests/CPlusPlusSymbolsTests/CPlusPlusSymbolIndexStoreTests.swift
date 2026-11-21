@@ -107,6 +107,16 @@ struct CPlusPlusSymbolIndexStoreTests {
         #expect(Self.store.childScopes(of: function, in: image).map(\.name).contains("Local"))
     }
 
+    /// clang mangles the Objective-C method a static local sits in as a bare
+    /// name, `Z 30-[FixtureObject fixtureMethod] E`, with no parameters; it
+    /// is still the function the local entity sits in.
+    @Test func objectiveCMethodWithALocalIsAFunctionScope() throws {
+        let image = try Self.fixtureImage()
+        let method = try Self.scope(named: "-[FixtureObject fixtureMethod]")
+        #expect(method.kind == .function)
+        #expect(Self.store.members(of: method, in: image).map(\.name.baseName) == ["onceToken"])
+    }
+
     /// A closure type with the Itanium name `'lambda'(int)` is a type by its
     /// mangling; one clang names `$_0` is a type by its `const` call
     /// operator.
