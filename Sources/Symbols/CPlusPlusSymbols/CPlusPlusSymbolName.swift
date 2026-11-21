@@ -85,7 +85,7 @@ public struct CPlusPlusSymbolName: Hashable, Sendable, CustomStringConvertible {
     /// `mangledName` is spelled as the symbol table spells it on Darwin:
     /// `__Z…`, or `____Z…_block_invoke` for a block inside a C++ function.
     public init?(mangledName: String) {
-        let demangler = CPlusPlusDemangler()
+        var demangler = CPlusPlusDemangler()
         guard let name = demangler.withParsedName(mangledName, { Self(mangledName: mangledName, parsedName: $0) }) else { return nil }
         self = name
     }

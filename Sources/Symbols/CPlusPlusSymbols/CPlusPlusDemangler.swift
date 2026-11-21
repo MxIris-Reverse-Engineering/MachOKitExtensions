@@ -2,7 +2,12 @@ internal import CPlusPlusDemangling
 
 /// The vendored Itanium demangler, through its C interface. One parse at a
 /// time: not thread-safe, so a demangler belongs to one task or thread.
-final class CPlusPlusDemangler {
+///
+/// Noncopyable, so the parser has exactly one owner, which destroys it.
+/// Parsing is `mutating`: a parse invalidates the previous ``ParsedName``,
+/// and exclusive access keeps a second parse from starting inside the body
+/// that still reads the first.
+struct CPlusPlusDemangler: ~Copyable {
     private let pointer: OpaquePointer
 
     init() {
@@ -19,7 +24,7 @@ final class CPlusPlusDemangler {
     /// Parses `nameBytes` — a symbol name as the symbol table spells it —
     /// and hands the result to `body`; `nil` when the name does not parse.
     /// The result is valid only inside `body`.
-    func withParsedName<Result>(bytes nameBytes: UnsafeBufferPointer<UInt8>, _ body: (ParsedName) throws -> Result) rethrows -> Result? {
+    mutating func withParsedName<Result>(bytes nameBytes: UnsafeBufferPointer<UInt8>, _ body: (ParsedName) throws -> Result) rethrows -> Result? {
         let isParsed = nameBytes.withMemoryRebound(to: CChar.self) { characters in
             CPlusPlusDemanglerParse(pointer, characters.baseAddress, characters.count)
         }
@@ -27,7 +32,7 @@ final class CPlusPlusDemangler {
         return try body(ParsedName(pointer: pointer))
     }
 
-    func withParsedName<Result>(_ mangledName: String, _ body: (ParsedName) throws -> Result) rethrows -> Result? {
+    mutating func withParsedName<Result>(_ mangledName: String, _ body: (ParsedName) throws -> Result) rethrows -> Result? {
         var mangledName = mangledName
         return try mangledName.withUTF8 { nameBytes in
             try withParsedName(bytes: nameBytes, body)

@@ -207,7 +207,7 @@ extension CPlusPlusClassIndexStore {
             }
             let groupsByTypeInfo = tableScanner.scan(typeInfos: typeInfos)
 
-            let demangler = CPlusPlusDemangler()
+            var demangler = CPlusPlusDemangler()
             var mangledNamesByLocalOffset: [Int: String] = [:]
             for typeInfo in typeInfos {
                 mangledNamesByLocalOffset[typeInfo.offset] = typeInfo.mangledTypeName
@@ -251,7 +251,7 @@ extension CPlusPlusClassIndexStore {
             var records: [ClassRecord] = []
             records.reserveCapacity(typeInfos.count)
             for typeInfo in typeInfos {
-                let names = Self.names(ofMangledTypeName: typeInfo.mangledTypeName, using: demangler)
+                let names = Self.names(ofMangledTypeName: typeInfo.mangledTypeName, using: &demangler)
                 var bases: [CPlusPlusClass.Base] = []
                 var baseEntries: [BaseEntry] = []
                 for base in typeInfo.bases {
@@ -259,7 +259,7 @@ extension CPlusPlusClassIndexStore {
                     let isVirtual = base.offsetFlags & 0x1 != 0
                     let offset = Int(base.offsetFlags >> 8)
                     bases.append(CPlusPlusClass.Base(
-                        qualifiedName: baseMangledName.isEmpty ? "" : Self.names(ofMangledTypeName: baseMangledName, using: demangler).qualifiedName,
+                        qualifiedName: baseMangledName.isEmpty ? "" : Self.names(ofMangledTypeName: baseMangledName, using: &demangler).qualifiedName,
                         mangledTypeName: baseMangledName,
                         isVirtual: isVirtual,
                         isPublic: base.offsetFlags & 0x2 != 0,
@@ -316,7 +316,7 @@ extension CPlusPlusClassIndexStore {
         /// The qualified name, scope path and base name of a type, from its
         /// typeinfo name; the mangling itself when the demangler does not
         /// parse it.
-        static func names(ofMangledTypeName mangledTypeName: String, using demangler: CPlusPlusDemangler) -> (qualifiedName: String, scopePath: [String], baseName: String) {
+        static func names(ofMangledTypeName mangledTypeName: String, using demangler: inout CPlusPlusDemangler) -> (qualifiedName: String, scopePath: [String], baseName: String) {
             let parsed = demangler.withParsedName("__ZTS" + mangledTypeName) { parsedName -> (scopePath: [String], baseName: String)? in
                 guard parsedName.kind == .typeInfoName, parsedName.scopeComponentCount > 0 else { return nil }
                 return (parsedName.scopePath, parsedName.baseName)

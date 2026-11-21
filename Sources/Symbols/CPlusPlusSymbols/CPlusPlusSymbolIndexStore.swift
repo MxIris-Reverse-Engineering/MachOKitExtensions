@@ -65,8 +65,8 @@ public final class CPlusPlusSymbolIndexStore: Sendable {
     /// typeinfo — ascending by offset.
     public func members(of scope: CPlusPlusScope, in machO: some MachORepresentableWithCache) -> [CPlusPlusSymbol] {
         guard let storage = storage(in: machO), let scopeIndex = storage.scopeIndex(of: scope) else { return [] }
-        let demangler = CPlusPlusDemangler()
-        return storage.scopes[scopeIndex].memberRows.compactMap { storage.symbol(atRow: $0, using: demangler) }
+        var demangler = CPlusPlusDemangler()
+        return storage.scopes[scopeIndex].memberRows.compactMap { storage.symbol(atRow: $0, using: &demangler) }
     }
 
     /// The C++ symbols at exactly `offset`, in symbol-table order; empty when
@@ -74,8 +74,8 @@ public final class CPlusPlusSymbolIndexStore: Sendable {
     public func symbols(for offset: Int, in machO: some MachORepresentableWithCache) -> [CPlusPlusSymbol] {
         guard let storage = storage(in: machO), let rows = storage.sweptSymbols.rowsByOffset[offset] else { return [] }
         let symbolTable = storage.sweptSymbols.symbolTable
-        let demangler = CPlusPlusDemangler()
-        return rows.filter { symbolTable.canonicalOffset(atRow: $0) == offset }.compactMap { storage.symbol(atRow: $0, using: demangler) }
+        var demangler = CPlusPlusDemangler()
+        return rows.filter { symbolTable.canonicalOffset(atRow: $0) == offset }.compactMap { storage.symbol(atRow: $0, using: &demangler) }
     }
 
     /// The C++ symbol whose name is `mangledName`, spelled as the symbol
@@ -83,7 +83,8 @@ public final class CPlusPlusSymbolIndexStore: Sendable {
     /// demangler does not parse it.
     public func symbol(named mangledName: String, in machO: some MachORepresentableWithCache) -> CPlusPlusSymbol? {
         guard let storage = storage(in: machO), let row = storage.definedRow(forName: mangledName) else { return nil }
-        return storage.symbol(atRow: row, using: CPlusPlusDemangler())
+        var demangler = CPlusPlusDemangler()
+        return storage.symbol(atRow: row, using: &demangler)
     }
 
     /// The image's names that look like C++ (`__Z…`) but that the demangler
@@ -143,7 +144,7 @@ extension CPlusPlusSymbolIndexStore {
             let symbolTable = sweptSymbols.symbolTable
             var builder = ScopeTreeBuilder()
             var unparsedRows: [UInt32] = []
-            let demangler = CPlusPlusDemangler()
+            var demangler = CPlusPlusDemangler()
             for row in 0 ..< UInt32(symbolTable.rowCount) {
                 guard Self.isDefined(row: row, in: sweptSymbols) else { continue }
                 let isParsed = symbolTable.withNameBytes(atRow: row) { nameBytes in
@@ -184,7 +185,7 @@ extension CPlusPlusSymbolIndexStore {
 
         /// The row's symbol with its name parsed again; `nil` for a name the
         /// demangler does not parse.
-        func symbol(atRow row: UInt32, using demangler: CPlusPlusDemangler) -> CPlusPlusSymbol? {
+        func symbol(atRow row: UInt32, using demangler: inout CPlusPlusDemangler) -> CPlusPlusSymbol? {
             let symbol = plainSymbol(atRow: row)
             guard let name = demangler.withParsedName(symbol.name, { CPlusPlusSymbolName(mangledName: symbol.name, parsedName: $0) }) else { return nil }
             return CPlusPlusSymbol(symbol: symbol, name: name)
