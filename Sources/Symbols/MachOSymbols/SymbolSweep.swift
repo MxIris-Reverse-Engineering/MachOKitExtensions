@@ -66,8 +66,11 @@ public struct SymbolSweep<Routing: SymbolTableRouting>: Sendable {
         // through `nameC`, and a `String` is made only for a routed name, as
         // the builder's de-duplication key. A loaded image's symbol values are
         // already offsets from its header, so canonical == raw here.
+        // Neither leg indexes an import or an indirect entry (`N_INDR`, a
+        // symbol of another image re-exported by name), whose value is no
+        // offset in this image.
         func collectMappedSymbolRows(_ mappedSymbols: some Sequence<MachOImage.Symbol>, stringBase: UnsafeRawPointer) {
-            for symbol in mappedSymbols where !symbol.nlist.isExternal {
+            for symbol in mappedSymbols where !symbol.nlist.isExternal && !symbol.nlist.isIndirect {
                 let nameC = symbol.nameC
                 guard let table = routing.table(forSymbolNamed: nameC, language: classifier.language(ofSymbolNameBytes: nameC)) else { continue }
                 let offset = symbol.offset
@@ -109,7 +112,7 @@ public struct SymbolSweep<Routing: SymbolTableRouting>: Sendable {
             // entry and copied into the table's private buffer, and a symbol
             // value is converted to the offset the index files it under.
             let symbolValueOffsetConverter = SymbolValueOffsetConverter(for: machO)
-            for symbol in machO.symbols where !symbol.nlist.isExternal {
+            for symbol in machO.symbols where !symbol.nlist.isExternal && !symbol.nlist.isIndirect {
                 let name = symbol.name
                 guard let table = name.withCString({ routing.table(forSymbolNamed: $0, language: classifier.language(ofSymbolNameBytes: $0)) }) else { continue }
                 let rawOffset = symbol.offset

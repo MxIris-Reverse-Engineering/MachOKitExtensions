@@ -11,6 +11,15 @@ extension NlistProtocol {
         return flags.contains(.ext) && type == .undf
     }
 
+    /// An indirect entry (`N_INDR`): another image's symbol, re-exported by
+    /// name. Its value is the string-table index of the name it stands for,
+    /// not an address, so the image defines nothing there. libc++ re-exports
+    /// libc++abi's `std::exception` members one by one this way.
+    @_spi(Internals)
+    public var isIndirect: Bool {
+        flags?.type == .indr
+    }
+
     /// A symbol private to its image: the `N_EXT` bit clear, so neither an
     /// export nor an import. Not the negation of ``isExternal``, which names
     /// an undefined import only. A linker turns a private external

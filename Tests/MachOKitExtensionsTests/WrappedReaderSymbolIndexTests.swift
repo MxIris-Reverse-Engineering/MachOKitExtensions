@@ -27,7 +27,7 @@ struct WrappedReaderSymbolIndexTests {
         // files) keeps one row, at the last definition the table lists.
         let symbolValueOffsetConverter = SymbolValueOffsetConverter(for: combine)
         var expectedOffsetByName: [String: Int] = [:]
-        for symbol in combine.symbols where !symbol.nlist.isExternal && !symbol.nlist.isDebuggingEntry && SymbolLanguage(ofSymbolNamed: symbol.name) == .c {
+        for symbol in combine.symbols where !symbol.nlist.isExternal && !symbol.nlist.isIndirect && !symbol.nlist.isDebuggingEntry && SymbolLanguage(ofSymbolNamed: symbol.name) == .c {
             expectedOffsetByName[symbol.name] = symbolValueOffsetConverter.offset(forSymbolValue: symbol.offset)
         }
         try #require(!expectedOffsetByName.isEmpty)

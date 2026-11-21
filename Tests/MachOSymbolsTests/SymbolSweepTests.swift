@@ -149,7 +149,7 @@ struct SymbolSweepTests {
         let image = MachOImage.current()
         var realOffsetByName: [String: Int] = [:]
         var debugEntryNames: Set<String> = []
-        for symbol in image.symbols where !symbol.nlist.isExternal {
+        for symbol in image.symbols where !symbol.nlist.isExternal && !symbol.nlist.isIndirect {
             if symbol.nlist.isDebuggingEntry {
                 debugEntryNames.insert(symbol.name)
             } else {
@@ -178,7 +178,7 @@ struct SymbolSweepTests {
         let symbolTable = SymbolSweep(sweeping: image, routing: LanguageRouting(mayReferenceStringTablesOfLoadedImages: true), languageRegistry: languageRegistry)[.other].symbolTable
 
         var expectedOffsetByName: [String: Int] = [:]
-        for symbol in image.symbols where !symbol.nlist.isExternal && !symbol.nlist.isDebuggingEntry && SymbolLanguage(ofSymbolNamed: symbol.name, registry: languageRegistry) == .c {
+        for symbol in image.symbols where !symbol.nlist.isExternal && !symbol.nlist.isIndirect && !symbol.nlist.isDebuggingEntry && SymbolLanguage(ofSymbolNamed: symbol.name, registry: languageRegistry) == .c {
             expectedOffsetByName[symbol.name] = symbol.offset
         }
         for exportedSymbol in image.exportedSymbols where SymbolLanguage(ofSymbolNamed: exportedSymbol.name, registry: languageRegistry) == .c {
@@ -312,7 +312,7 @@ extension SymbolSweepTests {
     /// `recognizes` accepts. The export trie adds none.
     private static func expectedOffsets(of image: MachOImage, where recognizes: (UnsafePointer<CChar>) -> Bool) -> Set<Int> {
         var offsets: Set<Int> = []
-        for symbol in image.symbols where !symbol.nlist.isExternal && !symbol.nlist.isDebuggingEntry && symbol.name.withCString(recognizes) {
+        for symbol in image.symbols where !symbol.nlist.isExternal && !symbol.nlist.isIndirect && !symbol.nlist.isDebuggingEntry && symbol.name.withCString(recognizes) {
             offsets.insert(symbol.offset)
         }
         return offsets

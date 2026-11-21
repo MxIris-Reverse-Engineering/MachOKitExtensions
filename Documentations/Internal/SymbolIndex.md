@@ -19,7 +19,7 @@
 | 子系统 | 文件 |
 |---|---|
 | 符号表 | `SymbolTable`（`SymbolRow`、`PackedNameReference`、`SymbolTable`、`SymbolTableBuilder`）、`SymbolRowBucket` |
-| 偏移换算与 nlist 判断 | `SymbolValueOffsetConverter`、`NlistProtocol+`（`isExternal`、`isLocal`、`isDebuggingEntry`） |
+| 偏移换算与 nlist 判断 | `SymbolValueOffsetConverter`、`NlistProtocol+`（`isExternal`、`isIndirect`、`isLocal`、`isDebuggingEntry`） |
 | 语言 | `SymbolLanguage`、`SymbolLanguageRegistry`（含 `SymbolLanguageRegistration`、`SymbolLanguageClassifier`） |
 | 采集 | `SymbolTableRouting`（含 `SymbolOffsetIndexing`）、`SymbolSweep`（含 `SweptSymbolTable`、`SymbolExportFacts`） |
 | C/C++ store | `SymbolIndexStore`、`SharedCacheEvictionGroup+MachOSymbols`（`.symbolStore`） |
@@ -56,6 +56,7 @@
 routing 有三个要求，正好是两个 store 在采集里不同的地方：名字进哪张表（或不收）、每张表怎么按偏移索引（`SymbolOffsetIndexing`：`.nameOnly`、`.byOffset`、`.byOffsetWithSortedOffsets`、`.sortedOffsetsOnly`）、是否允许零拷贝。routing 拿到的 `SymbolLanguage` 来自采集时给的注册表（默认 `.shared`）。其余规则对所有 routing 一样：
 
 - 导入（`N_UNDF` 且 `N_EXT`，即 `isExternal`）永远不收。注意 `isExternal` 只指导入，导出的定义同样带 `N_EXT`。
+- 间接条目（`N_INDR`，即 `isIndirect`）也不收：它是逐个转出的别的镜像的符号，值是所代表名字在字符串表里的位置，不是本镜像的偏移。libc++ 就这样逐个转出 libc++abi 的 `std::exception` 成员；3.2.0 及以前收了它们，把 `std::exception::what()` 登记在字符串表的位置上，C++ 作用域树也因此凭空多出 libc++ 自己的 `std::exception`（RuntimeViewer 接入 C++ 对象时发现，测试 `IndirectSymbolEntryTests`、`IndirectSymbolEntryScopeTests`）。导出表里的转出项本来就没有偏移、不建行，与这里无关。
 - 调试条目（STABS）只占行：名字还没有行时建一个占位行，此后不改它的偏移、不登记到任何偏移。行序因此跟着调试映射走，也就是源码顺序。
 - 文件的符号值是虚拟地址，经 `SymbolValueOffsetConverter` 换成规范化偏移（独立文件是文件偏移，cache 里的镜像是「地址 − 共享区起点」）；行同时登记在原始值与规范化偏移下。进程内镜像两者相等。
 - 一个偏移可以有多行（别名、identical code folding），一行在一个偏移下只登记一次；判断不扫桶，靠「新铸的行号一定比已发出的都大」。
