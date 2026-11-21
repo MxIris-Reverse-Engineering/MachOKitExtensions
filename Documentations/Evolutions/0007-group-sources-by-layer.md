@@ -5,7 +5,7 @@
 - **创建日期**: 2026-11-20
 - **最后更新**: 2026-11-21
 - **所属愿景**: 无
-- **关联提案**: MachOSwiftSection [0055-group-sources-by-layer](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0055-group-sources-by-layer.md)（同样的做法，本包照着对齐）；MachOSwiftSection `draft-shared-macho-testing-support`（同一条分支、同一次发版）
+- **关联提案**: MachOSwiftSection [0055-group-sources-by-layer](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0055-group-sources-by-layer.md)（同样的做法，本包照着对齐）；MachOSwiftSection [0104-shared-macho-testing-support](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0104-shared-macho-testing-support.md)（同一条分支、同一次发版）
 - **实现分支 / PR**: `feature/shared-macho-testing-support`，与测试支持统一同批快进合入 `main`，随 3.2.0 发布
 - **配套文档**: README 的 Layout 一节（分组表与新 target 的放法）
 - **网页版**: 同目录同名的 `.html`

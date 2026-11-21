@@ -1,7 +1,7 @@
 # MachOFixtureSupport 与 MachOTestingSupport：两个包共用的测试支持
 
 > 实现说明，随代码维护。读者：维护者，以及在本包或 MachOSwiftSection 里写测试的人。
-> 来自 MachOSwiftSection 提案 [shared-macho-testing-support](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/draft-shared-macho-testing-support.md)（由那边维护唯一提案）：MachOSwiftSection 测试支持里与 Swift 无关的部分搬到这里，本包自己测试里各写一份的辅助也换成这里的版本。
+> 来自 MachOSwiftSection 提案 [0104-shared-macho-testing-support](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0104-shared-macho-testing-support.md)（由那边维护唯一提案）：MachOSwiftSection 测试支持里与 Swift 无关的部分搬到这里，本包自己测试里各写一份的辅助也换成这里的版本。
 
 ## 模块定位
 
