@@ -3,6 +3,8 @@ import Testing
 import MachOKit
 import MachOKitExtensions
 @_spi(Internals) @testable import MachOSymbols
+import MachOResolving
+import MachOFixtureSupport
 
 private let objectFilePath = "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib/lazydylib1.o"
 
@@ -14,22 +16,16 @@ struct SymbolIndexStoreTests {
         try #require(MachOImage(name: name), "\(name) is not loaded")
     }
 
-    /// The arm64e slice of a system binary.
+    /// The slice of a system binary this process runs.
     private static func machOFile(atPath path: String) throws -> MachOFile {
-        switch try MachOKit.loadFromFile(url: URL(fileURLWithPath: path)) {
-        case .machO(let machOFile):
-            return machOFile
-        case .fat(let fatFile):
-            let machOFiles = try fatFile.machOFiles()
-            return try #require(machOFiles.first { $0.header.cpuType == .arm64 } ?? machOFiles.first)
-        }
+        try HostSlice.machOFile(at: URL(fileURLWithPath: path))
     }
 
     /// Defined, non-debug C symbols of `image`, with the offsets the store
     /// files them under.
     private static func definedCSymbols(of image: MachOImage) -> [(name: String, offset: Int)] {
         image.symbols.compactMap { symbol in
-            guard !symbol.nlist.isExternal, !symbol.nlist.isDebuggingEntry,
+            guard !symbol.nlist.isExternal, !symbol.nlist.isIndirect, !symbol.nlist.isDebuggingEntry,
                   SymbolLanguage(ofSymbolNamed: symbol.name) == .c else { return nil }
             return (symbol.name, symbol.offset)
         }
@@ -92,7 +88,7 @@ struct SymbolIndexStoreTests {
         let swiftCore = try Self.loadedImage(named: "libswiftCore")
         var swiftNameCount = 0
         var filedSwiftNameCount = 0
-        for symbol in swiftCore.symbols where !symbol.nlist.isExternal && !symbol.nlist.isDebuggingEntry
+        for symbol in swiftCore.symbols where !symbol.nlist.isExternal && !symbol.nlist.isIndirect && !symbol.nlist.isDebuggingEntry
             && symbol.name.withCString(StandInRecognition.isSwiftSymbol) {
             swiftNameCount += 1
             if Self.store.containsSymbol(named: symbol.name, in: swiftCore) {
@@ -177,7 +173,7 @@ extension SymbolIndexStoreTests {
 extension SymbolIndexStoreTests {
     /// Defined, non-debug symbols of `image` that `recognizes` accepts.
     private static func definedSymbols(of image: MachOImage, where recognizes: (UnsafePointer<CChar>) -> Bool) -> [MachOImage.Symbol] {
-        image.symbols.filter { !$0.nlist.isExternal && !$0.nlist.isDebuggingEntry && $0.name.withCString(recognizes) }
+        image.symbols.filter { !$0.nlist.isExternal && !$0.nlist.isIndirect && !$0.nlist.isDebuggingEntry && $0.name.withCString(recognizes) }
     }
 
     /// libswiftCore is mostly Swift names; with Swift registered the store

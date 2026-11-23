@@ -1,7 +1,7 @@
 # MachOSymbols：符号表、采集与 C/C++ 符号索引
 
 > 实现说明，随代码维护。读者：维护者。
-> 2026-11 由 MachOSwiftSection 的 `MachOSymbols` 拆出（提案 [0003-move-macho-infrastructure-modules](../Evolutions/0003-move-macho-infrastructure-modules.md)）；同月 Swift 与 Objective-C 的名字判断移回各自的包，本包只认 C 与 C++（提案 [draft-split-symbol-language](../Evolutions/draft-split-symbol-language.md)）。Swift 那一半——demangle、按成员 / 类型 / witness 归类——留在 MachOSwiftSection，模块名 `SwiftSymbols`，说明见它的 [SwiftSymbols.md](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Internal/Modules/SwiftSymbols.md)。
+> 2026-11 由 MachOSwiftSection 的 `MachOSymbols` 拆出（提案 [0003-move-macho-infrastructure-modules](../Evolutions/0003-move-macho-infrastructure-modules.md)）；同月 Swift 与 Objective-C 的名字判断移回各自的包，本包只认 C 与 C++（提案 [0004-split-symbol-language](../Evolutions/0004-split-symbol-language.md)）。Swift 那一半——demangle、按成员 / 类型 / witness 归类——留在 MachOSwiftSection，模块名 `SwiftSymbols`，说明见它的 [SwiftSymbols.md](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Internal/Modules/SwiftSymbols.md)。
 
 ## 模块定位
 
@@ -10,7 +10,7 @@
 1. **符号表**（`SymbolTable` 与它的 builder）：每个唯一名字一行 16 字节，名字的字节或指向镜像的字符串表、或进表自己的私有缓冲。
 2. **采集**（`SymbolSweep`）：一趟扫完一个镜像的符号表与导出表，按调用方给的 **routing**（`SymbolTableRouting`）把每个名字分进几张表，每张表带自己的按偏移索引、导出信息与本地符号事实。
 3. **语言**（`SymbolLanguage` 与 `SymbolLanguageRegistry`）：本包只认 C++ 的 Itanium 前缀，其余语言由拥有它的包在镜像加载时注册。
-4. **store**：本包的 `SymbolIndexStore` 收 C 与 C++ 的名字，已注册语言的名字只留偏移作边界；MachOSwiftSection 的 `SwiftSymbolIndexStore` 收 Swift 名字，在同一趟采集上再 demangle、归类。两个 store 各有各的缓存与驱逐组，互不相干。
+4. **store**：本包的 `SymbolIndexStore` 收 C 与 C++ 的名字，已注册语言的名字只留偏移作边界；MachOSwiftSection 的 `SwiftSymbolIndexStore` 收 Swift 名字，在同一趟采集上再 demangle、归类；本包 `CPlusPlusSymbols` 模块的 `CPlusPlusSymbolIndexStore` 只收 C++ 名字，解析后按作用域建树（见 [CPlusPlusSymbols.md](CPlusPlusSymbols.md)）。各个 store 各有各的缓存与驱逐组，互不相干。
 
 采集与符号表放在 `@_spi(Internals)` 下：它们是给「别的 store」用的构件，不是承诺给所有调用方的 API。`SymbolIndexStore`、`SymbolLanguage` 与 `SymbolLanguageRegistry` 是正式公开的。
 
@@ -19,7 +19,7 @@
 | 子系统 | 文件 |
 |---|---|
 | 符号表 | `SymbolTable`（`SymbolRow`、`PackedNameReference`、`SymbolTable`、`SymbolTableBuilder`）、`SymbolRowBucket` |
-| 偏移换算与 nlist 判断 | `SymbolValueOffsetConverter`、`NlistProtocol+`（`isExternal`、`isLocal`、`isDebuggingEntry`） |
+| 偏移换算与 nlist 判断 | `SymbolValueOffsetConverter`、`NlistProtocol+`（`isExternal`、`isIndirect`、`isLocal`、`isDebuggingEntry`） |
 | 语言 | `SymbolLanguage`、`SymbolLanguageRegistry`（含 `SymbolLanguageRegistration`、`SymbolLanguageClassifier`） |
 | 采集 | `SymbolTableRouting`（含 `SymbolOffsetIndexing`）、`SymbolSweep`（含 `SweptSymbolTable`、`SymbolExportFacts`） |
 | C/C++ store | `SymbolIndexStore`、`SharedCacheEvictionGroup+MachOSymbols`（`.symbolStore`） |
@@ -37,7 +37,7 @@
 
 只看名字开头的字节，不 demangle。`SymbolLanguage` 是以字符串 `rawValue`（给人看的语言名）为身份的 struct，别的包在扩展里加静态成员。一个名字的语言按这个顺序定：
 
-1. **C++**（本包内置）：`__Z`、`___Z`（C++ 函数里的 block）。在任何注册的语言之前判，注册的识别器看不到这些名字。
+1. **C++**（本包内置）：`__Z`；C++ 函数里的 block 在符号表里是 `____Z…_block_invoke`（加了 Darwin 的下划线），不带这个下划线时是 `___Z…`，两种都认。在任何注册的语言之前判，注册的识别器看不到这些名字。
 2. **已注册的语言**，按注册顺序，第一个认领的胜出。目前有两门，前缀表都在各自的包里：
    - Swift：MachOSwiftSection 的 `SwiftSymbols`（`.swift`），前缀与 swift-demangling 的 `isSwiftSymbol` 等价，由它的 `SymbolTableEquivalenceTests` 在真实符号表上钉住。
    - Objective-C：MachOObjCSection（`.objectiveC`），`-[`、`+[`、`_OBJC_`、`__OBJC_`、`l_OBJC_`、`L_OBJC_`、`_objc_msgSend$`。
@@ -56,6 +56,7 @@
 routing 有三个要求，正好是两个 store 在采集里不同的地方：名字进哪张表（或不收）、每张表怎么按偏移索引（`SymbolOffsetIndexing`：`.nameOnly`、`.byOffset`、`.byOffsetWithSortedOffsets`、`.sortedOffsetsOnly`）、是否允许零拷贝。routing 拿到的 `SymbolLanguage` 来自采集时给的注册表（默认 `.shared`）。其余规则对所有 routing 一样：
 
 - 导入（`N_UNDF` 且 `N_EXT`，即 `isExternal`）永远不收。注意 `isExternal` 只指导入，导出的定义同样带 `N_EXT`。
+- 间接条目（`N_INDR`，即 `isIndirect`）也不收：它是逐个转出的别的镜像的符号，值是所代表名字在字符串表里的位置，不是本镜像的偏移。libc++ 就这样逐个转出 libc++abi 的 `std::exception` 成员；3.2.0 及以前收了它们，把 `std::exception::what()` 登记在字符串表的位置上，C++ 作用域树也因此凭空多出 libc++ 自己的 `std::exception`（RuntimeViewer 接入 C++ 对象时发现，测试 `IndirectSymbolEntryTests`、`IndirectSymbolEntryScopeTests`）。导出表里的转出项本来就没有偏移、不建行，与这里无关。
 - 调试条目（STABS）只占行：名字还没有行时建一个占位行，此后不改它的偏移、不登记到任何偏移。行序因此跟着调试映射走，也就是源码顺序。
 - 文件的符号值是虚拟地址，经 `SymbolValueOffsetConverter` 换成规范化偏移（独立文件是文件偏移，cache 里的镜像是「地址 − 共享区起点」）；行同时登记在原始值与规范化偏移下。进程内镜像两者相等。
 - 一个偏移可以有多行（别名、identical code folding），一行在一个偏移下只登记一次；判断不扫桶，靠「新铸的行号一定比已发出的都大」。

@@ -2,6 +2,7 @@ import Foundation
 import Testing
 import MachOKit
 import MachOKitExtensions
+import MachOFixtureSupport
 
 /// How the fixture's linker writes its fixups.
 enum SelfBindFixupFormat: String, CaseIterable, Sendable, CustomTestStringConvertible {
@@ -72,50 +73,16 @@ enum SelfBindLibrary {
     __attribute__((visibility("default"))) int *hiddenPointer = &hiddenTarget;
     """
 
-    private struct CompilationError: Swift.Error, CustomStringConvertible {
-        let diagnostics: String
-        var description: String { "self-bind library compilation failed:\n\(diagnostics)" }
-    }
-
-    private static func compile(format: SelfBindFixupFormat) -> Result<URL, Swift.Error> {
-        Result {
-            let workingDirectory = FileManager.default.temporaryDirectory
-                .appendingPathComponent("SelfBindLibrary-\(format.rawValue)-\(UUID().uuidString)")
-            try FileManager.default.createDirectory(at: workingDirectory, withIntermediateDirectories: true)
-            let sourceURL = workingDirectory.appendingPathComponent("Library.c")
-            let libraryURL = workingDirectory.appendingPathComponent("libSelfBind.dylib")
-            try source.write(to: sourceURL, atomically: true, encoding: .utf8)
-
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
-            process.arguments = ["clang", "-dynamiclib", "-Wl,-interposable"] + format.linkerArguments + [sourceURL.path, "-o", libraryURL.path]
-            let standardErrorPipe = Pipe()
-            process.standardError = standardErrorPipe
-            try process.run()
-            // Drain BEFORE waitUntilExit, or a long diagnostic deadlocks both sides.
-            let diagnosticsData = standardErrorPipe.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            guard process.terminationStatus == 0 else {
-                throw CompilationError(diagnostics: String(decoding: diagnosticsData, as: UTF8.self))
-            }
-            return libraryURL
-        }
-    }
-
-    /// Compiled once per process.
-    private static let chainedFixupsCompilation = compile(format: .chainedFixups)
-    private static let dyldInfoCompilation = compile(format: .dyldInfo)
-
-    /// A fresh `MachOFile` per call, so no test sees another's caches.
+    /// A fresh `MachOFile` per call, so no test sees another's caches. The
+    /// library is compiled once per process for each format.
     static func machOFile(format: SelfBindFixupFormat) throws -> MachOFile {
-        let libraryURL = switch format {
-        case .chainedFixups: try chainedFixupsCompilation.get()
-        case .dyldInfo: try dyldInfoCompilation.get()
-        }
-        guard case .machO(let machOFile) = try MachOKit.loadFromFile(url: libraryURL) else {
-            throw CompilationError(diagnostics: "expected a thin dylib")
-        }
-        return machOFile
+        let libraryURL = try FixtureCompiler.shared.dynamicLibrary(
+            named: "SelfBind",
+            language: .c,
+            source: source,
+            arguments: ["-Wl,-interposable"] + format.linkerArguments
+        )
+        return try HostSlice.machOFile(at: libraryURL)
     }
 
     /// The symbol's `n_value` — its offset from the load address, in a dylib

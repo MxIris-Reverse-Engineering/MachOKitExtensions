@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>0008 - C++ 签名里的类型位置，以及不带参数的外层函数</title>
+<style>
+/* Evolution proposal page, shared style (style A, "Apple documentation").
+   Copy this whole <style> block verbatim. Page-specific rules, if any, go only
+   in the marked block at the end. Must render in WebKit (Safari, Xcode preview,
+   Quick Look): no JavaScript, no external resources. */
+:root {
+  --background: #ffffff; --foreground: #1d1d1f; --secondary: #6e6e73; --separator: #d2d2d7;
+  --panel: #f5f5f7; --code-background: #f2f2f4; --accent: #0071e3;
+  --added: #1f8a4c; --added-fill: #e3f5ea;
+  --changed: #b26a00; --changed-fill: #fdf0db;
+  --removed: #c62828; --removed-fill: #fbe4e4;
+  --moved: #0066cc; --moved-fill: #e5f0fc;
+  --kept: #6e6e73; --kept-fill: #ececef;
+  --token-keyword: #ad3da4; --token-type: #3900a0; --token-string: #c41a16; --token-number: #1c00cf;
+  --token-comment: #707f8c; --token-macro: #643820;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #1c1c1e; --foreground: #f2f2f7; --secondary: #a1a1a6; --separator: #3a3a3c;
+    --panel: #2c2c2e; --code-background: #2a2a2d; --accent: #4ea1ff;
+    --added: #4cd281; --added-fill: #183826;
+    --changed: #ffb340; --changed-fill: #3d2c10;
+    --removed: #ff6b6b; --removed-fill: #3d1a1a;
+    --moved: #5aa9ff; --moved-fill: #142b45;
+    --kept: #b0b0b5; --kept-fill: #333336;
+    --token-keyword: #fc5fa3; --token-type: #d0a8ff; --token-string: #fc6a5d; --token-number: #d0bf69;
+    --token-comment: #7f8c98; --token-macro: #fd8f3f;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--background); color: var(--foreground);
+  font: 15px/1.65 -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased; }
+.page { max-width: 1080px; margin: 0 auto; padding: 28px 24px 72px; }
+.svg-definitions { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+/* Header */
+.eyebrow { margin: 0 0 6px; font-size: 13px; color: var(--secondary); }
+.crumb + .crumb::before { content: " / "; }
+h1 { font-size: 28px; line-height: 1.3; letter-spacing: -0.01em; margin: 0 0 12px; }
+h1 code { font-size: 0.8em; }
+.proposal-number { color: var(--secondary); margin-right: 4px; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 0; font-size: 13px; color: var(--secondary); }
+.meta div { display: flex; gap: 6px; align-items: baseline; }
+.meta dd { margin: 0; color: var(--foreground); }
+.meta dd code { font-size: 12px; }
+.status { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; color: var(--kept); background: var(--kept-fill); }
+.status-accepted { color: var(--moved); background: var(--moved-fill); }
+.status-in-progress { color: var(--changed); background: var(--changed-fill); }
+.status-implemented { color: var(--added); background: var(--added-fill); }
+.status-rejected, .status-withdrawn { color: var(--removed); background: var(--removed-fill); }
+
+/* Table of contents */
+.toc { margin: 22px 0 8px; padding: 8px 10px; background: var(--panel); border-radius: 12px; }
+.toc ol { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 2px 4px; }
+.toc li { margin: 0; }
+.toc a { display: inline-block; padding: 3px 11px; border-radius: 999px; color: var(--accent); text-decoration: none; font-size: 14px; }
+.toc a:hover { background: var(--background); }
+
+/* Text */
+section { scroll-margin-top: 16px; }
+h2 { font-size: 21px; margin: 40px 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--separator); }
+h3 { font-size: 16px; margin: 22px 0 8px; }
+h4 { font-size: 15px; margin: 18px 0 6px; }
+p { margin: 10px 0; }
+a { color: var(--accent); }
+ul, ol { padding-left: 22px; }
+li { margin: 4px 0; }
+blockquote { margin: 12px 0; padding: 2px 14px; border-left: 3px solid var(--separator); color: var(--secondary); }
+hr { border: none; border-top: 1px solid var(--separator); margin: 24px 0; }
+
+/* Code */
+code { font: 0.86em/1.4 ui-monospace, "SF Mono", Menlo, monospace; background: var(--code-background); padding: 1px 5px; border-radius: 5px; }
+pre { background: var(--code-background); border-radius: 10px; padding: 14px 16px; overflow-x: auto; -webkit-overflow-scrolling: touch; font: 12.5px/1.6 ui-monospace, "SF Mono", Menlo, monospace; }
+pre code { font: inherit; background: none; padding: 0; border-radius: 0; }
+.token-keyword { color: var(--token-keyword); font-weight: 600; }
+.token-type { color: var(--token-type); }
+.token-string { color: var(--token-string); }
+.token-number { color: var(--token-number); }
+.token-comment { color: var(--token-comment); }
+.token-macro { color: var(--token-macro); }
+
+/* Callouts */
+.callout { background: var(--panel); border-left: 4px solid var(--accent); border-radius: 10px; padding: 12px 16px; margin: 14px 0; }
+.callout-note { border-left-color: var(--secondary); }
+.callout-warning { border-left-color: var(--changed); }
+.callout-title { margin: 0 0 6px; font-weight: 600; }
+.callout > :last-child { margin-bottom: 0; }
+.callout ol, .callout ul { margin: 6px 0 0; }
+
+/* Diagrams */
+.legend { list-style: none; padding: 0; margin: 8px 0 12px; display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--secondary); }
+.legend li { margin: 0; }
+.swatch { display: inline-block; width: 14px; height: 14px; border-radius: 4px; border: 1.5px solid; vertical-align: -2px; margin-right: 6px; }
+.swatch-added { background: var(--added-fill); border-color: var(--added); }
+.swatch-changed { background: var(--changed-fill); border-color: var(--changed); }
+.swatch-removed { background: var(--removed-fill); border-color: var(--removed); border-style: dashed; }
+.swatch-moved { background: var(--moved-fill); border-color: var(--moved); }
+.swatch-kept { background: var(--kept-fill); border-color: var(--kept); }
+.figure { overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--separator); border-radius: 12px; padding: 12px; margin: 12px 0; }
+.figure svg { display: block; width: 100%; min-width: 760px; height: auto; }
+.figure-narrow svg { min-width: 0; max-width: 640px; margin: 0 auto; }
+.figure-caption { font-size: 13px; color: var(--secondary); margin-top: 8px; }
+svg text { font: 12px ui-monospace, "SF Mono", Menlo, monospace; fill: var(--foreground); }
+svg .group-label { font-size: 13px; font-weight: 700; }
+svg .caption { font-size: 10.5px; fill: var(--secondary); }
+svg .strike { text-decoration: line-through; }
+svg .group { fill: none; stroke: var(--separator); stroke-width: 1.5; stroke-dasharray: 5 4; }
+svg .box-added { fill: var(--added-fill); stroke: var(--added); stroke-width: 1.5; }
+svg .box-changed { fill: var(--changed-fill); stroke: var(--changed); stroke-width: 1.5; }
+svg .box-removed { fill: var(--removed-fill); stroke: var(--removed); stroke-width: 1.5; stroke-dasharray: 4 3; }
+svg .box-moved { fill: var(--moved-fill); stroke: var(--moved); stroke-width: 1.5; }
+svg .box-kept { fill: var(--kept-fill); stroke: var(--kept); stroke-width: 1.2; }
+svg .arrow { fill: none; stroke: var(--secondary); stroke-width: 1.4; marker-end: url(#arrowhead); }
+svg .arrow-weak { stroke-dasharray: 4 3; }
+svg .arrow-removed { stroke: var(--removed); stroke-dasharray: 4 3; }
+svg .arrowhead { fill: var(--secondary); }
+
+/* Tables */
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 10px 0; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th, td { border: 1px solid var(--separator); padding: 7px 9px; text-align: left; vertical-align: top; }
+th { background: var(--panel); font-weight: 600; }
+.numeric { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tag { display: inline-block; white-space: nowrap; padding: 0 7px; border-radius: 5px; font-size: 12px; font-weight: 600; color: var(--kept); background: var(--kept-fill); }
+.tag-added { color: var(--added); background: var(--added-fill); }
+.tag-changed { color: var(--changed); background: var(--changed-fill); }
+.tag-removed { color: var(--removed); background: var(--removed-fill); }
+.tag-moved { color: var(--moved); background: var(--moved-fill); }
+
+/* Collapsible sections */
+details { border: 1px solid var(--separator); border-radius: 12px; margin: 12px 0; overflow: hidden; }
+summary { cursor: pointer; list-style: none; padding: 11px 16px; font-weight: 600; background: var(--panel); }
+summary::-webkit-details-marker { display: none; }
+summary::before { content: "›"; display: inline-block; width: 1em; color: var(--secondary); -webkit-transition: -webkit-transform 0.15s; transition: transform 0.15s; }
+details[open] > summary::before { -webkit-transform: rotate(90deg); transform: rotate(90deg); }
+details[open] > summary { border-bottom: 1px solid var(--separator); }
+.details-body { padding: 4px 16px 12px; }
+
+@media (max-width: 640px) {
+  .page { padding: 20px 16px 56px; }
+  h1 { font-size: 23px; }
+}
+
+/* ===== Page-specific styles (only for elements the shared style lacks, e.g. UI mockups) ===== */
+</style>
+</head>
+<body>
+<svg class="svg-definitions" aria-hidden="true" focusable="false">
+  <defs><marker id="arrowhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrowhead" d="M 0 0 L 10 5 L 0 10 z"/></marker></defs>
+</svg>
+<div class="page">
+
+<header class="doc-header">
+  <p class="eyebrow"><span class="crumb">MachOKitExtensions</span><span class="crumb">Evolutions</span><span class="crumb">0008</span></p>
+  <h1><span class="proposal-number">0008</span> C++ 签名里的类型位置，以及不带参数的外层函数</h1>
+  <dl class="meta">
+    <div><dt>状态</dt><dd><span class="status status-implemented">Implemented</span></dd></div>
+    <div><dt>最后更新</dt><dd>2026-11-21</dd></div>
+    <div><dt>项目类型</dt><dd>库</dd></div>
+    <div><dt>原文</dt><dd><code>0008-cplusplus-signature-types.md</code></dd></div>
+  </dl>
+</header>
+
+<nav class="toc" aria-label="目录">
+  <ol>
+    <li><a href="#summary">摘要</a></li>
+    <li><a href="#architecture">架构图</a></li>
+    <li><a href="#map">改动地图</a></li>
+    <li><a href="#design">详细设计</a></li>
+    <li><a href="#research">调研</a></li>
+    <li><a href="#alternatives">替代方案</a></li>
+    <li><a href="#impact">影响</a></li>
+    <li><a href="#steps">落地步骤</a></li>
+    <li><a href="#log">决策日志</a></li>
+  </ol>
+</nav>
+
+<main class="content">
+
+<section id="summary">
+  <h2>摘要</h2>
+  <p><code>CPlusPlusSymbolName</code> 新增 <code>parameterTypeReferences</code> 与 <code>returnTypeReferences</code>：参数文本与返回类型文本里每个命名类型的作用域路径，以及它在文本里的范围（<code>Range&lt;String.Index&gt;</code>）。位置在打印文本的同一次遍历里从 AST 节点记下，调用方不必解析打印出来的文本。同时修一处漏判：局部实体的外层不带参数时（ObjC++ 里 ObjC 方法的局部静态变量，<code>Z 26-[CAMetalDrawable texture] E 9onceToken</code>），外层也是函数作用域，不再落成「未定」。纯新增 API 加一处行为修正，随 3.3.0 发布。</p>
+  <div class="callout callout-note">
+    <p class="callout-title">没有待定的事</p>
+    <p>用户选定在本包加接口、发 3.3.0，而不是在 RuntimeViewer 里解析参数文本。</p>
+  </div>
+</section>
+
+<section id="architecture">
+  <h2>架构图</h2>
+  <ul class="legend">
+    <li><i class="swatch swatch-added"></i>新增</li>
+    <li><i class="swatch swatch-changed"></i>修改</li>
+    <li><i class="swatch swatch-removed"></i>删除</li>
+    <li><i class="swatch swatch-kept"></i>不变</li>
+  </ul>
+  <div class="figure">
+  <svg viewBox="0 0 1000 330" role="img" aria-label="What changed">
+    <rect class="group" x="10" y="10" width="560" height="310" rx="10"/>
+    <text class="group-label" x="22" y="32">CPlusPlusDemangling (C++)</text>
+    <rect class="box-removed" x="25" y="44" width="250" height="34" rx="6"/><text class="strike" x="35" y="66">CachedText parameters, returnType</text>
+    <rect class="box-added" x="295" y="44" width="260" height="44" rx="6"/><text x="305" y="62">PrintedSignaturePart</text><text class="caption" x="305" y="79">text + [SignatureType{start, end, path}]</text>
+    <rect class="box-changed" x="25" y="100" width="250" height="44" rx="6"/><text x="35" y="118">forEachNamedType</text><text class="caption" x="35" y="135">was collectTypes; shared walk</text>
+    <rect class="box-added" x="295" y="100" width="260" height="44" rx="6"/><text x="305" y="118">printSignaturePart</text><text class="caption" x="305" y="135">type nodes, then print and record</text>
+    <rect class="box-added" x="295" y="160" width="260" height="60" rx="6"/><text x="305" y="178">TypeRecordingOutputBuffer</text><text class="caption" x="305" y="195">printLeft hook records [start, end)</text><text class="caption" x="305" y="210">insertion / deletion move or drop</text>
+    <rect class="box-changed" x="25" y="160" width="250" height="44" rx="6"/><text x="35" y="178">appendEnclosingFunction</text><text class="caption" x="35" y="195">bare-name encoding is a function too</text>
+    <rect class="box-added" x="25" y="240" width="530" height="44" rx="6"/><text x="35" y="258">C interface: SignaturePart, ByteRange, four getters</text><text class="caption" x="35" y="275">CPlusPlusDemanglerGetSignatureType…</text>
+    <rect class="group" x="600" y="10" width="390" height="310" rx="10"/>
+    <text class="group-label" x="612" y="32">CPlusPlusSymbols (Swift)</text>
+    <rect class="box-changed" x="615" y="44" width="360" height="60" rx="6"/><text x="625" y="62">CPlusPlusSymbolName</text><text class="caption" x="625" y="79">+ parameterTypeReferences</text><text class="caption" x="625" y="94">+ returnTypeReferences</text>
+    <rect class="box-added" x="615" y="116" width="360" height="44" rx="6"/><text x="625" y="134">TypeReference</text><text class="caption" x="625" y="151">path, range: Range&lt;String.Index&gt;</text>
+    <rect class="box-kept" x="615" y="240" width="360" height="44" rx="6"/><text x="625" y="258">CPlusPlusSymbolIndexStore</text><text class="caption" x="625" y="275">ObjC-method scopes now .function</text>
+    <path class="arrow" d="M 555 262 L 615 80"/>
+    <path class="arrow arrow-weak" d="M 275 182 L 615 262"/>
+  </svg>
+  </div>
+  <p class="figure-caption">位置与文本在同一次打印里得出；作用域树的变化只来自外层函数的提示。</p>
+</section>
+
+<section id="map">
+  <h2>改动地图</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>文件 / 类型</th><th>动作</th><th>改什么</th><th>为什么</th><th>步骤</th></tr></thead>
+    <tbody>
+      <tr><td><code>CPlusPlusDemangling/include/CPlusPlusDemangling.h</code></td><td><span class="tag tag-changed">修改</span></td><td><code>CPlusPlusDemanglerByteRange</code>、<code>CPlusPlusDemanglerSignaturePart</code>、四个取值函数</td><td>C 接口</td><td class="numeric">2</td></tr>
+      <tr><td><code>CPlusPlusDemangling/CPlusPlusDemangling.cpp</code></td><td><span class="tag tag-changed">修改</span></td><td>记录缓冲区、签名部分、共用遍历、外层函数提示</td><td>方案 2–4</td><td class="numeric">1、2</td></tr>
+      <tr><td><code>CPlusPlusSymbols/CPlusPlusSymbolName.swift</code></td><td><span class="tag tag-changed">修改</span></td><td><code>TypeReference</code> 与两个属性</td><td>公开接口</td><td class="numeric">2</td></tr>
+      <tr><td><code>CPlusPlusSymbols/CPlusPlusDemangler.swift</code></td><td><span class="tag tag-changed">修改</span></td><td>字节偏移换成 <code>String.Index</code></td><td>方案 5</td><td class="numeric">2</td></tr>
+      <tr><td><code>CPlusPlusSymbols/CPlusPlusScope.swift</code></td><td><span class="tag tag-changed">修改</span></td><td><code>Kind.function</code> 注释</td><td>方案 4</td><td class="numeric">1</td></tr>
+      <tr><td><code>Tests/CPlusPlusSymbolsFixture/Fixture.cpp</code></td><td><span class="tag tag-changed">修改</span></td><td>汇编标签手写 ObjC 方法局部变量名</td><td>夹具编译器不编 ObjC++</td><td class="numeric">1</td></tr>
+      <tr><td><code>CPlusPlusSymbolIndexStoreTests</code>、<code>CPlusPlusSymbolNameTests</code></td><td><span class="tag tag-changed">修改</span></td><td>一条作用域、六条类型位置</td><td>落地步骤的行为</td><td class="numeric">1、2</td></tr>
+      <tr><td><code>Internal/CPlusPlusSymbols.md</code>、<code>README.md</code>、两份索引</td><td><span class="tag tag-changed">修改</span></td><td>实现说明、示例、登记</td><td>文档同批</td><td class="numeric">3</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="design">
+  <h2>详细设计</h2>
+<pre><code><span class="token-keyword">extension</span> <span class="token-type">CPlusPlusSymbolName</span> {
+    <span class="token-keyword">public struct</span> <span class="token-type">TypeReference</span>: <span class="token-type">Hashable</span>, <span class="token-type">Sendable</span> {
+        <span class="token-keyword">public let</span> path: [<span class="token-type">String</span>]
+        <span class="token-keyword">public let</span> range: <span class="token-type">Range</span>&lt;<span class="token-type">String.Index</span>&gt;
+    }
+    <span class="token-comment">// public let parameterTypeReferences: [TypeReference]</span>
+    <span class="token-comment">// public let returnTypeReferences: [TypeReference]</span>
+}</code></pre>
+  <ul>
+    <li><strong>哪些算类型</strong>：与「当作类型用到」同一套判定（<code>forEachNamedType</code>）：命名类型记下并进入它的模板实参，指针、引用、函数类型继续往里走，遇到表达式就停。</li>
+    <li><strong>限定词不单列</strong>：记下一个类型后，到它打印完不再记别的节点；进入模板实参表才重新记。<code>both(CA::Foo, CA::Foo::Bar)</code> 得两项。</li>
+    <li><strong>排序</strong>：按起点升序，起点相同外层在前；范围只嵌套、不交错。</li>
+    <li><strong>回头改写</strong>：<code>notifyInsertion</code> 挪动范围，<code>notifyDeletion</code> 丢弃越界的范围。</li>
+    <li><strong>代价</strong>：随 <code>CPlusPlusSymbolName</code> 一起算；建作用域树不构造它，不受影响。</li>
+  </ul>
+</section>
+
+<section id="research">
+  <h2>调研</h2>
+  <details>
+    <summary>打印钩子、回头改写、名字复用、ObjC 方法的局部名</summary>
+    <div class="details-body">
+      <ul>
+        <li><code>OutputBuffer</code> 的虚函数 <code>printLeft</code>/<code>printRight</code> 与 <code>notifyInsertion</code>/<code>notifyDeletion</code>；子节点打印都经过钩子（直接 16 处、经 <code>print</code> 72 处）。<code>Node::printLeft</code> 私有，派生类调 <code>OutputBuffer::printLeft</code>。</li>
+        <li><code>insert</code> 与 <code>setCurrentPosition</code> 回退会改动已打印的文字。</li>
+        <li>替换让同一节点多处出现：<code>S0_</code> 在 <code>CA::Foo::Bar</code> 里复用 <code>CA::Foo</code>。</li>
+        <li><code>_ZZ26-[CAMetalDrawable texture]E9onceToken</code> 的 encoding 是不带参数的 <code>NameType</code>；文法上 <code>Z … E</code> 的外层总是函数。</li>
+      </ul>
+    </div>
+  </details>
+</section>
+
+<section id="alternatives">
+  <h2>替代方案</h2>
+  <ul>
+    <li>下游解析参数文本：本包有 AST，否决。</li>
+    <li>公开 <code>referencedTypePaths</code> 让下游去文本里搜：位置靠搜索会错位，否决。</li>
+    <li>返回带标注的文本：本包不定义展示类型，范围加路径更中性。</li>
+  </ul>
+</section>
+
+<section id="impact">
+  <h2>影响</h2>
+  <ul>
+    <li><strong>源码兼容</strong>：纯新增；ObjC 方法一类外层的 <code>kind</code> 从 <code>.undetermined</code> 变成 <code>.function</code>。</li>
+    <li><strong>ABI</strong>：不适用，SPM 源码分发。</li>
+    <li><strong>下游</strong>：RuntimeViewer 抬到 3.3.0，参数与返回类型里的类型着色并可跳转，QuartzCore 不再列出以 ObjC 方法命名的命名空间；MachOSwiftSection、MachOObjCSection 不受影响。</li>
+    <li><strong>版本</strong>：semver minor，3.3.0。</li>
+  </ul>
+</section>
+
+<section id="steps">
+  <h2>落地步骤</h2>
+  <ol>
+    <li><strong>[完成] 外层不带参数的局部名是函数作用域</strong> —— <code>objectiveCMethodWithALocalIsAFunctionScope</code></li>
+    <li><strong>[完成] 签名里的类型位置</strong> —— 六条 <code>CPlusPlusSymbolNameTests</code>，<code>__cxa_demangle</code> 逐字比对仍通过</li>
+    <li><strong>[完成] 文档</strong> —— 实现说明、README、索引</li>
+  </ol>
+</section>
+
+<section id="log">
+  <h2>决策日志</h2>
+  <details>
+    <summary>5 条，最近一条：Implemented</summary>
+    <div class="details-body">
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>日期</th><th>变更</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td class="numeric">2026-11-21</td><td>Created</td><td>RuntimeViewer 的伪头文件里参数类型不着色、QuartzCore 列出以 ObjC 方法命名的命名空间；用户选择在本包加接口、发 3.3.0。</td></tr>
+          <tr><td class="numeric">2026-11-21</td><td>只记「当作类型用到」的节点</td><td>复用 <code>collectTypes</code> 的遍历，遇到表达式就停，避免把非类型实参里的名字当类型。</td></tr>
+          <tr><td class="numeric">2026-11-21</td><td>限定词不单列</td><td>打印一个类型的名字时不再记别的节点，进模板实参表才重新记。</td></tr>
+          <tr><td class="numeric">2026-11-21</td><td>夹具用汇编标签</td><td>夹具编译器不编 ObjC++，加语言要改公开枚举；已有 <code>__asm__</code> 先例。</td></tr>
+          <tr><td class="numeric">2026-11-21</td><td>Implemented</td><td>测试先红后绿，全量通过；快进合入 <code>main</code>，发布 3.3.0。</td></tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </details>
+</section>
+
+</main>
+</div>
+</body>
+</html>

@@ -127,13 +127,13 @@ struct SourceScanTests {
         try String(contentsOf: fileURL, encoding: .utf8).components(separatedBy: .newlines).enumerated().map { ($0.offset + 1, $0.element) }
     }
 
-    /// Every Swift file of `Sources/MachOCodeReferences`.
+    /// Every Swift file of `Sources/Analysis/MachOCodeReferences`.
     private static func moduleSourceFiles() throws -> [URL] {
         let moduleDirectory = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()  // MachOCodeReferencesTests
             .deletingLastPathComponent()  // Tests
             .deletingLastPathComponent()  // package root
-            .appendingPathComponent("Sources/MachOCodeReferences")
+            .appendingPathComponent("Sources/Analysis/MachOCodeReferences")
         let enumerator = try #require(FileManager.default.enumerator(at: moduleDirectory, includingPropertiesForKeys: nil))
         var files: [URL] = []
         for case let fileURL as URL in enumerator where fileURL.pathExtension == "swift" {

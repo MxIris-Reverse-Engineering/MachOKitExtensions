@@ -126,6 +126,28 @@ let package = Package(
             name: "MachOCodeReferences",
             targets: ["MachOCodeReferences"]
         ),
+        // C++ symbol names taken apart, and an image's C++ symbols arranged
+        // by the scopes they sit in. Not part of `MachOFoundation`: it
+        // carries a C++ demangler that most clients have no use for.
+        .library(
+            name: "CPlusPlusSymbols",
+            targets: ["CPlusPlusSymbols"]
+        ),
+        // Test support this package's tests and MachOSwiftSection's share
+        // (MachOSwiftSection proposal shared-macho-testing-support). Link them
+        // to test targets only. `MachOFixtureSupport` names and opens the
+        // images tests read and compiles throwaway libraries without the
+        // testing library; `MachOTestingSupport` adds what needs it: test
+        // base classes, cross-reader assertions and the per-image exclusion
+        // trait.
+        .library(
+            name: "MachOFixtureSupport",
+            targets: ["MachOFixtureSupport"]
+        ),
+        .library(
+            name: "MachOTestingSupport",
+            targets: ["MachOTestingSupport"]
+        ),
     ],
     dependencies: [
         .package(
@@ -158,6 +180,14 @@ let package = Package(
             url: "https://github.com/p-x9/swift-fileio.git",
             from: "0.13.0"
         ),
+        // `Mutex` from OSToolbox, the lock of every cache and registry here and
+        // of the test support: the standard library's needs macOS 15,
+        // OSAllocatedUnfairLock macOS 13, and this package reaches back to
+        // macOS 10.15. MachOSwiftSection depends on it as well.
+        .package(
+            url: "https://github.com/Mx-Iris/FrameworkToolbox",
+            from: "0.17.0"
+        ),
     ],
     targets: [
         .target(
@@ -165,7 +195,9 @@ let package = Package(
             dependencies: [
                 "MachOKit",
                 .product(name: "AssociatedObject", package: "AssociatedObject"),
-            ]
+                .product(name: "OSToolbox", package: "FrameworkToolbox"),
+            ],
+            path: "Sources/Core/MachOKitExtensions"
         ),
         .target(
             name: "MachOReading",
@@ -173,7 +205,8 @@ let package = Package(
                 "MachOKit",
                 "MachOKitExtensions",
                 .product(name: "FileIO", package: "swift-fileio"),
-            ]
+            ],
+            path: "Sources/Reading/MachOReading"
         ),
         .target(
             name: "MachOResolving",
@@ -181,7 +214,8 @@ let package = Package(
                 "MachOKit",
                 "MachOKitExtensions",
                 "MachOReading",
-            ]
+            ],
+            path: "Sources/Reading/MachOResolving"
         ),
         .target(
             name: "MachOPointers",
@@ -190,21 +224,26 @@ let package = Package(
                 "MachOKitExtensions",
                 "MachOReading",
                 "MachOResolving",
-            ]
+            ],
+            path: "Sources/Reading/MachOPointers"
         ),
         .target(
             name: "MachOCaches",
             dependencies: [
                 "MachOKit",
                 "MachOKitExtensions",
-            ]
+                .product(name: "OSToolbox", package: "FrameworkToolbox"),
+            ],
+            path: "Sources/Images/MachOCaches"
         ),
         .target(
             name: "MachODependencies",
             dependencies: [
                 "MachOKit",
                 "MachOKitExtensions",
-            ]
+                .product(name: "OSToolbox", package: "FrameworkToolbox"),
+            ],
+            path: "Sources/Images/MachODependencies"
         ),
         .target(
             name: "MachOSymbols",
@@ -213,7 +252,9 @@ let package = Package(
                 "MachOKitExtensions",
                 "MachOResolving",
                 "MachOCaches",
-            ]
+                .product(name: "OSToolbox", package: "FrameworkToolbox"),
+            ],
+            path: "Sources/Symbols/MachOSymbols"
         ),
         .target(
             name: "MachOBase",
@@ -222,7 +263,8 @@ let package = Package(
                 "MachOReading",
                 "MachOResolving",
                 "MachOPointers",
-            ]
+            ],
+            path: "Sources/Umbrellas/MachOBase"
         ),
         .target(
             name: "MachOFoundation",
@@ -230,12 +272,14 @@ let package = Package(
                 "MachOBase",
                 "MachOSymbols",
                 "MachODependencies",
-            ]
+            ],
+            path: "Sources/Umbrellas/MachOFoundation"
         ),
         // Hand readers for the few A64 encodings the analyses decode, and the
         // trampoline shapes the linker and the dyld cache builder emit.
         .target(
-            name: "ARM64InstructionDecoding"
+            name: "ARM64InstructionDecoding",
+            path: "Sources/Analysis/ARM64InstructionDecoding"
         ),
         // One image's address space and the stubs and pointer slots on the
         // way to a function, read from a Mach-O file.
@@ -246,7 +290,9 @@ let package = Package(
                 "MachOKitExtensions",
                 "MachOReading",
                 "ARM64InstructionDecoding",
-            ]
+                .product(name: "OSToolbox", package: "FrameworkToolbox"),
+            ],
+            path: "Sources/Analysis/MachOAddressResolution"
         ),
         // The language-free core of the cross-reference analysis: image
         // memory, function tables, the instruction scan and the recognizer
@@ -260,11 +306,93 @@ let package = Package(
                 "MachOReading",
                 "MachOAddressResolution",
                 "ARM64InstructionDecoding",
+                .product(name: "OSToolbox", package: "FrameworkToolbox"),
+            ],
+            path: "Sources/Analysis/MachOCodeReferences"
+        ),
+        // LLVM's Itanium demangler, vendored verbatim from libc++abi under
+        // `ItaniumDemangle/` (Apache-2.0 WITH LLVM-exception), behind a plain
+        // C interface, so that Swift reads C++ names without C++
+        // interoperability.
+        .target(
+            name: "CPlusPlusDemangling",
+            path: "Sources/Symbols/CPlusPlusDemangling",
+            exclude: [
+                "ItaniumDemangle/ItaniumNodes.def",
+                "ItaniumDemangle/LICENSE.TXT",
+            ]
+        ),
+        .target(
+            name: "CPlusPlusSymbols",
+            dependencies: [
+                "MachOKit",
+                "MachOKitExtensions",
+                "MachOResolving",
+                "MachOCaches",
+                "MachOSymbols",
+                "MachOReading",
+                "MachOAddressResolution",
+                "MachODependencies",
+                "CPlusPlusDemangling",
+                .product(name: "OSToolbox", package: "FrameworkToolbox"),
+            ],
+            path: "Sources/Symbols/CPlusPlusSymbols"
+        ),
+        .target(
+            name: "MachOFixtureSupport",
+            dependencies: [
+                "MachOKit",
+                "MachOKitExtensions",
+                .product(name: "OSToolbox", package: "FrameworkToolbox"),
+            ],
+            path: "Sources/TestSupport/MachOFixtureSupport"
+        ),
+        .target(
+            name: "MachOTestingSupport",
+            dependencies: [
+                "MachOFixtureSupport",
+                "MachOReading",
+                "MachOKitExtensions",
+                "MachOKit",
+            ],
+            path: "Sources/TestSupport/MachOTestingSupport"
+        ),
+        .testTarget(
+            name: "MachOTestingSupportTests",
+            dependencies: [
+                "MachOTestingSupport",
+                "MachOFixtureSupport",
+                "MachOReading",
+                "MachOKitExtensions",
+                "MachOKit",
+            ]
+        ),
+        // C++ code with known symbols for the C++ symbol index tests. Not a
+        // product.
+        .target(
+            name: "CPlusPlusSymbolsFixture",
+            path: "Tests/CPlusPlusSymbolsFixture"
+        ),
+        .testTarget(
+            name: "CPlusPlusSymbolsTests",
+            dependencies: [
+                "MachOTestingSupport",
+                "MachOFixtureSupport",
+                "CPlusPlusSymbols",
+                "CPlusPlusDemangling",
+                "CPlusPlusSymbolsFixture",
+                "MachOSymbols",
+                "MachOResolving",
+                "MachOReading",
+                "MachODependencies",
+                "MachOKitExtensions",
+                "MachOKit",
             ]
         ),
         .testTarget(
             name: "MachOAddressResolutionTests",
             dependencies: [
+                "MachOFixtureSupport",
                 "MachOAddressResolution",
                 "MachOReading",
                 "ARM64InstructionDecoding",
@@ -285,6 +413,7 @@ let package = Package(
         .testTarget(
             name: "MachOKitExtensionsTests",
             dependencies: [
+                "MachOFixtureSupport",
                 "MachOKitExtensions",
                 "MachOKit",
                 "MachOSymbols",
@@ -309,6 +438,7 @@ let package = Package(
         .testTarget(
             name: "MachODependenciesTests",
             dependencies: [
+                "MachOFixtureSupport",
                 "MachODependencies",
                 "MachOCaches",
                 "MachOKitExtensions",
@@ -318,6 +448,7 @@ let package = Package(
         .testTarget(
             name: "MachOSymbolsTests",
             dependencies: [
+                "MachOFixtureSupport",
                 "MachOSymbols",
                 "MachOResolving",
                 "MachOKitExtensions",
@@ -327,10 +458,60 @@ let package = Package(
         .testTarget(
             name: "MachOReadingTests",
             dependencies: [
+                "MachOFixtureSupport",
                 "MachOReading",
                 "MachOKitExtensions",
                 "MachOKit",
             ]
         ),
-    ]
+    ],
+    // `ItaniumDemangle.h` is C++17.
+    cxxLanguageStandard: .cxx17
 )
+
+// MARK: - Upcoming features
+
+// Every Swift target adopts three upcoming features that Swift 7 turns on:
+// ExistentialAny, MemberImportVisibility and InferIsolatedConformances.
+// MachOSwiftSection's proposal swift6-mode-and-upcoming-features covers the
+// MachO packages together.
+let upcomingFeatureSettings: [SwiftSetting] = [
+    .enableUpcomingFeature("ExistentialAny"),
+    .enableUpcomingFeature("MemberImportVisibility"),
+    .enableUpcomingFeature("InferIsolatedConformances"),
+]
+
+for target in package.targets where target.type != .system && target.type != .binary && target.type != .plugin {
+    target.swiftSettings = (target.swiftSettings ?? []) + upcomingFeatureSettings
+}
+
+// MARK: - Tuist development workspace
+
+// MachOSwiftSection's Tuist development workspace (its Documentations/Internal/TuistDevelopment.md)
+// maps this package's tests with Tuist, which rejects shapes SwiftPM accepts: a test that depends on
+// an executable target or on a macro target (Tuist builds a macro as a plugin, so `@testable import`
+// of it finds no module), and a test that depends on a target no product contains. Only while Tuist
+// resolves the packages, with TUIST_MAPS_LOCAL_PACKAGE_TESTS=1, the first kinds are left out — the
+// macro expansion tests then run under `swift test` only — and the last kind gets a library product
+// of its own. Nothing changes without the variable.
+if Context.environment["TUIST_MAPS_LOCAL_PACKAGE_TESTS"] == "1" {
+    let executableOrMacroTargetNames = Set(package.targets.filter { $0.type == .executable || $0.type == .macro }.map(\.name))
+    func dependencyName(_ dependency: Target.Dependency) -> String? {
+        switch dependency {
+        case .targetItem(let name, _), .byNameItem(let name, _):
+            return name
+        default:
+            return nil
+        }
+    }
+    package.targets.removeAll { target in
+        target.type == .test && target.dependencies.contains { dependency in
+            dependencyName(dependency).map(executableOrMacroTargetNames.contains) ?? false
+        }
+    }
+    let productTargetNames = Set(package.products.flatMap { product in (product as? Product.Library)?.targets ?? [] })
+    let testDependencyNames = Set(package.targets.filter { $0.type == .test }.flatMap { $0.dependencies.compactMap(dependencyName) })
+    package.products += package.targets
+        .filter { target in target.type == .regular && testDependencyNames.contains(target.name) && !productTargetNames.contains(target.name) }
+        .map { target in Product.library(name: target.name, targets: [target.name]) }
+}

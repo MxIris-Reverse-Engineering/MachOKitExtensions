@@ -3,6 +3,7 @@ import Testing
 import MachOKit
 import MachOKitExtensions
 @_spi(Internals) import MachOSymbols
+import MachOFixtureSupport
 
 /// A host's wrapper — MachOKitUI's `MachOFileSource` — around a file read
 /// out of the system dyld shared cache.
@@ -26,7 +27,7 @@ struct WrappedReaderSymbolIndexTests {
         // files) keeps one row, at the last definition the table lists.
         let symbolValueOffsetConverter = SymbolValueOffsetConverter(for: combine)
         var expectedOffsetByName: [String: Int] = [:]
-        for symbol in combine.symbols where !symbol.nlist.isExternal && !symbol.nlist.isDebuggingEntry && SymbolLanguage(ofSymbolNamed: symbol.name) == .c {
+        for symbol in combine.symbols where !symbol.nlist.isExternal && !symbol.nlist.isIndirect && !symbol.nlist.isDebuggingEntry && SymbolLanguage(ofSymbolNamed: symbol.name) == .c {
             expectedOffsetByName[symbol.name] = symbolValueOffsetConverter.offset(forSymbolValue: symbol.offset)
         }
         try #require(!expectedOffsetByName.isEmpty)

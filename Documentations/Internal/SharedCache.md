@@ -14,7 +14,7 @@
 - `SharedCacheRegistry` + `SharedCacheEvictionGroup`：谁认领了哪个镜像的哪些缓存、最后一个持有者走了清什么、宿主想在内存压力下清什么。
 - `SharedCacheBuildPromise`：在途构建的会合点，等待者在 `NSCondition` 上睡。
 
-依赖只有 `MachOKit` 与 `MachOKitExtensions`（为了 `MachORepresentableWithCache` 与 `MachOTargetIdentifier`）。整个模块以 `@_spi(Internals)` 暴露：MachOSwiftSection 跨包构造缓存、驱动驱逐都经这个 SPI；RuntimeViewer 这类宿主不直接用它，经 `SwiftDeclarationIndexer` 与各个 store 的实例 API 间接使用。锁一律是 `NSLock`（迁入前 `SharedCache` 用的是 FrameworkToolbox 的 `@Mutex`，本包不依赖 FrameworkToolbox）。
+依赖 `MachOKit`、`MachOKitExtensions`（为了 `MachORepresentableWithCache` 与 `MachOTargetIdentifier`）与 FrameworkToolbox 的 `OSToolbox`（只为 `Mutex`）。整个模块以 `@_spi(Internals)` 暴露：MachOSwiftSection 跨包构造缓存、驱动驱逐都经这个 SPI；RuntimeViewer 这类宿主不直接用它，经 `SwiftDeclarationIndexer` 与各个 store 的实例 API 间接使用。锁一律是 OSToolbox 的 `Mutex`：用法与标准库的一样，但没有系统版本限制（标准库的要 macOS 15，`OSAllocatedUnfairLock` 要 macOS 13，本包下限是 macOS 10.15）；与 `NSLock` 一样不可重入。本包原先全用 `NSLock`，2026-11 统一换成 `Mutex`。`Storage` 不要求 `Sendable`，所以 `SharedCache` 的条目字典经 `withLockUnchecked` 读写（`withLock` 不让把调用方还拿着的非 `Sendable` 值存进去或交出来），理由写在 `withStorageByKey` 的注释里；类型本身因此不再需要 `@unchecked Sendable`。在途构建的会合点 `SharedCacheBuildPromise` 仍用 `NSCondition`。
 
 ## 文件 → 子系统对照
 
@@ -108,7 +108,7 @@ package final class ObjCClassMethodIndex: @unchecked Sendable {
 
 ## 4. 契约与坑
 
-- **新加一个按镜像的 cache**：在自己模块的 `SharedCacheEvictionGroup+<模块>.swift` 里选或加一个 group 常量；持有者按第 1 节的形状写，条目引用了别的 group 的存储就加 `follows:`；在这份文档的对照表登记。`MachOCaches` 不用动。不要再手写 `NSLock` 加字典。
+- **新加一个按镜像的 cache**：在自己模块的 `SharedCacheEvictionGroup+<模块>.swift` 里选或加一个 group 常量；持有者按第 1 节的形状写，条目引用了别的 group 的存储就加 `follows:`；在这份文档的对照表登记。`MachOCaches` 不用动。不要再手写一把锁加字典。
 - **构建闭包里不要查自己的 cache**：同线程会崩，跨线程会挂。需要别的 cache 可以（`buildClosureMayResolveOtherKey` 钉住）。
 - **符号索引里的公开类型布局变了要 `swift package clean`**（MachOSwiftSection AGENTS.md 的既有契约）：`SwiftSymbolIndexStore` 不再是 `SharedCache` 的子类就是这样一次变化。
 - **测试怎么写**：`SharedCache(evictionGroup:follows:registry:)` 与 `SharedCacheRegistry()` 都在 `@_spi(Internals)` 下公开（迁入前是 `package`，跨包后看不到），测试自建注册表、用 `SharedCacheKey(opaque:)` 造键、用 `resolve(key:)` 驱动，不需要真镜像；端到端规则由 MachOSwiftSection 的 `SwiftIndexingTests/PerImageCacheEvictionTests` 在 fixture 上钉。

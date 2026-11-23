@@ -3,7 +3,7 @@
 交叉引用分析与语言无关的核心层：读取层（`CrossReferenceMemory`，进程内与文件两种实现）、与读取器无关的镜像描述 `CodeImage` 与 `__LINKEDIT` 读法 `ImageLinkEdit`、镜像集 `CodeImageSet`（进程内、cache 文件、一组独立文件三个构造器；镜像、路径、内存区间、按镜像缓存的函数表、链接关系与改名再导出）、函数表 `ImageFunctionTable` 与它的附件机制、指令扫描 `ReferenceScanner` 与寄存器跟踪 `RegisterFile`、调用目标解析 `CallTargetResolver`、按导入名与链接关系预筛、导出表起名 `ExportedFunctionNames`、地址结构判断 `AddressPlace`，以及识别器扩展点（`CodeReferenceRecognitionSession`、`CodeReferenceRecording`）。
 
 - 来历：MachOSwiftSection 提案 0097（离线交叉引用与地址符号化）在那边把交叉引用拆成三层，核心层叫 `CrossReferenceCore`；MachOSwiftSection 提案 [0098 move-cross-reference-layers](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0098-move-cross-reference-layers.md) 把它搬来本包，改名 `MachOCodeReferences`，随 2.0.0 发布。
-- 依赖：MachOKit（两处 `@_spi(Support)`，为了 `MemoryTrieTree`）、`MachOKitExtensions`、`MachOReading`（只用 `InProcessContext.addressMask`）、[MachOAddressResolution](MachOAddressResolution.md)（文件模式的槽解析与地址空间）、[ARM64InstructionDecoding](ARM64InstructionDecoding.md)。
+- 依赖：MachOKit（两处 `@_spi(Support)`，为了 `MemoryTrieTree`）、`MachOKitExtensions`、`MachOReading`（只用 `InProcessContext.addressMask`）、[MachOAddressResolution](MachOAddressResolution.md)（文件模式的槽解析与地址空间）、[ARM64InstructionDecoding](ARM64InstructionDecoding.md)、FrameworkToolbox 的 `OSToolbox`（只为 `Mutex`）。
 - 使用方：MachOObjCSection 的 `ObjCCodeReferences`（ObjC 层）与 MachOSwiftSection 的 `CrossReferenceAnalysis`（Swift 层兼对外的分析器 `CrossReferenceAnalyzer`）。
 
 ## 接口只给 MachOSwiftSection 用

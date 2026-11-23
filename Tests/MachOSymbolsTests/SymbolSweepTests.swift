@@ -3,6 +3,7 @@ import Testing
 import MachOKit
 import MachOKitExtensions
 @_spi(Internals) @testable import MachOSymbols
+import MachOFixtureSupport
 
 /// Files C++ names under `.cPlusPlus`, the Objective-C runtime stand-in's
 /// names under `.objectiveCRuntime` (not indexed by offset) and C names under
@@ -83,17 +84,11 @@ struct SymbolSweepTests {
         try #require(MachOImage(name: name), "\(name) is not loaded")
     }
 
-    /// The arm64e slice of `/usr/bin/curl`: a main executable, whose
-    /// `__TEXT` sits at 0x100000000, so a symbol value and the file offset
-    /// the sweep files it under differ.
+    /// The slice of `/usr/bin/curl` this process runs: a main executable,
+    /// whose `__TEXT` sits at 0x100000000, so a symbol value and the file
+    /// offset the sweep files it under differ.
     private static func curl() throws -> MachOFile {
-        switch try MachOKit.loadFromFile(url: URL(fileURLWithPath: "/usr/bin/curl")) {
-        case .machO(let machOFile):
-            return machOFile
-        case .fat(let fatFile):
-            let machOFiles = try fatFile.machOFiles()
-            return try #require(machOFiles.first { $0.header.cpuType == .arm64 } ?? machOFiles.first)
-        }
+        try HostSlice.machOFile(at: URL(fileURLWithPath: "/usr/bin/curl"))
     }
 
     @Test func sweepFilesEachNameIntoTheTableItsRoutingChooses() throws {
@@ -154,7 +149,7 @@ struct SymbolSweepTests {
         let image = MachOImage.current()
         var realOffsetByName: [String: Int] = [:]
         var debugEntryNames: Set<String> = []
-        for symbol in image.symbols where !symbol.nlist.isExternal {
+        for symbol in image.symbols where !symbol.nlist.isExternal && !symbol.nlist.isIndirect {
             if symbol.nlist.isDebuggingEntry {
                 debugEntryNames.insert(symbol.name)
             } else {
@@ -183,7 +178,7 @@ struct SymbolSweepTests {
         let symbolTable = SymbolSweep(sweeping: image, routing: LanguageRouting(mayReferenceStringTablesOfLoadedImages: true), languageRegistry: languageRegistry)[.other].symbolTable
 
         var expectedOffsetByName: [String: Int] = [:]
-        for symbol in image.symbols where !symbol.nlist.isExternal && !symbol.nlist.isDebuggingEntry && SymbolLanguage(ofSymbolNamed: symbol.name, registry: languageRegistry) == .c {
+        for symbol in image.symbols where !symbol.nlist.isExternal && !symbol.nlist.isIndirect && !symbol.nlist.isDebuggingEntry && SymbolLanguage(ofSymbolNamed: symbol.name, registry: languageRegistry) == .c {
             expectedOffsetByName[symbol.name] = symbol.offset
         }
         for exportedSymbol in image.exportedSymbols where SymbolLanguage(ofSymbolNamed: exportedSymbol.name, registry: languageRegistry) == .c {
@@ -219,13 +214,7 @@ struct SymbolSweepTests {
 
     @Test(.enabled(if: FileManager.default.fileExists(atPath: objectFilePath)))
     func exportFactsAreNilForAnImageWithoutAnExportTrie() throws {
-        let objectFile: MachOFile
-        switch try MachOKit.loadFromFile(url: URL(fileURLWithPath: objectFilePath)) {
-        case .machO(let machOFile):
-            objectFile = machOFile
-        case .fat(let fatFile):
-            objectFile = try #require(try fatFile.machOFiles().first)
-        }
+        let objectFile = try HostSlice.machOFile(at: URL(fileURLWithPath: objectFilePath))
         let swept = SymbolSweep(sweeping: objectFile, routing: EverythingRouting())[.all]
         try #require(swept.symbolTable.rowCount > 0)
         #expect(!swept.exportFacts.hasExportInformation)
@@ -323,7 +312,7 @@ extension SymbolSweepTests {
     /// `recognizes` accepts. The export trie adds none.
     private static func expectedOffsets(of image: MachOImage, where recognizes: (UnsafePointer<CChar>) -> Bool) -> Set<Int> {
         var offsets: Set<Int> = []
-        for symbol in image.symbols where !symbol.nlist.isExternal && !symbol.nlist.isDebuggingEntry && symbol.name.withCString(recognizes) {
+        for symbol in image.symbols where !symbol.nlist.isExternal && !symbol.nlist.isIndirect && !symbol.nlist.isDebuggingEntry && symbol.name.withCString(recognizes) {
             offsets.insert(symbol.offset)
         }
         return offsets

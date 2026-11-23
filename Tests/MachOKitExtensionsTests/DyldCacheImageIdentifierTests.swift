@@ -3,12 +3,13 @@ import Foundation
 import Testing
 import MachOKit
 import MachOKitExtensions
+import MachOFixtureSupport
 
 private enum ArchivedCaches {
     static let swiftUIPath = "/System/Library/Frameworks/SwiftUI.framework/Versions/A/SwiftUI"
 
     static func url(of version: String) -> URL {
-        URL(fileURLWithPath: "/Volumes/DyldSharedCaches/macOS/\(version)/dyld_shared_cache_arm64e")
+        DyldSharedCachePath.macOS(version).url
     }
 
     static var areAvailable: Bool {
