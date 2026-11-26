@@ -18,10 +18,12 @@ import MachOFixtureSupport
 /// - `loadsThroughSlotAddress` builds the slot's address and loads through
 ///   it; `loadsThroughCopiedSlotAddress` copies the address to another
 ///   register first. `loadsSlot` is the usual `adrp` / `ldr` pair.
-/// - `offsetAtMergePoint` reads an offset variable through an `adrp` / `add`
-///   address at an instruction two paths reach, the shape of Finder 26.5.2's
-///   `-[TTaskErrorOrConflictViewController setResolutionsForKind:]`;
-///   `offsetStraight` reads it with no branch before.
+/// - `offsetAtMergePoint` builds one offset variable's address on each of two
+///   paths and loads through it where they meet, the shape of Finder
+///   26.5.2's `-[TTaskErrorOrConflictViewController setResolutionsForKind:]`
+///   (`0x1002bba64` and `0x1002bbb18` build `_middleResolution`'s and
+///   `_rightResolution`'s, `0x1002bbb1c` loads); `offsetStraight` builds and
+///   loads one with no branch between.
 /// - `takesFunctionAddress` builds `offsetStraight`'s address with `adrp` /
 ///   `add`, `takesFunctionAddressWithAdr` with `adr`, and
 ///   `takesInteriorAddress` builds an address inside `offsetStraight`.
@@ -74,13 +76,15 @@ enum ScanShapesFixture {
     _offsetAtMergePoint:
         cmp w1, #1
         b.ne 1f
-        mov w8, #4
+        mov w8, #5
+        adrp x9, _secondOffsetVariable@PAGE
+        add x9, x9, _secondOffsetVariable@PAGEOFF
         b 2f
     1:
         mov w8, #7
-    2:
         adrp x9, _offsetVariable@PAGE
         add x9, x9, _offsetVariable@PAGEOFF
+    2:
         ldrsw x9, [x9]
         str w8, [x0, x9]
         ret
@@ -121,6 +125,9 @@ enum ScanShapesFixture {
         .globl _offsetVariable
     _offsetVariable:
         .long 40
+        .globl _secondOffsetVariable
+    _secondOffsetVariable:
+        .long 36
 
         .section __DATA,__ref_slots
         .p2align 3
