@@ -28,9 +28,9 @@
 
 各子系统的分工、关键契约、文件模式、引用路线、地址符号化与吞吐实测，写在 MachOSwiftSection 的 [Modules/CrossReferenceAnalysis.md](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Internal/Modules/CrossReferenceAnalysis.md)：三层的代码一起演进，那份文档是它们的总说明，这里不重复。
 
-## 算出的地址落在槽上、函数起点（提案 cross-reference-recall-gaps）
+## 算出的地址落在槽上、函数起点（MachOSwiftSection 提案 0113）
 
-MachOSwiftSection 提案 [cross-reference-recall-gaps](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/draft-cross-reference-recall-gaps.md) 的复测在 Finder 26.5.2 与 ControlCenter 26.7 上找到几处扫描漏记，核心层补了三条：
+MachOSwiftSection 提案 [0113-cross-reference-recall-gaps](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/0113-cross-reference-recall-gaps.md) 的复测在 Finder 26.5.2 与 ControlCenter 26.7 上找到几处扫描漏记，核心层补了三条：
 
 - **算出的地址落在引用槽上，就在这条指令上按读槽处理。** `adrp; add` 或 `adr` 算出的地址是本镜像的 GOT、会话报的引用节（`__objc_classrefs`），或 cache 的共用 GOT 池里的槽时，走 `noteSlotReference(fromSlot:at:)`，路线记 `.pointerSlot`。优化过的 Swift 代码把 ObjC 类的 GOT 槽地址放进 `x2` 交给合并后的元数据访问器（`$sSo…CMaTm`），自己从不载入，ControlCenter 有 554 处。共用 GOT 池的判断（`isSlotOutsideEveryImage`）按地址记在地址认领缓存里（`referenceSlotClaim`）。
 - **算出的地址落在会话观察的槽上，就在这条指令上通知会话。** 观察的槽是 ivar 偏移变量（`__objc_ivar`）、`__objc_superrefs`、`__objc_selrefs`。Finder 的 `-[TTaskErrorOrConflictViewController setResolutionsForKind:]` 在两条路径上各算一个 ivar 偏移变量的地址，汇合到同一条 `ldrsw x9, [x9]`；汇合处 `x9` 两边不一致、按规则作废，载入处就认不出读的是哪个，所以只有算地址的那条指令能说出它。
