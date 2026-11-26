@@ -403,6 +403,7 @@ let package = Package(
         .testTarget(
             name: "MachOCodeReferencesTests",
             dependencies: [
+                "MachOFixtureSupport",
                 "MachOCodeReferences",
                 "MachOAddressResolution",
                 "ARM64InstructionDecoding",

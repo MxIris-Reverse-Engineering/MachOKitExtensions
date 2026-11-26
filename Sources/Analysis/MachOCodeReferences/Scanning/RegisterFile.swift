@@ -40,6 +40,10 @@ import Foundation
         fileprivate var constantMask: UInt32 = 0
         /// Of those, the ones whose constant was blended into an address.
         fileprivate var blendedMask: UInt32 = 0
+        /// Registers holding the address of a slot — a reference slot, or one a
+        /// session watches — that was recorded where the address was built,
+        /// by bit.
+        fileprivate var recordedSlotMask: UInt32 = 0
 
         /// Keeps only what `other` agrees on: two paths that reach one
         /// instruction leave a register known there only when both put the
@@ -51,6 +55,7 @@ import Foundation
                 loadedMask &= ~bit
                 constantMask &= ~bit
                 blendedMask &= ~bit
+                recordedSlotMask &= ~bit
             }
         }
 
@@ -63,6 +68,7 @@ import Foundation
                 && constantMask & bit == other.constantMask & bit
                 && blendedMask & bit == other.blendedMask & bit
                 && (constantMask & bit == 0 || constants[register] == other.constants[register])
+                && recordedSlotMask & bit == other.recordedSlotMask & bit
         }
     }
 
@@ -75,6 +81,7 @@ import Foundation
         contents.loadedMask = 0
         contents.constantMask = 0
         contents.blendedMask = 0
+        contents.recordedSlotMask = 0
     }
 
     // MARK: - Writes
@@ -86,6 +93,15 @@ import Foundation
 
     @_spi(Internals) public func setAddress(_ address: UInt64, of register: Int) {
         overwrite(register, state: .address, value: address)
+    }
+
+    /// Notes that the address `register` holds — a reference slot's, or one
+    /// a session watches — was recorded where it was built. A load through it
+    /// with no displacement reads the same slot again and is no second
+    /// reference. The register keeps its address.
+    @_spi(Internals) public func markRecordedSlotAddress(of register: Int) {
+        guard register != 31, contents.states[register] == State.address.rawValue else { return }
+        contents.recordedSlotMask |= 1 << UInt32(register)
     }
 
     @_spi(Internals) public func add(_ addend: Int64, to source: Int, into destination: Int) {
@@ -130,6 +146,7 @@ import Foundation
         copyBit(from: source, to: destination, in: &contents.loadedMask)
         copyBit(from: source, to: destination, in: &contents.constantMask)
         copyBit(from: source, to: destination, in: &contents.blendedMask)
+        copyBit(from: source, to: destination, in: &contents.recordedSlotMask)
     }
 
     /// `movz` / `movk`: a pointer-authentication constant is `movk xN, #imm,
@@ -150,6 +167,7 @@ import Foundation
         contents.loadedMask &= ~Self.callerSavedMask
         contents.constantMask &= ~Self.callerSavedMask
         contents.blendedMask &= ~Self.callerSavedMask
+        contents.recordedSlotMask &= ~Self.callerSavedMask
     }
 
     /// What a call leaves when the registers in `keptMask`, by bit, still
@@ -174,6 +192,7 @@ import Foundation
             contents.loadedMask = (contents.loadedMask & ~bit) | (keptContents.loadedMask & bit)
             contents.constantMask = (contents.constantMask & ~bit) | (keptContents.constantMask & bit)
             contents.blendedMask = (contents.blendedMask & ~bit) | (keptContents.blendedMask & bit)
+            contents.recordedSlotMask = (contents.recordedSlotMask & ~bit) | (keptContents.recordedSlotMask & bit)
         }
     }
 
@@ -344,6 +363,12 @@ import Foundation
         return contents.values[register]
     }
 
+    /// Whether `register` holds a slot's address that was recorded where it
+    /// was built (``markRecordedSlotAddress(of:)``).
+    @_spi(Internals) public func isRecordedSlotAddress(_ register: Int) -> Bool {
+        register != 31 && contents.recordedSlotMask & (1 << UInt32(register)) != 0
+    }
+
     /// The slot a register's value was loaded from, when that is known.
     @_spi(Internals) public func slotAddress(of register: Int) -> UInt64? {
         guard register != 31, contents.states[register] == State.loadedFromSlot.rawValue else { return nil }
@@ -360,6 +385,7 @@ import Foundation
         contents.loadedMask &= ~bit
         contents.constantMask &= ~bit
         contents.blendedMask &= ~bit
+        contents.recordedSlotMask &= ~bit
     }
 
     private func forget(_ register: Int) {

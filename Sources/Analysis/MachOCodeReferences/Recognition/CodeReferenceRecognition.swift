@@ -101,9 +101,10 @@
 ///
 /// The core asks the sessions, in the order the host lists them, at five
 /// moments of a scan: entering a function, resolving a call target only a
-/// session can read, a call, an address built, and a load from a slot. A new
-/// language is one more recognizer; the core does not change. Evolution
-/// proposal `offline-cross-references-and-symbolication`.
+/// session can read, a call, an address built, and a load from a slot — and
+/// tells them when it leaves the function. A new language is one more
+/// recognizer; the core does not change. Evolution proposal
+/// `offline-cross-references-and-symbolication`.
 @_spi(Internals) public protocol CodeReferenceRecognitionSession: AnyObject {
     /// Address ranges, unslid, whose slots hold references the session
     /// reads besides the core's GOT: `__objc_classrefs`.
@@ -161,6 +162,17 @@
     /// A load from a slot in one of `watchedSlotRanges`, at `site` — a
     /// pointer, or a 32-bit offset such as an instance variable's.
     func noteWatchedSlotLoad(from slot: UInt64, at site: ScanSite)
+
+    /// The scan is done with the function it last entered: what the session
+    /// held back until it knew how the function used it — a selector loaded
+    /// but never sent — is recorded now. Not called for a function the scan
+    /// could not read, which it never entered either.
+    func leaveFunction()
+}
+
+extension CodeReferenceRecognitionSession {
+    /// Most sessions record everything as they meet it.
+    @_spi(Internals) public func leaveFunction() {}
 }
 
 /// A string literal the code takes the address of — recorded only when the
@@ -188,4 +200,9 @@
     /// image the analyzer does not cover: what a standalone file analyzed
     /// without its libraries reads another image's class or data through.
     func recordImportedSymbolReference(named name: String, at site: ScanSite)
+    /// `adrp` / `add` or `adr` built the address of `function`, the start of
+    /// a function in the scanned image — to call it later, to sign it and
+    /// hand it on, to put it in a block. Recorded only when the scan records
+    /// function address references.
+    func recordFunctionAddressReference(to function: CodeLocation, at site: ScanSite)
 }
