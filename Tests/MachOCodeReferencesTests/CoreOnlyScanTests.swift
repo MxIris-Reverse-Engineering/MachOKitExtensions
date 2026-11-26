@@ -70,6 +70,7 @@ struct CoreOnlyScanTests {
         func recordIndirectCall(_ evidence: IndirectCallEvidence, at site: ScanSite) {}
         func recordString(_ string: StringLiteralReference, at site: ScanSite) {}
         func recordImportedSymbolReference(named name: String, at site: ScanSite) {}
+        func recordFunctionAddressReference(to function: CodeLocation, at site: ScanSite) {}
     }
 
     @Test func theCoreScansWithOnlyARecognizerFromTests() throws {
