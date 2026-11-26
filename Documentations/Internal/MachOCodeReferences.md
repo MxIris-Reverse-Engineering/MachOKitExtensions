@@ -14,7 +14,7 @@
 
 ## 不认识任何一种语言
 
-- 核心经识别器接纳各语言层：语言层为每次扫描建一个会话，核心只在五个时机问它（进入函数、解析不认识的调用目标、调用点、算出地址、读槽），会话产出的引用记到语言层自己的记录协议上，不经核心转手。
+- 核心经识别器接纳各语言层：语言层为每次扫描建一个会话，核心只在五个时机问它（进入函数、解析不认识的调用目标、调用点、算出地址、读槽），扫完函数时再告诉它一声（`leaveFunction()`），会话产出的引用记到语言层自己的记录协议上，不经核心转手。
 - 源码里不许出现 `objc_` / `swift_` 开头的字符串字面量：运行时的名单属于各自的层，由使用方经 `RuntimeLibraryRules` 交给核心（`SourceScanTests.coreSpellsNoRuntimeSymbolName`）。
 - `IndirectCallEvidence` 只记调用点看得出的事实：载入的位移、arm64e 的鉴别常量、是否混入地址。从哪种表载入（vtable、见证表）是语言的知识，搬来时删掉了从来只写 `.none` 的 `table` 字段。
 - `CoreOnlyScanTests.theCoreScansWithOnlyARecognizerFromTests` 不装任何语言层，只装测试里定义的一个识别器，驱动扫描器扫完 Foundation：所有调进 libobjc 的调用都由这个识别器代为记录，证明扩展点是开放的。
@@ -27,6 +27,18 @@
 ## 怎么工作
 
 各子系统的分工、关键契约、文件模式、引用路线、地址符号化与吞吐实测，写在 MachOSwiftSection 的 [Modules/CrossReferenceAnalysis.md](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Internal/Modules/CrossReferenceAnalysis.md)：三层的代码一起演进，那份文档是它们的总说明，这里不重复。
+
+## 算出的地址落在槽上、函数起点（提案 cross-reference-recall-gaps）
+
+MachOSwiftSection 提案 [cross-reference-recall-gaps](https://github.com/MxIris-Reverse-Engineering/MachOSwiftSection/blob/next/Documentations/Evolutions/draft-cross-reference-recall-gaps.md) 的复测在 Finder 26.5.2 与 ControlCenter 26.7 上找到几处扫描漏记，核心层补了三条：
+
+- **算出的地址落在引用槽上，就在这条指令上按读槽处理。** `adrp; add` 或 `adr` 算出的地址是本镜像的 GOT、会话报的引用节（`__objc_classrefs`），或 cache 的共用 GOT 池里的槽时，走 `noteSlotReference(fromSlot:at:)`，路线记 `.pointerSlot`。优化过的 Swift 代码把 ObjC 类的 GOT 槽地址放进 `x2` 交给合并后的元数据访问器（`$sSo…CMaTm`），自己从不载入，ControlCenter 有 554 处。共用 GOT 池的判断（`isSlotOutsideEveryImage`）按地址记在地址认领缓存里（`referenceSlotClaim`）。
+- **算出的地址落在会话观察的槽上，就在这条指令上通知会话。** 观察的槽是 ivar 偏移变量（`__objc_ivar`）、`__objc_superrefs`、`__objc_selrefs`。Finder 的 `-[TTaskErrorOrConflictViewController setResolutionsForKind:]` 在两条路径上各算一个 ivar 偏移变量的地址，汇合到同一条 `ldrsw x9, [x9]`；汇合处 `x9` 两边不一致、按规则作废，载入处就认不出读的是哪个，所以只有算地址的那条指令能说出它。
+- 两种情况都给寄存器打上「已记过」的位（`RegisterFile.markRecordedSlotAddress(of:)`），之后经它做零位移的 64 位或 32 位载入不再重记，免得 `adrp; add; ldr [x]` 记成两行；寄存器里的地址照常保留，后面的发送仍能认出类字面量接收者。这个位随寄存器改写清掉、随 `mov` 复制、汇合时比较。不用 `setTag`：打标记会把寄存器改成 `.tagged` 状态，地址就没了。
+- **算出的地址是本镜像的函数起点时，记成对函数的引用**（`CodeReferenceRecording.recordFunctionAddressReference(to:at:)`，种类 `.reference`、路线 `.addressMaterialization`），只在扫描器以 `recordsFunctionAddressReferences: true` 构造时记：建栈上 block 的函数、把回调交给 `dispatch_async_f` 的函数、返回闭包的函数因此成了被引用函数的「调用者」。会话照常再被问一次（Swift 会话把访问器地址认领为类型引用，两条都记）。
+- 会话协议加了 `leaveFunction()`：扫描器扫完一个函数时调用，协议扩展给空实现。ObjC 层用它冲刷没被发送用掉的 selector 载入。
+
+为此扫描器在任何会话观察槽时都要看算出的地址（`looksAtBuiltAddresses`），而 ObjC 会话总是观察 `__objc_superrefs`，所以每个 `add` / `adr` 都会进 `noteAddress`；进去后先做最便宜的判断。
 
 ## 吞吐
 
@@ -48,5 +60,5 @@
 
 ## 测试
 
-- `MachOCodeReferencesTests`：`CoreOnlyScanTests`（核心单独扫描、`IndirectCallEvidence` 只剩三项）、`MalformedExportTrieTests`（导出树里畸形的长度不让读越界或陷入，在子进程里跑）、`SourceScanTests`（上面三条源码扫描）。要带 dyld shared cache 的 arm64 进程的那几条在别处跳过。
+- `MachOCodeReferencesTests`：`ScanShapesFixture` 用 `FixtureCompiler` 汇编出一个库，每个函数就是测试要钉住的指令序列——`SlotAddressScanTests`（取槽地址记在 `add` 上、经它或它的副本再载入不重记、普通的 `adrp; ldr` 照旧）、`InstanceVariableMergePointTests`（两条路径各算一个偏移变量地址、在载入处汇合；没有分支时记在 `add` 上不记在载入上）、`FunctionAddressScanTests`（`adrp; add` 与 `adr` 取函数起点记成引用、函数内部的地址不算、不要求时不记、每个进入的函数都离开一次）；`CoreOnlyScanTests`（核心单独扫描、`IndirectCallEvidence` 只剩三项）、`MalformedExportTrieTests`（导出树里畸形的长度不让读越界或陷入，在子进程里跑）、`SourceScanTests`（上面三条源码扫描）。要带 dyld shared cache 的 arm64 进程的那几条在别处跳过。
 - 其余测试经分析器走，留在 MachOSwiftSection 的 `CrossReferenceAnalysisTests`；本包没有 CI，这里的测试只在本地跑。
