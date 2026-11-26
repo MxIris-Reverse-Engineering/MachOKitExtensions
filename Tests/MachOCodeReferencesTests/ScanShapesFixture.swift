@@ -8,9 +8,13 @@ import MachOFixtureSupport
 /// compiler would choose its own. Assembled and linked once per process for
 /// the host — arm64 only.
 ///
-/// - `takesSlotAddress` builds the address of `malloc`'s GOT slot and hands
-///   it on in `x2`, as Swift code hands a class's GOT slot to the helper that
-///   makes its metadata (ControlCenter 26.7 `0x1006455c8`).
+/// - `takesSlotAddress` builds the address of a slot binding to `malloc` and
+///   hands it on in `x2`, as Swift code hands a class's GOT slot to the
+///   helper that makes its metadata (ControlCenter 26.7 `0x1006455c8`). The
+///   linker no longer takes a hand-written GOT, and `add` takes no GOT
+///   relocation, so the slot lies in a section of its own that the test's
+///   session reports as a reference section — the way the Objective-C layer
+///   reports `__objc_classrefs`; the core reads both the same way.
 /// - `loadsThroughSlotAddress` builds the slot's address and loads through
 ///   it; `loadsThroughCopiedSlotAddress` copies the address to another
 ///   register first. `loadsSlot` is the usual `adrp` / `ldr` pair.
@@ -36,24 +40,24 @@ enum ScanShapesFixture {
         .globl _takesSlotAddress
         .p2align 2
     _takesSlotAddress:
-        adrp x2, L_malloc$non_lazy_ptr@PAGE
-        add x2, x2, L_malloc$non_lazy_ptr@PAGEOFF
+        adrp x2, Lmalloc_slot@PAGE
+        add x2, x2, Lmalloc_slot@PAGEOFF
         mov x0, #0
         ret
 
         .globl _loadsThroughSlotAddress
         .p2align 2
     _loadsThroughSlotAddress:
-        adrp x8, L_malloc$non_lazy_ptr@PAGE
-        add x8, x8, L_malloc$non_lazy_ptr@PAGEOFF
+        adrp x8, Lmalloc_slot@PAGE
+        add x8, x8, Lmalloc_slot@PAGEOFF
         ldr x0, [x8]
         ret
 
         .globl _loadsThroughCopiedSlotAddress
         .p2align 2
     _loadsThroughCopiedSlotAddress:
-        adrp x8, L_malloc$non_lazy_ptr@PAGE
-        add x8, x8, L_malloc$non_lazy_ptr@PAGEOFF
+        adrp x8, Lmalloc_slot@PAGE
+        add x8, x8, Lmalloc_slot@PAGEOFF
         mov x9, x8
         ldr x0, [x9]
         ret
@@ -61,8 +65,8 @@ enum ScanShapesFixture {
         .globl _loadsSlot
         .p2align 2
     _loadsSlot:
-        adrp x8, L_malloc$non_lazy_ptr@PAGE
-        ldr x0, [x8, L_malloc$non_lazy_ptr@PAGEOFF]
+        adrp x8, Lmalloc_slot@PAGE
+        ldr x0, [x8, Lmalloc_slot@PAGEOFF]
         ret
 
         .globl _offsetAtMergePoint
@@ -118,11 +122,10 @@ enum ScanShapesFixture {
     _offsetVariable:
         .long 40
 
-        .section __DATA_CONST,__got,non_lazy_symbol_pointers
+        .section __DATA,__ref_slots
         .p2align 3
-    L_malloc$non_lazy_ptr:
-        .indirect_symbol _malloc
-        .quad 0
+    Lmalloc_slot:
+        .quad _malloc
 
     """
 
@@ -196,20 +199,22 @@ struct FixtureLookupError: Error, CustomStringConvertible {
     let description: String
 }
 
-/// A session that recognizes nothing and watches the slots of the ranges it
-/// is given — what the Objective-C layer does with `__objc_ivar` — counting
-/// the functions the scan enters and leaves.
+/// A session that recognizes nothing, reports the reference slots it is
+/// given — what the Objective-C layer does with `__objc_classrefs` — and
+/// watches the slots of the ranges it is given — what it does with
+/// `__objc_ivar` — counting the functions the scan enters and leaves.
 final class WatchingSession: CodeReferenceRecognitionSession {
+    let referenceSlotRanges: [Range<UInt64>]
     let watchedSlotRanges: [Range<UInt64>]
     private(set) var watchedLoads: [(slot: UInt64, instructionAddress: UInt64)] = []
     private(set) var enteredFunctionCount = 0
     private(set) var leftFunctionCount = 0
 
-    init(watchedSlotRanges: [Range<UInt64>] = []) {
+    init(referenceSlotRanges: [Range<UInt64>] = [], watchedSlotRanges: [Range<UInt64>] = []) {
+        self.referenceSlotRanges = referenceSlotRanges
         self.watchedSlotRanges = watchedSlotRanges
     }
 
-    var referenceSlotRanges: [Range<UInt64>] { [] }
     var looksForAddressReferences: Bool { false }
     func enterFunction(at functionIndex: Int, registers: RegisterFile) { enteredFunctionCount += 1 }
     func claimCallTarget(at target: UInt64) -> CallTargetClaim? { nil }

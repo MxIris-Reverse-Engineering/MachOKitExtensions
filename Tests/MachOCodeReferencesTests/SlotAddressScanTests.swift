@@ -11,7 +11,8 @@ struct SlotAddressScanTests {
     private static func scannedFixture() throws -> (machO: MachOFile, recording: CoreRecording) {
         let machO = try ScanShapesFixture.machOFile()
         let recording = CoreRecording()
-        ScanShapesFixture.scan(machO, session: WatchingSession(), recording: recording, recordsFunctionAddressReferences: false)
+        let referenceSlots = try ScanShapesFixture.range(ofSection: "__ref_slots", inSegment: "__DATA", of: machO)
+        ScanShapesFixture.scan(machO, session: WatchingSession(referenceSlotRanges: [referenceSlots]), recording: recording, recordsFunctionAddressReferences: false)
         return (machO, recording)
     }
 
