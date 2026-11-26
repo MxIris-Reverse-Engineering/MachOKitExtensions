@@ -40,8 +40,9 @@ import Foundation
         fileprivate var constantMask: UInt32 = 0
         /// Of those, the ones whose constant was blended into an address.
         fileprivate var blendedMask: UInt32 = 0
-        /// Registers holding the address of a reference slot that was
-        /// recorded as a reference where the address was built, by bit.
+        /// Registers holding the address of a slot — a reference slot, or one a
+        /// session watches — that was recorded where the address was built,
+        /// by bit.
         fileprivate var recordedSlotMask: UInt32 = 0
 
         /// Keeps only what `other` agrees on: two paths that reach one
@@ -94,10 +95,10 @@ import Foundation
         overwrite(register, state: .address, value: address)
     }
 
-    /// Notes that the address `register` holds — a reference slot's — was
-    /// recorded as a reference where it was built. A load through it with no
-    /// displacement reads the same slot again and is no second reference.
-    /// The register keeps its address.
+    /// Notes that the address `register` holds — a reference slot's, or one
+    /// a session watches — was recorded where it was built. A load through it
+    /// with no displacement reads the same slot again and is no second
+    /// reference. The register keeps its address.
     @_spi(Internals) public func markRecordedSlotAddress(of register: Int) {
         guard register != 31, contents.states[register] == State.address.rawValue else { return }
         contents.recordedSlotMask |= 1 << UInt32(register)
@@ -362,8 +363,8 @@ import Foundation
         return contents.values[register]
     }
 
-    /// Whether `register` holds a reference slot's address that was recorded
-    /// as a reference where it was built (``markRecordedSlotAddress(of:)``).
+    /// Whether `register` holds a slot's address that was recorded where it
+    /// was built (``markRecordedSlotAddress(of:)``).
     @_spi(Internals) public func isRecordedSlotAddress(_ register: Int) -> Bool {
         register != 31 && contents.recordedSlotMask & (1 << UInt32(register)) != 0
     }

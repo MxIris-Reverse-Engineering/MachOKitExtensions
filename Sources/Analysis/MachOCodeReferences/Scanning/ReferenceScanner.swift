@@ -77,6 +77,10 @@ import MachOKit
     /// Whether any session looks at the addresses code builds and the slots
     /// it loads from.
     private let looksForAddressReferences: Bool
+    /// Whether the addresses code builds are looked at at all: for the
+    /// references above, for function addresses, or because an address may
+    /// lie on a slot a session watches.
+    private let looksAtBuiltAddresses: Bool
 
     /// What a call target resolves to, and what each session makes of it —
     /// copied out for every call, so held in values that take no reference
@@ -130,6 +134,7 @@ import MachOKit
         self.recordsFunctionAddressReferences = recordsFunctionAddressReferences
         self.looksForDataReferences = recordsStringReferences || recordsImportedSymbolReferences
         self.looksForAddressReferences = sessions.contains { $0.looksForAddressReferences } || looksForDataReferences
+        self.looksAtBuiltAddresses = looksForAddressReferences || recordsFunctionAddressReferences || !watchedSlotRanges.isEmpty
     }
 
     // MARK: - Scanning
@@ -176,12 +181,12 @@ import MachOKit
                 registers.setAddress(materialization.address, of: materialization.destination)
                 // `adr` builds the whole address an `adrp` / `add` pair builds
                 // — what ld64 makes of such a pair within a megabyte.
-                if !materialization.isPageAddress, looksForAddressReferences || recordsFunctionAddressReferences, let address = registers.builtAddress(of: materialization.destination) {
+                if !materialization.isPageAddress, looksAtBuiltAddresses, let address = registers.builtAddress(of: materialization.destination) {
                     noteAddress(address, builtInto: materialization.destination, at: ScanSite(function: function, instructionAddress: instructionAddress, kind: .reference, route: .addressMaterialization), mayNameAString: true)
                 }
             } else if let arithmetic = ARM64InstructionWord.addImmediate(word) {
                 registers.add(arithmetic.addend, to: arithmetic.source, into: arithmetic.destination)
-                if looksForAddressReferences || recordsFunctionAddressReferences, let address = registers.builtAddress(of: arithmetic.destination) {
+                if looksAtBuiltAddresses, let address = registers.builtAddress(of: arithmetic.destination) {
                     // An address built by subtracting names no string: Swift
                     // keeps a large string literal as its address less 32,
                     // and the `add` before has named the string already.
@@ -189,8 +194,8 @@ import MachOKit
                 }
             } else if let load = ARM64InstructionWord.load(word) {
                 let slot = registers.builtAddress(of: load.base).map { ARM64InstructionWord.adding(load.displacement, to: $0) }
-                // The `add` that built a reference slot's address recorded
-                // the slot already; loading it is the same reference.
+                // The `add` that built a reference or watched slot's address
+                // recorded the slot already; loading it is the same reference.
                 let readsRecordedSlot = load.displacement == 0 && registers.isRecordedSlotAddress(load.base)
                 registers.load(into: load.destination, base: load.base, displacement: load.displacement, writesBack: load.writesBack)
                 if let slot, !readsRecordedSlot { noteLoad(fromSlot: slot, into: load.destination, at: ScanSite(function: function, instructionAddress: instructionAddress, kind: .reference, route: .pointerSlot)) }
@@ -199,8 +204,9 @@ import MachOKit
                 // variable's offset, which the session watching the slot
                 // names. No pointer, so no reference of the core's own.
                 let slot = registers.builtAddress(of: wordLoad.base).map { ARM64InstructionWord.adding(wordLoad.displacement, to: $0) }
+                let readsRecordedSlot = wordLoad.displacement == 0 && registers.isRecordedSlotAddress(wordLoad.base)
                 registers.forgetRegistersWritten(by: word)
-                if let slot { noteWatchedLoad(fromSlot: slot, at: ScanSite(function: function, instructionAddress: instructionAddress, kind: .reference, route: .pointerSlot)) }
+                if let slot, !readsRecordedSlot { noteWatchedLoad(fromSlot: slot, at: ScanSite(function: function, instructionAddress: instructionAddress, kind: .reference, route: .pointerSlot)) }
             } else if let wordLiteral = ARM64InstructionWord.wordLoadLiteral(word, at: instructionAddress) {
                 registers.forgetRegistersWritten(by: word)
                 noteWatchedLoad(fromSlot: wordLiteral.slotAddress, at: ScanSite(function: function, instructionAddress: instructionAddress, kind: .reference, route: .literalLoad))
@@ -380,12 +386,20 @@ import MachOKit
     /// and are turned away before any session is asked. An address that is a
     /// reference slot's — a GOT entry, a class reference — reads as the slot:
     /// Swift code hands such a slot's address to the helper that makes an
-    /// Objective-C class's metadata. An address that is a function's start is
-    /// a reference to the function, when the scan records those.
+    /// Objective-C class's metadata. An address on a slot a session watches —
+    /// an instance variable's offset variable — reads as a load from it, where
+    /// it is built: where two paths that built different ones meet, the load
+    /// cannot tell which it reads. An address that is a function's start is a
+    /// reference to the function, when the scan records those.
     private mutating func noteAddress(_ address: UInt64, builtInto destination: Int, at site: ScanSite, mayNameAString: Bool) {
         let isCode = address >= table.textStart && address < table.textEnd
         if isCode, recordsFunctionAddressReferences, isFunctionStart(address) {
             recording.recordFunctionAddressReference(to: CodeLocation(imageIndex: table.imageIndex, address: address), at: site)
+        }
+        if !isCode, let watched = watchedSlotRanges.first(where: { $0.range.contains(address) }) {
+            sessions[watched.sessionIndex].noteWatchedSlotLoad(from: address, at: site.reached(by: .pointerSlot))
+            registers.markRecordedSlotAddress(of: destination)
+            return
         }
         guard looksForAddressReferences else { return }
         if !isCode, referenceSlotRanges.contains(where: { $0.contains(address) }) {
